@@ -3,6 +3,7 @@ module Lemonade where
 import qualified Data.Clp.Clp as Clp
 import Foreign.Ptr (nullPtr)
 import Foreign.Marshal.Array (peekArray, withArray)
+import Foreign.C.String (withCString)
 import Control.Monad (forM, when)
 import System.Exit (exitWith, ExitCode(ExitFailure))
 import Text.Printf (printf)
@@ -131,6 +132,12 @@ input_by_rows model =
                 withArray columns $ \columns ->
                     withArray elements $ \elements ->
                         Clp.addRows model 1 rowLower rowUpper rowStarts columns elements
+
+input_by_file :: Clp.SimplexHandle -> IO ()
+input_by_file model = do
+    status <- withCString "lemonade.mps" $ \fs -> Clp.readMps model fs True False
+    when (status /= 0) $
+        exitWith $ ExitFailure status
 
 main :: IO ()
 main = do

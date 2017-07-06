@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <float.h>
 #include <coin/Clp_C_Interface.h>
 
@@ -96,6 +97,14 @@ void input_by_rows(Clp_Simplex *model)
         int columns[num_cols] = {0, 1};
         double elements[num_cols] = {0.0, 0.5};
         Clp_addRows(model, 1, &rowLower, &rowUpper, rowStarts, columns, elements);
+    }
+}
+
+void input_by_file(Clp_Simplex *model)
+{
+    int status = Clp_readMps(model, "lemonade.mps", 1, 0);
+    if (status) {
+       exit(status);
     }
 }
 
