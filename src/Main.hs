@@ -1,6 +1,6 @@
 module Main where
 
-import Bindings.Clp.Clp
+import Data.Clp.Clp
 
 main :: IO ()
 main = do

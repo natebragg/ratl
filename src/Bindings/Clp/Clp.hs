@@ -6,9 +6,12 @@ module Bindings.Clp.Clp (
     versionMinor,
     versionRelease,
 
+    SimplexHandle,
+
     newModel,
     deleteModel,
 
+    readMps,
     addRows,
     addColumns,
 
@@ -33,13 +36,9 @@ module Bindings.Clp.Clp (
 ) where
 
 import Foreign.Ptr (Ptr)
-import Foreign.C.String (CString, peekCString)
-import System.IO.Unsafe (unsafePerformIO)
+import Foreign.C.String (CString)
 
-foreign import ccall "Clp_Version"        version'       :: CString
-version :: String
-version = unsafePerformIO $ peekCString version'
-
+foreign import ccall "Clp_Version"        version        :: CString
 foreign import ccall "Clp_VersionMajor"   versionMajor   :: Int
 foreign import ccall "Clp_VersionMinor"   versionMinor   :: Int
 foreign import ccall "Clp_VersionRelease" versionRelease :: Int
@@ -50,6 +49,7 @@ type SimplexHandle = Ptr Simplex
 foreign import ccall "Clp_newModel"       newModel       :: IO SimplexHandle
 foreign import ccall "Clp_deleteModel"    deleteModel    :: SimplexHandle -> IO ()
 
+foreign import ccall "Clp_readMps"        readMps        :: SimplexHandle -> CString -> Bool -> Bool -> IO Int
 foreign import ccall "Clp_addRows"        addRows        :: SimplexHandle -> Int -> Ptr Double -> Ptr Double -> Ptr Int -> Ptr Int -> Ptr Double -> IO ()
 foreign import ccall "Clp_addColumns"     addColumns     :: SimplexHandle -> Int -> Ptr Double -> Ptr Double -> Ptr Double -> Ptr Int -> Ptr Int -> Ptr Double -> IO ()
 
