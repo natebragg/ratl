@@ -6,6 +6,7 @@ module Bindings.Clp.Clp (
     versionMinor,
     versionRelease,
 
+    Simplex,
     SimplexHandle,
 
     newModel,
@@ -35,7 +36,7 @@ module Bindings.Clp.Clp (
     getColSolution,
 ) where
 
-import Foreign.Ptr (Ptr)
+import Foreign.Ptr (Ptr, FunPtr)
 import Foreign.C.String (CString)
 
 foreign import ccall "Clp_Version"        version        :: CString
@@ -47,7 +48,7 @@ data Simplex = Simplex
 type SimplexHandle = Ptr Simplex
 
 foreign import ccall "Clp_newModel"       newModel       :: IO SimplexHandle
-foreign import ccall "Clp_deleteModel"    deleteModel    :: SimplexHandle -> IO ()
+foreign import ccall "&Clp_deleteModel"   deleteModel    :: FunPtr (SimplexHandle -> IO ())
 
 foreign import ccall "Clp_readMps"        readMps        :: SimplexHandle -> CString -> Bool -> Bool -> IO Int
 foreign import ccall "Clp_addRows"        addRows        :: SimplexHandle -> Int -> Ptr Double -> Ptr Double -> Ptr Int -> Ptr Int -> Ptr Double -> IO ()
