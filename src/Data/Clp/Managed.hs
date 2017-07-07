@@ -43,7 +43,6 @@ import qualified Bindings.Clp.Clp as Unmanaged
 import Foreign.Ptr (Ptr)
 import Foreign.C.String (CString)
 import Foreign.ForeignPtr (ForeignPtr, newForeignPtr, withForeignPtr)
-import System.IO.Unsafe (unsafePerformIO)
 
 type SimplexHandle = ForeignPtr Unmanaged.Simplex
 
@@ -74,46 +73,46 @@ initialSolve :: SimplexHandle -> IO Int
 initialSolve model = withForeignPtr model $ \model ->
     Unmanaged.initialSolve model
 
-getNumRows :: SimplexHandle -> Int
-getNumRows model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.getNumRows model
+getNumRows :: SimplexHandle -> IO Int
+getNumRows model = withForeignPtr model $ \model ->
+    Unmanaged.getNumRows model
 
-getNumCols :: SimplexHandle -> Int
-getNumCols model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.getNumCols model
+getNumCols :: SimplexHandle -> IO Int
+getNumCols model = withForeignPtr model $ \model ->
+    Unmanaged.getNumCols model
 
-isAbandoned :: SimplexHandle -> Bool
-isAbandoned model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.isAbandoned model
+isAbandoned :: SimplexHandle -> IO Bool
+isAbandoned model = withForeignPtr model $ \model ->
+    Unmanaged.isAbandoned model
 
-isProvenOptimal :: SimplexHandle -> Bool
-isProvenOptimal model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.isProvenOptimal model
+isProvenOptimal :: SimplexHandle -> IO Bool
+isProvenOptimal model = withForeignPtr model $ \model ->
+    Unmanaged.isProvenOptimal model
 
-isProvenPrimalInfeasible :: SimplexHandle -> Bool
-isProvenPrimalInfeasible model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.isProvenPrimalInfeasible model
+isProvenPrimalInfeasible :: SimplexHandle -> IO Bool
+isProvenPrimalInfeasible model = withForeignPtr model $ \model ->
+    Unmanaged.isProvenPrimalInfeasible model
 
-isProvenDualInfeasible :: SimplexHandle -> Bool
-isProvenDualInfeasible model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.isProvenDualInfeasible model
+isProvenDualInfeasible :: SimplexHandle -> IO Bool
+isProvenDualInfeasible model = withForeignPtr model $ \model ->
+    Unmanaged.isProvenDualInfeasible model
 
-isPrimalObjectiveLimitReached :: SimplexHandle -> Bool
-isPrimalObjectiveLimitReached model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.isPrimalObjectiveLimitReached model
+isPrimalObjectiveLimitReached :: SimplexHandle -> IO Bool
+isPrimalObjectiveLimitReached model = withForeignPtr model $ \model ->
+    Unmanaged.isPrimalObjectiveLimitReached model
 
-isDualObjectiveLimitReached :: SimplexHandle -> Bool
-isDualObjectiveLimitReached model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.isDualObjectiveLimitReached model
+isDualObjectiveLimitReached :: SimplexHandle -> IO Bool
+isDualObjectiveLimitReached model = withForeignPtr model $ \model ->
+    Unmanaged.isDualObjectiveLimitReached model
 
-isIterationLimitReached :: SimplexHandle -> Bool
-isIterationLimitReached model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.isIterationLimitReached model
+isIterationLimitReached :: SimplexHandle -> IO Bool
+isIterationLimitReached model = withForeignPtr model $ \model ->
+    Unmanaged.isIterationLimitReached model
 
-getRowActivity :: SimplexHandle -> Ptr Double
-getRowActivity model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.getRowActivity model
+getRowActivity :: SimplexHandle -> IO (Ptr Double)
+getRowActivity model = withForeignPtr model $ \model ->
+    Unmanaged.getRowActivity model
 
-getColSolution :: SimplexHandle -> Ptr Double
-getColSolution model = unsafePerformIO $ withForeignPtr model $ \model ->
-    return $ Unmanaged.getColSolution model
+getColSolution :: SimplexHandle -> IO (Ptr Double)
+getColSolution model = withForeignPtr model $ \model ->
+    Unmanaged.getColSolution model

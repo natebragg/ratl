@@ -59,16 +59,16 @@ foreign import ccall "Clp_setLogLevel"                   setLogLevel            
 
 foreign import ccall "Clp_initialSolve"   initialSolve   :: SimplexHandle -> IO Int
 
-foreign import ccall "Clp_getNumRows"     getNumRows     :: SimplexHandle -> Int
-foreign import ccall "Clp_getNumCols"     getNumCols     :: SimplexHandle -> Int
+foreign import ccall "Clp_getNumRows"     getNumRows     :: SimplexHandle -> IO Int
+foreign import ccall "Clp_getNumCols"     getNumCols     :: SimplexHandle -> IO Int
 
-foreign import ccall "Clp_isAbandoned"                   isAbandoned                   :: SimplexHandle -> Bool
-foreign import ccall "Clp_isProvenOptimal"               isProvenOptimal               :: SimplexHandle -> Bool
-foreign import ccall "Clp_isProvenPrimalInfeasible"      isProvenPrimalInfeasible      :: SimplexHandle -> Bool
-foreign import ccall "Clp_isProvenDualInfeasible"        isProvenDualInfeasible        :: SimplexHandle -> Bool
-foreign import ccall "Clp_isPrimalObjectiveLimitReached" isPrimalObjectiveLimitReached :: SimplexHandle -> Bool
-foreign import ccall "Clp_isDualObjectiveLimitReached"   isDualObjectiveLimitReached   :: SimplexHandle -> Bool
-foreign import ccall "Clp_isIterationLimitReached"       isIterationLimitReached       :: SimplexHandle -> Bool
+foreign import ccall "Clp_isAbandoned"                   isAbandoned                   :: SimplexHandle -> IO Bool
+foreign import ccall "Clp_isProvenOptimal"               isProvenOptimal               :: SimplexHandle -> IO Bool
+foreign import ccall "Clp_isProvenPrimalInfeasible"      isProvenPrimalInfeasible      :: SimplexHandle -> IO Bool
+foreign import ccall "Clp_isProvenDualInfeasible"        isProvenDualInfeasible        :: SimplexHandle -> IO Bool
+foreign import ccall "Clp_isPrimalObjectiveLimitReached" isPrimalObjectiveLimitReached :: SimplexHandle -> IO Bool
+foreign import ccall "Clp_isDualObjectiveLimitReached"   isDualObjectiveLimitReached   :: SimplexHandle -> IO Bool
+foreign import ccall "Clp_isIterationLimitReached"       isIterationLimitReached       :: SimplexHandle -> IO Bool
 
-foreign import ccall "Clp_getRowActivity" getRowActivity :: SimplexHandle -> Ptr Double
-foreign import ccall "Clp_getColSolution" getColSolution :: SimplexHandle -> Ptr Double
+foreign import ccall "Clp_getRowActivity" getRowActivity :: SimplexHandle -> IO (Ptr Double)
+foreign import ccall "Clp_getColSolution" getColSolution :: SimplexHandle -> IO (Ptr Double)

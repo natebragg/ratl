@@ -84,19 +84,20 @@ main = do
         exitWith $ ExitFailure $ fromEnum status
 
     printf "Solution: opt %s, ppi %s, pdi %s, plr %s, dlr %s, ilr %s, abn %s\n"
-        (show $ Clp.isProvenOptimal model)
-        (show $ Clp.isProvenPrimalInfeasible model)
-        (show $ Clp.isProvenDualInfeasible model)
-        (show $ Clp.isPrimalObjectiveLimitReached model)
-        (show $ Clp.isDualObjectiveLimitReached model)
-        (show $ Clp.isIterationLimitReached model)
-        (show $ Clp.isAbandoned model)
+       <$> (show <$> Clp.isProvenOptimal model)
+       <*> (show <$> Clp.isProvenPrimalInfeasible model)
+       <*> (show <$> Clp.isProvenDualInfeasible model)
+       <*> (show <$> Clp.isPrimalObjectiveLimitReached model)
+       <*> (show <$> Clp.isDualObjectiveLimitReached model)
+       <*> (show <$> Clp.isIterationLimitReached model)
+       <*> (show <$> Clp.isAbandoned model)
+       >>= id
 
-    let pr = Clp.getRowActivity model
+    pr <- Clp.getRowActivity model
     forM (enumerate pr) $ \(row, pr_row) ->
         printf "row %d, value %f\n" row pr_row
 
-    let pc = Clp.getColSolution model
+    pc <- Clp.getColSolution model
     forM (enumerate pc) $ \(col, pc_col) ->
         printf "col %d, solution %f\n" col pc_col
 

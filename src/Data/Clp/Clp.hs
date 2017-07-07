@@ -55,7 +55,7 @@ import Data.Clp.Managed (
 import qualified Data.Clp.Managed as Clp
 
 import Foreign.Ptr (nullPtr)
-import Foreign.ForeignPtr (ForeignPtr, newForeignPtr)
+import Foreign.ForeignPtr (ForeignPtr)
 import Foreign.C.String (peekCString, withCString)
 import Foreign.Marshal.Array (peekArray, withArray, withArrayLen)
 import System.IO.Unsafe (unsafePerformIO)
@@ -120,12 +120,14 @@ data Status = Event3
 initialSolve :: SimplexHandle -> IO Status
 initialSolve model = fmap (toEnum . (3 +)) $ Clp.initialSolve model
 
-getRowActivity :: SimplexHandle -> [Double]
+getRowActivity :: SimplexHandle -> IO [Double]
 getRowActivity model = do
-    let nr = Clp.getNumRows model
-    unsafePerformIO $ peekArray nr $ Clp.getRowActivity model
+    nr <- Clp.getNumRows model
+    rs <- Clp.getRowActivity model
+    peekArray nr rs
 
-getColSolution :: SimplexHandle -> [Double]
+getColSolution :: SimplexHandle -> IO [Double]
 getColSolution model = do
-    let nc = Clp.getNumCols model
-    unsafePerformIO $ peekArray nc $ Clp.getColSolution model
+    nc <- Clp.getNumCols model
+    cs <- Clp.getColSolution model
+    peekArray nc cs
