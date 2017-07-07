@@ -12,9 +12,12 @@ module Data.Clp.Clp (
     addRows,
     addColumns,
 
+    OptimizationDirection(..),
     setOptimizationDirection,
+    LogLevel(..),
     setLogLevel,
 
+    Status(..),
     initialSolve,
 
     isAbandoned,
@@ -37,11 +40,6 @@ import Data.Clp.Managed (
     SimplexHandle,
 
     newModel,
-
-    setOptimizationDirection,
-    setLogLevel,
-
-    initialSolve,
 
     getNumRows,
     getNumCols,
@@ -95,6 +93,32 @@ addColumns model bounds elematrix =
                          rows = concat $ map (map fst . zip [0..]) elematrix
                          elements = concat elematrix
                      in  withArray columnStarts $ withArray rows . (withArray elements .) . addElements
+
+data OptimizationDirection = Maximize | Ignore | Minimize
+    deriving (Eq, Ord, Enum)
+
+setOptimizationDirection :: SimplexHandle -> OptimizationDirection -> IO ()
+setOptimizationDirection model dir = Clp.setOptimizationDirection model $ (fromIntegral $ fromEnum dir) - 1.0
+
+data LogLevel = None | Final | Factorizations | PlusABitMore | Verbose
+    deriving (Eq, Ord, Enum)
+
+setLogLevel :: SimplexHandle -> LogLevel -> IO ()
+setLogLevel model level = Clp.setLogLevel model $ fromEnum level
+
+data Status = Event3
+            | Event2
+            | Unknown
+            | Optimal
+            | PrimalInfeasible
+            | DualInfeasible
+            | Stopped
+            | Errors
+            | UserStopped
+    deriving (Eq, Ord, Enum)
+
+initialSolve :: SimplexHandle -> IO Status
+initialSolve model = fmap (toEnum . (3 +)) $ Clp.initialSolve model
 
 getRowActivity :: SimplexHandle -> [Double]
 getRowActivity model = do

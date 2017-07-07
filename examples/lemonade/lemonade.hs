@@ -73,15 +73,15 @@ input_by_file model = do
 main :: IO [()]
 main = do
     model <- Clp.newModel
-    Clp.setLogLevel model 0
+    Clp.setLogLevel model Clp.None
 
     input_by_rows model
 
-    Clp.setOptimizationDirection model (-1)
+    Clp.setOptimizationDirection model Clp.Maximize
 
     status <- Clp.initialSolve model
-    when (status /= 0) $
-        exitWith $ ExitFailure status
+    when (status /= Clp.Optimal) $
+        exitWith $ ExitFailure $ fromEnum status
 
     printf "Solution: opt %s, ppi %s, pdi %s, plr %s, dlr %s, ilr %s, abn %s\n"
         (show $ Clp.isProvenOptimal model)
