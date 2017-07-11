@@ -75,7 +75,7 @@ addRows model bounds elematrix =
             let addElements = Clp.addRows model num_rows rowLower rowUpper
             in  case elematrix of
                 [] -> addElements nullPtr nullPtr nullPtr
-                _ -> let rowStarts = 0 : map length elematrix
+                _ -> let rowStarts = scanl (+) 0 $ map length elematrix
                          columns = concat $ map (map fst . zip [0..]) elematrix
                          elements = concat elematrix
                      in  withArray rowStarts $ withArray columns . (withArray elements .) . addElements
@@ -89,7 +89,7 @@ addColumns model bounds elematrix =
             let addElements = Clp.addColumns model num_cols columnLower columnUpper objective
             in case elematrix of
                 [] -> addElements nullPtr nullPtr nullPtr
-                _ -> let columnStarts = 0 : map length elematrix
+                _ -> let columnStarts = scanl (+) 0 $ map length elematrix
                          rows = concat $ map (map fst . zip [0..]) elematrix
                          elements = concat elematrix
                      in  withArray columnStarts $ withArray rows . (withArray elements .) . addElements
