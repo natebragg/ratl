@@ -104,6 +104,7 @@ void input_by_file(Clp_Simplex *model)
 {
     int status = Clp_readMps(model, "lemonade.mps", 1, 0);
     if (status) {
+       Clp_deleteModel(model);
        exit(status);
     }
 }
@@ -119,6 +120,7 @@ int main()
 
     int status = Clp_initialSolve(model);
     if (status) {
+        Clp_deleteModel(model);
         return status;
     }
 
