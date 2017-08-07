@@ -1,7 +1,8 @@
+{-# LANGUAGE TypeFamilies #-}
+
 module Language.Ratl.Ast (
+    Embeddable(..),
     Nat(..),
-    fromNat,
-    toNat,
     List(..),
     Var(..),
     Val(..),
@@ -12,22 +13,38 @@ module Language.Ratl.Ast (
 
 import Language.Ratl.Ty (FunTy)
 
+class Embeddable a where
+    type HostType a :: *
+    embed :: HostType a -> a
+    project :: a -> HostType a
+
 data Nat = Z | S Nat
     deriving (Eq)
 
-fromNat :: Nat -> Int
-fromNat Z = 0
-fromNat (S n) = 1 + fromNat n
+instance Embeddable Nat where
+    type HostType Nat = Int
+    embed n | n <= 0 = Z
+    embed n = S $ embed $ n - 1
 
-toNat :: Int -> Nat
-toNat x | x <= 0 = Z
-toNat x = S $ toNat $ x - 1
+    project Z = 0
+    project (S n) = 1 + project n
 
 instance Show Nat where
-    show n = show $ fromNat n
+    show n = show $ project n
 
 data List = Nil | Cons Val List
-    deriving (Show, Eq)
+    deriving (Eq)
+
+instance Embeddable List where
+    type HostType List = [Val]
+    embed [] = Nil
+    embed (v:vs) = Cons v (embed vs)
+
+    project Nil = []
+    project (Cons v vs) = v:project vs
+
+instance Show List where
+    show l = show $ project l
 
 data Var = V String
     deriving (Show, Eq)

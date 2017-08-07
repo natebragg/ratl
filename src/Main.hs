@@ -10,7 +10,6 @@ import Data.Clp.Clp
 import Data.Clp.StandardForm (StandardForm(..), solve)
 import Language.Ratl.Ast (
     Nat(..),
-    toNat,
     List(..),
     Var(..),
     Val(..),
