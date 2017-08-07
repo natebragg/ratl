@@ -1,22 +1,47 @@
 module Main where
 
-import Data.Clp.Clp
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
+import Control.Applicative (empty)
+import Control.Monad (when, guard)
+import Control.Monad.State (StateT, evalStateT, get, put)
+import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Arrow (second)
+import System.Exit (exitFailure)
 
-data Ty = NatTy | ListTy Ty | MysteryTy
-    deriving (Eq)
+import Data.Clp.Clp
+import Data.Clp.StandardForm (StandardForm(..), solve)
+
+type Anno = Int
+
+data Ty = NatTy | ListTy Anno Ty | MysteryTy
 
 instance Show Ty where
     show NatTy = "Nat"
-    show (ListTy t) = "[" ++ show t ++ "]"
-    show MysteryTy = "???"
+    show (ListTy _ t) = "[" ++ show t ++ "]"
+    show MysteryTy = "forall a. a"
 
-data FunTy = Arrow Ty Ty
-    deriving (Eq)
+isListTy :: Ty -> Bool
+isListTy NatTy = False
+isListTy     _ = True
+
+isNatTy :: Ty -> Bool
+isNatTy (ListTy _ _) = False
+isNatTy            _ = True
+
+eqTy :: Ty -> Ty -> Bool
+eqTy MysteryTy _ = True
+eqTy _ MysteryTy = True
+eqTy NatTy NatTy = True
+eqTy (ListTy _ t) (ListTy _ t') = eqTy t t'
+eqTy     _     _ = False
+
+data FunTy = Arrow Anno Ty Ty
+
+eqFun :: FunTy -> FunTy -> Bool
+eqFun (Arrow _ t t'') (Arrow _ t' t''') = eqTy t t' && eqTy t'' t'''
 
 instance Show FunTy where
-    show (Arrow t t') = show t ++ " -> " ++ show t'
+    show (Arrow _ t t') = show t ++ " -> " ++ show t'
 
 data Nat = Z | S Nat
     deriving (Eq)
@@ -34,7 +59,7 @@ data Val = List List | Nat Nat
     deriving (Show, Eq)
 
 data Fun = Fun FunTy Var Ex
-    deriving (Show, Eq)
+    deriving (Show)
 
 data Ex = Plus Ex Ex | Head Ex | Tail Ex | Var Var | Val Val | App Var Ex | If Ex Ex Ex
     deriving (Show, Eq)
@@ -72,35 +97,128 @@ run phi args = eval [] (App (V "main") (Val $ List $ embed args))
                     (Nat Z)    -> eval rho ef
                     _          -> eval rho et
 
-check :: Prog -> Bool
-check fs = all (elabF . snd) fs
+type Cost = Double
+
+k_plus, k_head, k_tail, k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Cost
+k_plus = 1.0
+k_head = 1.0
+k_tail = 1.0
+k_var = 1.0
+k_val = 1.0
+k_app = 2.0
+k_ifp = 1.0
+k_ift = 1.0
+k_iff = 1.0
+
+type Constraint = ([(Anno, Double)], Cost)
+
+freshAnno :: Monad m => StateT Anno m Anno
+freshAnno = do
+    q <- get
+    put (q + 1)
+    return q
+
+freshListTy :: Monad m => Ty -> StateT Anno m Ty
+freshListTy tau = do
+    p <- freshAnno
+    return $ ListTy p tau
+
+freshFunTy :: Monad m => Ty -> Ty -> StateT Anno m FunTy
+freshFunTy tau tau' = do
+    q <- freshAnno
+    return $ Arrow q tau tau'
+
+type FunEnv = [(Var, FunTy)]
+
+check :: Monad m => Prog -> StateT Anno (MaybeT m) (FunEnv, [Constraint])
+check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
     where sigma = map (second tyOf) fs
           tyOf (Fun ty _ _) = ty
-          elabF (Fun (Arrow ty ty') x e) = Just ty' == elabE [(x, ty)] e
-          elabE :: [(Var, Ty)] -> Ex -> Maybe Ty
+          elabF :: Monad m => Fun -> StateT Anno (MaybeT m) [Constraint]
+          elabF (Fun (Arrow qf ty ty') x e) = do
+                    (ty'', q, cs) <- elabE [(x, ty)] e
+                    guard $ eqTy ty' ty''
+                    return $ ([(q, 1.0), (qf, -1.0)], 0.0):cs
+          elabE :: Monad m => [(Var, Ty)] -> Ex -> StateT Anno (MaybeT m) (Ty, Anno, [Constraint])
           elabE gamma e = elab e
-             where elab (Plus e1 e2)  = case (elab e1, elab e2) of (Just NatTy, Just NatTy) -> Just NatTy; _ -> Nothing
-                   elab (Head e)      = case elab e of Just (ListTy ty) -> Just ty; _ -> Nothing
-                   elab (Tail e)      = case elab e of ty@(Just (ListTy _ )) -> ty; _ -> Nothing
-                   elab (Var x)       = lookup x gamma
-                   elab (Val v)       = elabV v
-                   elab (App f e)     = case (elab e, lookup f sigma) of (Just ty, Just (Arrow ty' ty'')) | ty == ty' -> Just ty''; _ -> Nothing
-                   elab (If ep et ef) = case (elab ep, elab et, elab ef) of (Just _, tyt, tyf) | tyt == tyf -> tyt; _ -> Nothing
-          elabV (Nat _)  = Just NatTy
+             where elab :: Monad m => Ex -> StateT Anno (MaybeT m) (Ty, Anno, [Constraint])
+                   elab (Plus e1 e2)  = do (ty1, q1, cs1) <- elab e1
+                                           (ty2, q2, cs2) <- elab e2
+                                           q <- freshAnno
+                                           guard $ isNatTy ty1 && isNatTy ty2
+                                           return (NatTy, q, ([(q, 1.0), (q1, -1.0), (q2, -1.0)], k_plus):cs1 ++ cs2)
+                   elab (Head e)      = do (ty, qe, cs) <- elab e
+                                           guard $ isListTy ty
+                                           let ListTy p ty' = ty
+                                           q <- freshAnno
+                                           return (ty', q, ([(q, 1.0), (p, 1.0), (qe, -1.0)], k_head):cs)
+                   elab (Tail e)      = do (ty, qe, cs) <- elab e
+                                           guard $ isListTy ty
+                                           let ListTy p _ = ty
+                                           q <- freshAnno
+                                           return (ty, q, ([(q, 1.0), (p, 1.0), (qe, -1.0)], k_tail):cs)
+                   elab (Var x)       = do let bnd = lookup x gamma
+                                           guard $ isJust bnd
+                                           let Just ty = bnd
+                                           q <- freshAnno
+                                           return (ty, q, [([(q, 1.0)], k_var)])
+                   elab (Val v)       = do ty <- elabV v
+                                           q <- freshAnno
+                                           return (ty, q, [([(q, 1.0)], k_val)])
+                   elab (App f e)     = do (ty, qe, cs) <- elab e
+                                           q <- freshAnno
+                                           let sig = lookup f sigma
+                                           guard $ isJust sig
+                                           let Just (Arrow qf ty' ty'') = sig
+                                           guard $ eqTy ty ty'
+                                           let equiv = case (ty, ty') of
+                                                        (ListTy p _, ListTy pf _) | p /= pf -> [([(p, 1.0), (pf, -1.0)], 0.0)]
+                                                        _                                   -> []
+                                           return (ty'', q, ([(q, 1.0), (qe, -1.0), (qf, -1.0)], k_app):equiv ++ cs)
+                   elab (If ep et ef) = do (typ, qp, csp) <- elab ep
+                                           (tyt, qt, cst) <- elab et
+                                           (tyf, qf, csf) <- elab ef
+                                           q <- freshAnno
+                                           guard $ eqTy tyt tyf
+                                           return (tyt, q, ([(q, 1.0), (qp, -1.0), (qt, -1.0)], k_ifp + k_ift):
+                                                           ([(q, 1.0), (qp, -1.0), (qf, -1.0)], k_ifp + k_iff):csp ++ cst ++ csf)
+          elabV :: Monad m => Val -> StateT Anno (MaybeT m) Ty
+          elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l
-          elabL Nil        = Just $ ListTy MysteryTy
-          elabL (Cons v l) = if lty == (Just $ ListTy MysteryTy) then vty else if lty == vty then lty else Nothing
-              where vty = fmap ListTy $ elabV v
-                    lty = elabL l
+          elabL :: Monad m => List -> StateT Anno (MaybeT m) Ty
+          elabL Nil        = freshListTy MysteryTy
+          elabL (Cons v l) = do
+                vty <- elabV v
+                lty <- elabL l
+                case lty of
+                    ListTy p MysteryTy      -> return $ ListTy p vty
+                    ListTy _ l | eqTy l vty -> return lty
+                    _                       -> empty
+
+xlate :: Constraint -> ([Double], Cost)
+xlate (cs, c) = (xl 0 (replicate (1 + (maximum $ map fst cs)) 0.0) cs, c)
+    where xl _      []           _ = []
+          xl n (r:row)          [] = r:xl (n + 1) row cs
+          xl n (r:row) ((q, v):cs) = xl n ((if q == n then r + v else r):row) cs
+
+objective :: FunEnv -> [Double]
+objective sigma = fst $ xlate $ (obj sigma, 0.0)
+    where obj [] = []
+          obj ((_, Arrow q (ListTy p _) _):sigma) = (q, 1.0):(p, 1000):obj sigma
+          obj ((_, Arrow q            _ _):sigma) = (q, 1.0):obj sigma
+
+interpret :: [Double] -> FunTy -> String
+interpret optimum (Arrow q (ListTy p _) _) = (show $ optimum !! p) ++ "*n + " ++ (show $ optimum !! q)
+interpret optimum (Arrow q            _ _) = show $ optimum !! q
 
 main :: IO ()
 main = do
-  putStrLn $ "Using Clp version " ++ version ++ ": "
-                                  ++ show (versionMajor, versionMinor, versionRelease)
-  do
-        let sum_ty = Arrow (ListTy NatTy) NatTy
-        let main_ty = Arrow (ListTy NatTy) NatTy
-        let id_list_ty = Arrow (ListTy NatTy) (ListTy NatTy)
+    putStrLn $ "Using Clp version " ++ version ++ ": "
+                                    ++ show (versionMajor, versionMinor, versionRelease)
+    result <- runMaybeT $ flip evalStateT 0 $ do
+        sum_ty  <- freshListTy NatTy >>= flip freshFunTy NatTy
+        main_ty <- freshListTy NatTy >>= flip freshFunTy NatTy
+        id_list_ty <- freshListTy NatTy >>= \ty -> freshFunTy ty ty
         let p = [((V "sum"), Fun sum_ty (V "vals") $
                     If (Var $ V "vals")
                         (Plus (Head $ Var $ V "vals")
@@ -111,9 +229,17 @@ main = do
                     Var $ V "args"),
                 ((V "main"), Fun main_ty (V "args") $
                     App (V "sum") (Var $ V "args"))]
-        let checked = check p
-        case checked of
-         False ->
+        checked <- check p
+        return (checked, p)
+    case result of
+        Nothing ->
             putStrLn "Typechecking failed"
-         True ->
+        Just ((env, constraints), p) -> do
+            print env
+            let optimum = solve $ StandardForm (objective env, map xlate constraints)
+            when (null optimum) $ do
+                putStrLn "Analysis was infeasible"
+                exitFailure
+            let complexities = map (second $ interpret optimum) env
+            mapM_ (\(V f, complexity) -> putStrLn $ f ++ ": " ++ complexity) complexities
             print $ run p [1..10]
