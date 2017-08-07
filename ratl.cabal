@@ -16,6 +16,14 @@ cabal-version:       >=1.10
 executable ratl
   hs-source-dirs:      src
   main-is:             Main.hs
+  other-modules:       Bindings.Clp.Clp
+                       Data.Clp.Clp
+                       Data.Clp.Managed
+                       Data.Clp.StandardForm
+                       Language.Ratl.Ast
+                       Language.Ratl.Elab
+                       Language.Ratl.Eval
+                       Language.Ratl.Ty
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5, mtl, transformers
   extra-libraries:     Clp
