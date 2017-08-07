@@ -3,20 +3,14 @@ module Main where
 import Control.Monad (when)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Trans.Maybe (runMaybeT)
+import Control.Monad.Trans (liftIO)
 import Control.Arrow (second)
+import Text.Parsec (runParserT)
 import System.Exit (exitFailure)
 
 import Data.Clp.Clp
 import Data.Clp.StandardForm (StandardForm(..), solve)
-import Language.Ratl.Ast (
-    Nat(..),
-    List(..),
-    Var(..),
-    Val(..),
-    Fun(..),
-    Ex(..),
-    Prog,
-    )
+import Language.Ratl.Parser (prog)
 import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
@@ -53,30 +47,31 @@ main = do
     putStrLn $ "Using Clp version " ++ version ++ ": "
                                     ++ show (versionMajor, versionMinor, versionRelease)
     result <- runMaybeT $ flip evalStateT 0 $ do
-        sum_ty  <- freshListTy NatTy >>= flip freshFunTy NatTy
-        main_ty <- freshListTy NatTy >>= flip freshFunTy NatTy
-        id_list_ty <- freshListTy NatTy >>= \ty -> freshFunTy ty ty
-        let p = [((V "sum"), Fun sum_ty (V "vals") $
-                    If (Var $ V "vals")
-                        (Plus (Head $ Var $ V "vals")
-                              (App (V "sum")
-                                   (Tail $ Var $ V "vals")))
-                        (Val $ Nat Z)),
-                ((V "id_list"), Fun id_list_ty (V "args") $
-                    Var $ V "args"),
-                ((V "main"), Fun main_ty (V "args") $
-                    App (V "sum") (Var $ V "args"))]
-        checked <- check p
-        return (checked, p)
+        parse <- runParserT prog () ""
+            "(fn sum ([Nat] -> Nat) (vals)       \
+            \    (if vals                        \
+            \        (+ (head vals)              \
+            \           (sum (tail vals)))       \
+            \        (0)))                       \
+            \(fn id_list ([Nat] -> [Nat]) (args) \
+            \    args)                           \
+            \(fn main ([Nat] -> Nat) (args)      \
+            \    (sum args))"
+        case parse of
+            Left error -> do
+                liftIO $ print error
+                liftIO $ exitFailure
+            Right p    -> do
+                checked <- check p
+                return (checked, p)
     case result of
         Nothing ->
             putStrLn "Typechecking failed"
         Just ((env, constraints), p) -> do
-            print env
             let optimum = solve $ StandardForm (objective env, map xlate constraints)
             when (null optimum) $ do
                 putStrLn "Analysis was infeasible"
                 exitFailure
             let complexities = map (second $ interpret optimum) env
-            mapM_ (\(V f, complexity) -> putStrLn $ f ++ ": " ++ complexity) complexities
+            mapM_ (\(f, complexity) -> putStrLn $ show f ++ ": " ++ complexity) complexities
             print $ run p [1..10]

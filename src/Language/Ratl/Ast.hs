@@ -47,10 +47,17 @@ instance Show List where
     show l = show $ project l
 
 data Var = V String
-    deriving (Show, Eq)
+    deriving (Eq)
+
+instance Show Var where
+    show (V x) = x
 
 data Val = List List | Nat Nat
-    deriving (Show, Eq)
+    deriving (Eq)
+
+instance Show Val where
+    show (List xs) = show xs
+    show (Nat n) = show n
 
 data Fun = Fun FunTy Var Ex
     deriving (Show)
