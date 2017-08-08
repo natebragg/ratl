@@ -14,12 +14,11 @@ This is based off of work done by Jan Hoffmann.
 The syntax of Ratl is somewhat scheme-like.  The top level is exclusively
 function definitions, denoted by the keyword `fn`.  Functions are typed using
 arrow syntax, and must have a single argument, whose name is given in
-parentheses.  The body is an expression, which evaluates to the function's
-return value.
+parentheses.  The body is an expression.
 
 Expressions include addition with `+`, fetching the `head` and `tail` of a
 list, recalling a variable by name, literal values, testing truthiness with
-`if`, and function application.  Looping is achieved via recursion.
+`if`, and function application.
 
 Functions and builtins (`+`, `head`, `tail`, and `if`) are called in prefix
 position, wrapped in parentheses.
@@ -44,7 +43,21 @@ E.g., if you wanted to find the length of a list:
 
 For more examples, take a look under the `examples/ratl` directory.
 
+## Semantics
+
+Ratl is almost useless.  It is a language that can only increase numbers and
+decrease lists.  There are no conjunctions or disjunctions.  It can't even
+compare values, so predecessor can't be defined.
+
+All expressions return a value.  Function bodies evaluate to the function's
+return value.  Looping is achieved via recursion.
+
+If `head` or `tail` is used on `[]`, the program will halt, so it is a good
+idea to check the truthiness of a list with `if` before using it.
+
 ## Resource-Aware Type Theory
+
+Ratl's usefulness lies not in its semantics but its type system.
 
 Expressions, functions, and list types each carry some resource variable.  Each
 expression's type is associated with some cost relationship.  These combine to
@@ -56,6 +69,21 @@ solution produced maps to the function's resource upper bound.
 The resource of interest in Ratl is execution time, but the concept can be
 mapped to other resources such as space or even arbitrary resources measured
 through some user-supplied annotation.
+
+## Caveats
+
+Ratl is not appropriate, suitable, or fit for (practically) any purpose.
+
+Ratl is also not defect-free. There are a few bugs in it.  For example, if a
+function unconditionally recurses on the tail of its input, it loops instead of
+halting.  If you feed it super-linear programs, Ratl may give confusing and
+incorrect answers rather than deciding that the analysis is infeasible.  It
+also derives incorrect resource usage for literals.  If you name two functions
+the same, the analysis of their callers will probably be wrong.
+
+Ratl analysis gets quadratically larger with the size of the abstract syntax
+tree of the program it's told to analyze.  Much more than 500 modestly-sized
+functions is likely to run out of memory.
 
 ## Building
 
