@@ -7,7 +7,47 @@ with a resource-aware type system capable of reporting upper bounds for
 functions and expressions that are linear in their inputs, along with an
 accompanying interpreter.
 
-This is based off of work done by Jan Hoffmann.
+This is based off of work done by Jan Hoffmann and others.
+
+## Examples
+
+Ratl executes on a `.ratl` file, and outputs the bounds of the functions and
+the result returned by `main`.  In the directory where Ratl was downloaded,
+run the following commands:
+
+    $ echo "(fn main ([Nat] -> [Nat]) (args) args)" > id.ratl
+    $ ./ratl id.ratl [1,2,3]
+    Ratl: Resource-aware toy language
+    Using Clp version 1.15.10: (1,15,10)
+    main: 1.0
+    [1,2,3]
+
+Ratl printed out a friendly autobiography.  The program faithfully returned its
+input.  Even better, Ratl analyzed `main`, and decided that it would execute in
+constant time: 1.0!  Sounds fast.
+
+Now, a more complex example (I will skip the autobiography from now on):
+
+    $ echo "(fn main ([Nat] -> Nat) (args) (head args))" > head.ratl
+    $ ./ratl head.ratl [3,2,1]
+    main: 2.0
+    3
+
+With the addition of the call to `head`, the program outputs the first element
+of its input, and Ratl tells us that `main` now runs in constant time of 2.0,
+which seems appropriately less fast.
+
+Let's analyze a more interesting program, shall we?
+
+    $ echo "(fn main ([Nat] -> Nat) (args)
+                (if args (+ 1 (main (tail args))) 0))" > length.ratl
+    $ ./ratl length.ratl [9,8,7,6,5,4,3,2,1]
+    main: 9.0*n + 5.0
+    9
+
+The program outputs the length of the list, but more importantly Ratl outputs
+that the length of time required to produce that output is linear in the length
+of the input!
 
 ## Syntax
 
@@ -48,7 +88,9 @@ decrease lists.  There are no conjunctions or disjunctions.  It can't even
 compare values, so predecessor can't be defined.
 
 All expressions return a value.  Function bodies evaluate to the function's
-return value.  Looping is achieved via recursion.
+return value.  Looping is achieved via recursion.  The interpreter starts
+executing a program by calling the function `main` with the argument passed
+in on the command line.
 
 If `head` or `tail` is used on `[]`, the program will halt, so it is a good
 idea to check the truthiness of a list with `if` before using it.
