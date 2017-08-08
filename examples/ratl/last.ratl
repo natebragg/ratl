@@ -1,0 +1,7 @@
+(fn last ([Nat] -> Nat) (vals)
+    (if (tail vals)
+        (last (tail vals))
+        (head vals)))
+
+(fn main ([Nat] -> Nat) (args)
+    (last args))

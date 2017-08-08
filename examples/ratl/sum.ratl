@@ -2,10 +2,7 @@
     (if vals
         (+ (head vals)
            (sum (tail vals)))
-        (0)))
-
-(fn id_list ([Nat] -> [Nat]) (args)
-    args)
+        0))
 
 (fn main ([Nat] -> Nat) (args)
     (sum args))
