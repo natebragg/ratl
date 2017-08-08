@@ -32,7 +32,7 @@ import Language.Ratl.Elab (
 
 
 xlate :: Constraint -> ([Double], Cost)
-xlate (cs, c) = (xl 0 (replicate (1 + (maximum $ map fst cs)) 0.0) cs, c)
+xlate (cs, c) = (map negate $ xl 0 (replicate (1 + (maximum $ map fst cs)) 0.0) cs, negate c)
     where xl _      []           _ = []
           xl n (r:row)          [] = r:xl (n + 1) row cs
           xl n (r:row) ((q, v):cs) = xl n ((if q == n then r + v else r):row) cs

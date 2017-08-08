@@ -22,7 +22,7 @@ solve (StandardForm (objective, constraints)) =
         row_length = maximum $ map length elements
         columnBounds = [(0.0, _DBL_MAX, obj) | obj <- objective] ++
                        replicate (row_length - length objective) (0.0, _DBL_MAX, 0.0)
-        rowBounds = [(0.0, bound) | bound <- bounds]
+        rowBounds = [(-_DBL_MAX, bound) | bound <- bounds]
     in  unsafePerformIO $ do
     model <- Clp.newModel
     Clp.setLogLevel model Clp.None
