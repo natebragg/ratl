@@ -9,6 +9,41 @@ accompanying interpreter.
 
 This is based off of work done by Jan Hoffmann.
 
+## Syntax
+
+The syntax of Ratl is somewhat scheme-like.  The top level is exclusively
+function definitions, denoted by the keyword `fn`.  Functions are typed using
+arrow syntax, and must have a single argument, whose name is given in
+parentheses.  The body is an expression, which evaluates to the function's
+return value.
+
+Expressions include addition with `+`, fetching the `head` and `tail` of a
+list, recalling a variable by name, literal values, testing truthiness with
+`if`, and function application.  Looping is achieved via recursion.
+
+Functions and builtins (`+`, `head`, `tail`, and `if`) are called in prefix
+position, wrapped in parentheses.
+
+Literal values include the natural numbers starting at zero, and lists.  Lists
+can be over the naturals, or over lists of naturals, etc.  Naturals are
+depicted in the usual way.  Lists are comma-delimited, in square brackets.
+
+Identifiers are made of lower-case letters and underscores.
+
+E.g., if you wanted to find the length of a list:
+
+~~~~
+(fn length ([Nat] -> Nat) (xs)
+    (if xs
+        (+ 1 (length (tail xs)))
+        0))
+
+(fn main (Nat -> Nat) (n)
+    (length [1, 2, 3, 4, 5, 6, 7, 8, 9]))
+~~~~
+
+For more examples, take a look under the `examples/ratl` directory.
+
 ## Resource-Aware Type Theory
 
 Expressions, functions, and list types each carry some resource variable.  Each

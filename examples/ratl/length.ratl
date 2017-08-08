@@ -1,0 +1,7 @@
+(fn length ([Nat] -> Nat) (xs)
+    (if xs
+        (+ 1 (length (tail xs)))
+        0))
+
+(fn main ([Nat] -> Nat) (args)
+    (length args))

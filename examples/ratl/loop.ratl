@@ -1,0 +1,5 @@
+(fn loop (Nat -> Nat) (_)
+    (loop 0))
+
+(fn main (Nat -> Nat) (arg)
+    (loop arg))
