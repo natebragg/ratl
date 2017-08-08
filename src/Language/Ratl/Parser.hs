@@ -1,5 +1,6 @@
 module Language.Ratl.Parser (
-    prog
+    prog,
+    val,
 ) where
 
 import Language.Ratl.Ast (

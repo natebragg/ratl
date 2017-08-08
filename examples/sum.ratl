@@ -1,0 +1,11 @@
+(fn sum ([Nat] -> Nat) (vals)
+    (if vals
+        (+ (head vals)
+           (sum (tail vals)))
+        (0)))
+
+(fn id_list ([Nat] -> [Nat]) (args)
+    args)
+
+(fn main ([Nat] -> Nat) (args)
+    (sum args))

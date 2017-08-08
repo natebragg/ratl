@@ -1,16 +1,21 @@
 module Main where
 
+import Control.Applicative (empty)
 import Control.Monad (when)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Trans.Maybe (runMaybeT)
 import Control.Monad.Trans (liftIO)
 import Control.Arrow (second)
+import Data.Either (lefts)
+import Data.List (intercalate)
 import Text.Parsec (runParserT)
 import System.Exit (exitFailure)
+import System.IO (readFile)
+import System.Environment (getArgs)
 
 import Data.Clp.Clp
 import Data.Clp.StandardForm (StandardForm(..), solve)
-import Language.Ratl.Parser (prog)
+import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
@@ -44,34 +49,33 @@ interpret optimum (Arrow q            _ _) = show $ optimum !! q
 
 main :: IO ()
 main = do
+    args <- getArgs
+    putStrLn $ "Ratl: Resource-aware toy language"
     putStrLn $ "Using Clp version " ++ version ++ ": "
                                     ++ show (versionMajor, versionMinor, versionRelease)
-    result <- runMaybeT $ flip evalStateT 0 $ do
-        parse <- runParserT prog () ""
-            "(fn sum ([Nat] -> Nat) (vals)       \
-            \    (if vals                        \
-            \        (+ (head vals)              \
-            \           (sum (tail vals)))       \
-            \        (0)))                       \
-            \(fn id_list ([Nat] -> [Nat]) (args) \
-            \    args)                           \
-            \(fn main ([Nat] -> Nat) (args)      \
-            \    (sum args))"
-        case parse of
-            Left error -> do
-                liftIO $ print error
-                liftIO $ exitFailure
-            Right p    -> do
-                checked <- check p
-                return (checked, p)
-    case result of
-        Nothing ->
-            putStrLn "Typechecking failed"
-        Just ((env, constraints), p) -> do
-            let optimum = solve $ StandardForm (objective env, map xlate constraints)
-            when (null optimum) $ do
-                putStrLn "Analysis was infeasible"
-                exitFailure
-            let complexities = map (second $ interpret optimum) env
-            mapM_ (\(f, complexity) -> putStrLn $ show f ++ ": " ++ complexity) complexities
-            print $ run p [1..10]
+    case args of
+        [] -> putStrLn $ "filename required"
+        (fn:args) -> do
+            inp <- readFile fn
+            let argstr = intercalate " " args
+            result <- runMaybeT $ flip evalStateT 0 $ do
+                parse <- runParserT prog () fn inp
+                pargs <- runParserT val () "" argstr
+                case (parse, pargs) of
+                    (Right p, Right a) -> do
+                        checked <- check p
+                        return (checked, p, a)
+                    (e1, e2) -> do
+                        liftIO $ mapM_ print $ lefts [e1] ++ lefts [e2]
+                        liftIO $ exitFailure
+            case result of
+                Nothing ->
+                    putStrLn "Typechecking failed"
+                Just ((env, constraints), p, a) -> do
+                    let optimum = solve $ StandardForm (objective env, map xlate constraints)
+                    when (null optimum) $ do
+                        putStrLn "Analysis was infeasible"
+                        exitFailure
+                    let complexities = map (second $ interpret optimum) env
+                    mapM_ (\(f, complexity) -> putStrLn $ show f ++ ": " ++ complexity) complexities
+                    print $ run p a

@@ -5,7 +5,6 @@ module Language.Ratl.Eval (
 import Data.Maybe (fromJust)
 
 import Language.Ratl.Ast (
-    Embeddable(..),
     Nat(..),
     List(..),
     Var(..),
@@ -20,8 +19,8 @@ plus Z n      = n
 plus n Z      = n
 plus (S n) n' = plus n (S n')
 
-run :: Prog -> [Int] -> Val
-run phi args = eval [] (App (V "main") (Val $ List $ embed $ map (Nat . embed) args))
+run :: Prog -> Val -> Val
+run phi args = eval [] (App (V "main") (Val args))
     where eval rho (Plus e1 e2)  = let Nat n1 = eval rho e1 in let Nat n2 = eval rho e2 in Nat $ plus n1 n2
           eval rho (Head e)      = let List (Cons x  _) = eval rho e in x
           eval rho (Tail e)      = let List (Cons _ xs) = eval rho e in List xs
