@@ -74,8 +74,12 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
           elabF (Fun (Arrow qf ty ty') x e) = do
                     (ty'', q, cs) <- elabE [(x, ty)] e
                     guard $ eqTy ty' ty''
+                    let equiv = case (ty', ty'') of
+                                 (ListTy pf _, ListTy p _) | p /= pf -> [([(p, 1.0), (pf, -1.0)], 0.0),
+                                                                         ([(p, -1.0), (pf, 1.0)], 0.0)]
+                                 _                                   -> []
                     return $ ([(q, -1.0), (qf, 1.0)], 0.0):
-                             ([(q, 1.0), (qf, -1.0)], 0.0):cs
+                             ([(q, 1.0), (qf, -1.0)], 0.0):equiv ++ cs
           elabE :: Monad m => [(Var, Ty)] -> Ex -> StateT Anno (MaybeT m) (Ty, Anno, [Constraint])
           elabE gamma e = elab e
              where elab :: Monad m => Ex -> StateT Anno (MaybeT m) (Ty, Anno, [Constraint])
