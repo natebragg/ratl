@@ -31,15 +31,13 @@ Identifiers are made of lower-case letters and underscores.
 
 E.g., if you wanted to find the length of a list:
 
-~~~~
-(fn length ([Nat] -> Nat) (xs)
-    (if xs
-        (+ 1 (length (tail xs)))
-        0))
+    (fn length ([Nat] -> Nat) (xs)
+        (if xs
+            (+ 1 (length (tail xs)))
+            0))
 
-(fn main (Nat -> Nat) (n)
-    (length [1, 2, 3, 4, 5, 6, 7, 8, 9]))
-~~~~
+    (fn main (Nat -> Nat) (n)
+        (length [1, 2, 3, 4, 5, 6, 7, 8, 9]))
 
 For more examples, take a look under the `examples/ratl` directory.
 
@@ -90,21 +88,17 @@ functions is likely to run out of memory.
 Ratl depends on Stack and the Haskell platform.
 
 On Ubuntu, these can be installed with:
-~~~~
-apt-get install haskell-stack
-~~~~
+
+    apt-get install haskell-stack
 
 Ratl also depends on an LP library, Coin-Or Clp:
-~~~~
-apt-get install coinor-clp coinor-libclp-dev
-~~~~
+
+    apt-get install coinor-clp coinor-libclp-dev
 
 Then to build, just run:
-~~~~
-stack build
-~~~~
+
+    stack build
 
 Ratl can then be run:
-~~~~
-stack exec ratl
-~~~~
+
+    stack exec ratl examples/ratl/sum.ratl [1, 2, 3, 4, 5]
