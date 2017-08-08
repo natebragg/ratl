@@ -44,7 +44,7 @@ objective sigma = fst $ xlate $ (obj sigma, 0.0)
           obj ((_, Arrow q            _ _):sigma) = (q, 1.0):obj sigma
 
 interpret :: [Double] -> FunTy -> String
-interpret optimum (Arrow q (ListTy p _) _) = (show $ optimum !! p) ++ "*n + " ++ (show $ optimum !! q)
+interpret optimum (Arrow q (ListTy p _) _) = let lin = optimum !! p in (if lin /= 0.0 then show lin ++ "*n + " else "") ++ (show $ optimum !! q)
 interpret optimum (Arrow q            _ _) = show $ optimum !! q
 
 main :: IO ()
