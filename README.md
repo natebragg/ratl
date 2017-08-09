@@ -110,6 +110,121 @@ The resource of interest in Ratl is execution time, but the concept can be
 mapped to other resources such as space or even arbitrary resources measured
 through some user-supplied annotation.
 
+## The Algorithm
+
+The goal of a linear programming problem is to optimize some objective, subject
+to certain constraints.  Each of these is a linear equation of some number of
+variables; the objective is a vector in the dimension of the number of
+variables, while the constraints are all inequalities that can be thought of as
+lines, or in higher dimensions planes or hyperplanes, that bound the problem.
+
+As mentioned above, Ratl uses LP by constructing linear inequalities out of
+resource annotations and costs.  Let's look at an example.  Consider the Ratl
+program found in `./examples/ratl/sum.ratl`, reproduced below:
+
+    (fn sum ([Nat] -> Nat) (vals)
+        (if vals
+            (+ (head vals)
+               (sum (tail vals)))
+            0))
+    
+    (fn main ([Nat] -> Nat) (args)
+        (sum args))
+
+Everything is given a resource annotation.  An annotation is made of one or
+more resource variables, zero or more relationships between resource variables,
+and a cost.  For this example, let's start with `main` (Ratl itself actually
+starts by annotating `sum`).  First, during parsing the type, `[Nat]`, is given
+a variable because it's a list type, and `main` itself is given a variable
+because it's a function declaration.  Then during type checking, the abstract
+syntax tree of the function body is traversed, and every node in the tree is
+annotated in post-order.  In the case of `main`, that means the expression
+`args` is annotated, followed by `(sum args)`.  During each annotation step,
+leaf expressions like `args` receive a variable *q* and a cost *k*, but no
+resource relationships.  The linear equation that results is simply *q*≥*k*.
+Interior nodes in the syntax tree like `(sum args)` are aware of their
+children's variables, and build inequalities that force them to be related.
+The linear equation that results is *q*≥*p*+*k*, where *q* is the parent node's
+resource variable, and *p* is the child node's resource variable.  The more
+complex the relationship between nodes, the more variables and equations are
+required.  For example, `if` expressions have two constraints: one that
+requires the `if` expression to be more expensive than the predicate and the
+cost of the false branch, and another that requires the `if` expression to be
+more expensive than the predicate and the cost of the true branch.  Finally,
+after annotating the body, the resulting expression and type are given
+equivalence relations to the function declarations (these are not strictly
+necessary, but are helpful in decoupling typing and solving).
+
+After annotating the entire program, the objective function is then created,
+with a weight for each of the list type variables and the function variables.
+To calculate a runtime upper bound, this objective should be minimized.
+
+The end result of the annotation for this example is presented in the table
+below.  The variables are by column, and the header row gives the syntax node
+that corresponds to that variable ("app" refers to function application - calls
+to the `sum` function: the first recursive, the second from inside `main`).
+The first row is the objective function, and the remaining rows are the
+inequalities collected during type checking.  The right-most column gives the
+cost for that constraint.  Empty cells are variables with zero coefficients for
+that constraint.
+
+|   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |   |          |
+| ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| -------- |
+| **1000.0** |  **1.0** | **1000.0** |  **1.0** |      |      |      |      |      |      |      |      |      |      |      |      |      |   |          |
+|            |    1.0   |            |          |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      | ≥ |  **0.0** |
+|            |   -1.0   |            |          |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      | ≥ |  **0.0** |
+|            |          |            |          | -1.0 |      |      |      |      |      |      |      | -1.0 |      |  1.0 |      |      | ≥ |  **2.0** |
+|            |          |            |          | -1.0 |      |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      | ≥ |  **2.0** |
+|            |          |            |          |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
+|            |          |            |          |      |      | -1.0 |  1.0 |      |      |      | -1.0 |  1.0 |      |      |      |      | ≥ |  **1.0** |
+|     1.0    |          |            |          |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
+|            |          |            |          |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
+|            |   -1.0   |            |          |      |      |      |      |      | -1.0 |  1.0 |  1.0 |      |      |      |      |      | ≥ |  **2.0** |
+|     1.0    |          |            |          |      |      |      |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      | ≥ |  **1.0** |
+|            |          |            |          |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
+|            |          |            |          |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      | ≥ |  **1.0** |
+|            |          |            |    1.0   |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 | ≥ |  **0.0** |
+|            |          |            |   -1.0   |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | ≥ |  **0.0** |
+|            |   -1.0   |            |          |      |      |      |      |      |      |      |      |      |      |      | -1.0 |  1.0 | ≥ |  **2.0** |
+|    -1.0    |          |     1.0    |          |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **0.0** |
+|     1.0    |          |    -1.0    |          |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **0.0** |
+|            |          |            |          |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | ≥ |  **1.0** |
+
+To consider the last row, this corresponds to the term `args` discussed
+previously.  It has a presumed cost of 1.0, and a coefficient of 1.0 (as it
+occurs once in the equation).  This in turn corresponds to the equation
+*q*≥*k*, or more specifically, 1.0\**q*≥1.0.
+
+The optmimum determined by Ratl is given in the next table:
+
+|   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |
+| ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+|     5.0    |    4.0   |     5.0    |    7.0   |  1.0 |  1.0 |  0.0 |  3.0 |  1.0 |  0.0 |  3.0 |  3.0 |  1.0 |  1.0 |  4.0 |  1.0 |  7.0 |
+
+The optimum values for the list type variables are the linear upper bounds,
+while the optimum values for the function types are the constant factors.  This
+corresponds to the reported bounds for the two functions:
+
+    sum: 5.0*n + 4.0
+    main: 5.0*n + 7.0
+
+For the actual implementation, this formulation is actually not how the problem
+is fed to the solver.  Instead it is put into standard form, which requires a
+number of transformations.  Standard form requires the problem to be a
+minimization problem, with only inequalities (no equalities), have inequalities
+all be less-than-or-equal, and for all variables to have non-negativity
+constraints.
+
+In Ratl's case, the problem is a minimization problem, there are equalities,
+all inequalities are greater-than-or-equal, and some variables don't have
+non-negativity constraints.  To transform, the objective is negated and
+maximized, and the constraints are all made into less-than-or-equal constraints
+by negating them.  Equalities are made into inequalities by negating a
+duplicate constraint.  Non-negativity constraints are added by splitting
+variables that can range negatively in two in every constraint.
+
+
+
 ## Caveats
 
 Ratl is not appropriate, suitable, or fit for (practically) any purpose.
