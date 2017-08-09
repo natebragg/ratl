@@ -2,12 +2,32 @@
 
 Ratl is a toy: a baby language that can infer small upper bounds.
 
-More precisely, it is a strongly-typed language based on lists and naturals
-with a resource-aware type system capable of reporting upper bounds for
-functions and expressions that are linear in their inputs, along with an
-accompanying interpreter.
+More precisely, it is a strongly-typed, monomorphic, functional language based
+on lists and naturals with a resource-aware type system capable of reporting
+upper bounds for functions and expressions that are linear in their inputs,
+along with an accompanying interpreter.
 
 This is based off of work done by Jan Hoffmann and others.
+
+## Building
+
+Ratl depends on Stack and the Haskell platform.
+
+On Ubuntu, these can be installed with:
+
+    apt-get install haskell-stack
+
+Ratl also depends on an LP library, Coin-Or Clp:
+
+    apt-get install coinor-clp coinor-libclp-dev
+
+Then to build, just run:
+
+    stack build
+
+Ratl can then be run:
+
+    stack exec ratl examples/ratl/sum.ratl [1, 2, 3, 4, 5]
 
 ## Examples
 
@@ -223,6 +243,32 @@ by negating them.  Equalities are made into inequalities by negating a
 duplicate constraint.  Non-negativity constraints are added by splitting
 variables that can range negatively in two in every constraint.
 
+## Prior Work
+
+Ratl is based on the ideas behind the Raml project from Jan Hoffmann, et. all.
+Raml is much more powerful than Ratl.  Aside from being a language capable of
+feats such as subtraction, Raml's analysis can decide polynomial upper bounds,
+not just linear.  It can also decide multi-variate bounds, for example, taking
+the outer product of two vectors of potentially different lengths.
+
+Hoffmann covers these topics systematically and rigorously from the ground up
+in his Ph.D. thesis<sup id="thesismention">[1](#thesisfootnote)</sup>, where he
+lays down the complete conceptual background, then produces the semantics and
+type rules for linear potential, followed by polynomial, followed by
+multivariate.  These analyses are progressively more powerful, but that power
+comes at the cost that the problem size increases exponentially.
+
+For polynomial bounds, each type and expression is annotated with variables for
+each degree.  The analysis accounts for each of these variables by representing
+them as binomial coefficients.  Each binomial's lower index corresponds to its
+polynomial degree, produced by the binomial's expansion.  Unlike the polynomial
+however, a binomial has a natural mapping to recursive data structures: the
+successive position in that data structure.  If this expandeds to coefficients
+for each combination of multiple variables, this will produce multivariate
+bounds.
+
+Hoffmann has continued this work with Raml, which is growing to include an
+increasing share of OCaml<sup id="papermention">[2](#paperfootnote)</sup>.
 
 
 ## Caveats
@@ -234,28 +280,27 @@ function unconditionally recurses on the tail of its input, it loops instead of
 halting.  If you feed it super-linear programs, Ratl may give confusing and
 incorrect answers rather than deciding that the analysis is infeasible.  It
 also derives incorrect resource usage for literals.  If you name two functions
-the same, the analysis of their callers will probably be wrong.
+the same, the analysis of their callers will probably be wrong.  If you use a
+variable twice, the analysis can sometimes be incorrect.
 
 Ratl analysis gets quadratically larger with the size of the abstract syntax
 tree of the program it's told to analyze.  Much more than 500 modestly-sized
 functions is likely to run out of memory.
 
-## Building
 
-Ratl depends on Stack and the Haskell platform.
 
-On Ubuntu, these can be installed with:
 
-    apt-get install haskell-stack
 
-Ratl also depends on an LP library, Coin-Or Clp:
 
-    apt-get install coinor-clp coinor-libclp-dev
 
-Then to build, just run:
+## References
 
-    stack build
+<b id="thesisfootnote">1</b> Hoffmann, J. 2011. Types with potential:
+Polynomial resource bounds via automatic amortized analysis. Ph.D. thesis,
+Ludwig-Maximilians-Universität, München, Germany.[↩](#thesismention)
 
-Ratl can then be run:
+<b id="paperfootnote">2</b> Jan Hoffmann, Ankush Das, and Shu-Chun Weng. 2017.
+Towards automatic resource bound analysis for OCaml. *SIGPLAN Not.* 52, 1
+(January 2017), 359-373.  DOI: https://doi.org/10.1145/3093333.3009842
+[↩](#papermention)
 
-    stack exec ratl examples/ratl/sum.ratl [1, 2, 3, 4, 5]
