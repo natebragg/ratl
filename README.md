@@ -289,9 +289,22 @@ functions is likely to run out of memory.
 
 
 
+## Beyond Ratl: Next Steps
 
+Ratl was an unexpected pitstop along the way to understanding Hoffmann's work.
+My original intent was to do a limited analysis on the Haskell programming
+language itself.  While trying to understand how the problem could be solved
+using linear programming, I found it simpler to have complete control over the
+language.  Thus, Ratl was born.
 
+This work will continue where it started: by returning to Haskell, in the form
+of a library and compiler plugin.
 
+That doesn't mean that Ratl is finished, though.  It will continue to be a
+sandbox for me to mature these concepts.  At a minimum, there are a couple bugs
+that need to be fixed before I can be confident in targeting Haskell.  At a
+maximum, I may choose to go the distance and fully implement polynomial and
+multivariate analyses in Ratl, in which case the baby will be all grown up.
 
 ## References
 
