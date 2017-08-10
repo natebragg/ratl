@@ -128,7 +128,30 @@ solution produced maps to the function's resource upper bound.
 
 The resource of interest in Ratl is execution time, but the concept can be
 mapped to other resources such as space or even arbitrary resources measured
-through some user-supplied annotation.
+through some user-supplied annotation metric.
+
+Consider a few example Ratl type rules.  First, accessing a variable:
+
+![vareq](http://latex.codecogs.com/gif.latex?%5Cfrac%7Bq%5Cgeq%20k_%7Bvar%7D%7D%7B%5CSigma%3B%5CGamma%2Cx%3AB%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D%20x%3AB%20%7D)
+
+Here there is nothing to consider but the cost of accessing the variable, since
+it is a leaf term.
+
+Next, applying a function:
+
+![appeq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_e%7D%20e%3AA%5C%20%5C%20%5C%20%5C%20%5CSigma%28f%29%20%3D%20A%20%5Crightarrow%5E%7B%5Cmkern-24mu%5Cscriptscriptstyle%5Crule%5B-1.2ex%5D%7B0pt%7D%7B0pt%7Dq_f%7DB%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_f%20&plus;%20q_e%20&plus;%20k_%7Bapp%7D%20%7D%20%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D%20%28f%5C%20e%29%3AB%20%7D)
+
+Applying a function requires considering the cost of that function as well as
+the cost of the argument; in total the expression must be more expensive than
+evaluating the argument and executing the function.
+
+Finally, the if expression:
+
+![ifeq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_p%7D%20e_p%20%3A%20B%5C%20%5C%20%5C%20%5C%20%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_t%7D%20e_t%20%3A%20B%5C%20%5C%20%5C%20%5C%20%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_f%7D%20e_f%20%3A%20B%5C%20%5C%20%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_p%20&plus;%20q_t%20&plus;%20k_%7Bift%7D%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_p%20&plus;%20q_f%20&plus;%20k_%7Biff%7D%20%7D%20%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D%20%28%5Ctextrm%7Bif%20%7De_p%5Ctextrm%7B%20then%20%7De_t%5Ctextrm%7B%20else%20%7De_f%29%3AB%20%7D)
+
+Here, the variables for the predicate and both branches are considered, and
+constraints are added such that the `if` expression is guaranteed to be more
+expensive than its pieces.
 
 ## The Algorithm
 
@@ -287,8 +310,6 @@ Ratl analysis gets quadratically larger with the size of the abstract syntax
 tree of the program it's told to analyze.  Much more than 500 modestly-sized
 functions is likely to run out of memory.
 
-
-
 ## Beyond Ratl: Next Steps
 
 Ratl was an unexpected pitstop along the way to understanding Hoffmann's work.
@@ -303,8 +324,9 @@ of a library and compiler plugin.
 That doesn't mean that Ratl is finished, though.  It will continue to be a
 sandbox for me to mature these concepts.  At a minimum, there are a couple bugs
 that need to be fixed before I can be confident in targeting Haskell.  At a
-maximum, I may choose to go the distance and fully implement polynomial and
-multivariate analyses in Ratl, in which case the baby will be all grown up.
+maximum, I may choose to go the distance and allow for analyses of returnable
+resources like memory, as well as fully implement polynomial and multivariate
+analyses in Ratl, in which case the baby will be all grown up.
 
 ## References
 
@@ -316,4 +338,3 @@ Ludwig-Maximilians-Universität, München, Germany.[↩](#thesismention)
 Towards automatic resource bound analysis for OCaml. *SIGPLAN Not.* 52, 1
 (January 2017), 359-373.  DOI: https://doi.org/10.1145/3093333.3009842
 [↩](#papermention)
-
