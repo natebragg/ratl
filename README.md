@@ -299,11 +299,56 @@ bounds predicted:
     sum: 5.0*n + 4.0
     main: 5.0*n + 7.0
 
+    examples/ratl/zero.ratl
+    main: 1.0
+
 Most of these seem plausible.  `all` and `any` are virtually the same program,
 and their bounds are identical.  As expected, `id` is constant time.  The
 program `loop` does not terminate, so Ratl is unsurprisingly unable to produce
 an upper bound.  The only surprise to my eyes is `length`, which by inspection
 seems like it should be cheaper.
+
+Performance-wise, Ratl is bound quadratically by the program size.  This makes
+sense, as Simplex runs in linear time for most problems, and the problem size
+in Ratl grows quadratically with the number of variables, which is within a
+constant factor of the number of nodes in the abstract syntax tree.  To verify
+that, I collected performance data on Ratl in use analyzing 500 functions,
+using an Ubuntu Linux system with an AMD Ryzen 5 1600 and 32GB of RAM.  These
+were broken down in groups by the number of functions in the module in
+question, and run some number of times with the minimal possible input, so as
+to not impact the analysis time by including the cost of actually executing the
+Ratl program.  The programs include the `zero` program, then `sum` program with
+empty input, and all of the functions from the examples combined into one
+program, along with a `main`, which I call "everything" below.  I then repeated
+this program 10 times for 100 functions, and 5 more for 500 functions in a
+single program.  The user and sys times are the total time reported by the
+Linux `time` utility.
+
+|   Program  | Executions | Functions |  User  |   Sys  |
+| ---------- | ---------- | --------- | ------ | ------ |
+|       zero |        500 |         1 | 1.032s | 1.428s |
+|        sum |        250 |         2 | 0.628s | 0.944s |
+| everything |         50 |        10 | 0.252s | 0.208s |
+| everything |          5 |       100 | 1.928s | 0.128s |
+| everything |          1 |       500 | 9.224s | 0.592s |
+
+This supports the assertion that after getting past the overhead costs of
+startup, Ratl's analysis is approximately quadratically upper bounded by the
+program size.
+
+Comparing the performance of Simplex and Megiddo's algorithm requires linking
+Ratl using MegiddoLP.  It also requires only considering very simple programs
+(see "Limits" below).  Therefore, I only consider the `zero` program, analyzed
+and executed 10000 times.
+
+|   Algorithm   | Executions |   User  |   Sys   |
+| ------------- | ---------- | ------- | ------- |
+| Clp (Simplex) |      10000 | 20.880s | 30.056s |
+| MegiddoLP     |      10000 |  8.988s | 29.260s |
+
+At least for the tiny 2D problems presented by Ratl, MegiddoLP appears to be
+less than half the overhead of Clp.  It's impossible to know how well this
+would scale for Ratl, since MegiddoLP doesn't scale.
 
 ## Prior Work
 

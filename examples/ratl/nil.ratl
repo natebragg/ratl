@@ -1,0 +1,5 @@
+(fn nil ([Nat] -> [Nat]) (args)
+    [])
+
+(fn main ([Nat] -> [Nat]) (args)
+    (nil args))
