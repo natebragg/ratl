@@ -332,6 +332,27 @@ bounds.
 Hoffmann has continued this work with Raml, which is growing to include an
 increasing share of OCaml<sup id="papermention">[2](#paperfootnote)</sup>.
 
+## Limits
+
+Ratl requires the LP solver to be able to handle problems of an arbitrary
+number of dimensions.  When I first started working on this problem, I had
+misread a key observation from Hoffmann's thesis that stated that when deciding
+polynomial bounds each constraint involves at most three variables.  I took
+this to mean that certain programs would be tractable with two variables.
+This was my inspiration for writing MegiddoLP - I thought I could have an
+end-to-end system for some limited number of problems, and compare and contrast
+Megiddo's algorithm with Simplex.  Not so.  The implementation of MegiddoLP
+is two-dimensional, and is limited to programs with one function of type
+`Nat -> Nat` that either return their input or a natural literal, i.e.,
+
+    (fn main (Nat -> Nat) (args)
+        args)
+
+Computing literally anything immediately makes the program larger dimensional.
+Because Megiddo's algorithm is fixed in dimension, this means that even
+expanding the implementation to higher dimensions would eventually hit a wall.
+Thus, to do anything useful, Ratl requires the use of other LP algorithms such
+as Simplex, which is what Coin-Or Clp uses.
 
 ## Caveats
 
