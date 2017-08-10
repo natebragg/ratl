@@ -266,6 +266,45 @@ by negating them.  Equalities are made into inequalities by negating a
 duplicate constraint.  Non-negativity constraints are added by splitting
 variables that can range negatively in two in every constraint.
 
+## Analysis
+
+When run on the sample programs in `examples/ratl`, here are the resulting
+bounds predicted:
+
+    examples/ratl/all.ratl
+    all: 5.5*n + 4.0
+    main: 5.5*n + 7.0
+
+    examples/ratl/any.ratl
+    any: 5.5*n + 4.0
+    main: 5.5*n + 7.0
+
+    examples/ratl/id.ratl
+    id_list: 1.0
+    id_nat: 1.0
+    main: 8.0
+
+    examples/ratl/last.ratl
+    last: 4.0*n
+    main: 4.0*n + 3.0
+
+    examples/ratl/length.ratl
+    length: 9.0*n + 5.0
+    main: 9.0*n + 8.0
+
+    examples/ratl/loop.ratl
+    Analysis was infeasible
+
+    examples/ratl/sum.ratl
+    sum: 5.0*n + 4.0
+    main: 5.0*n + 7.0
+
+Most of these seem plausible.  `all` and `any` are virtually the same program,
+and their bounds are identical.  As expected, `id` is constant time.  The
+program `loop` does not terminate, so Ratl is unsurprisingly unable to produce
+an upper bound.  The only surprise to my eyes is `length`, which by inspection
+seems like it should be cheaper.
+
 ## Prior Work
 
 Ratl is based on the ideas behind the Raml project from Jan Hoffmann, et. all.
