@@ -15,6 +15,7 @@ _FLT_MAX = encodeFloat s e
           s = r ^ d - 1
 
 newtype StandardForm = StandardForm ([Double], [([Double], Double)])
+    deriving Show
 
 solve :: StandardForm -> [Double]
 solve (StandardForm (objective, constraints)) =
