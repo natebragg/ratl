@@ -18,16 +18,14 @@ class Embeddable a where
     embed :: HostType a -> a
     project :: a -> HostType a
 
-data Nat = Z | S Nat
+data Nat = N Int
     deriving (Eq)
 
 instance Embeddable Nat where
     type HostType Nat = Int
-    embed n | n <= 0 = Z
-    embed n = S $ embed $ n - 1
+    embed = N . max 0
 
-    project Z = 0
-    project (S n) = 1 + project n
+    project (N n) = n
 
 instance Show Nat where
     show n = show $ project n
