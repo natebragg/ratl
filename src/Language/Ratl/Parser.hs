@@ -22,9 +22,10 @@ import Language.Ratl.Elab (
     freshFunTy,
     freshListTy,
     )
+import Language.Ratl.Basis (arity)
 
 import Text.Parsec (ParsecT)
-import Text.Parsec (try, many1, sepEndBy, between, (<|>))
+import Text.Parsec (try, many1, count, sepEndBy, between, (<|>))
 import Text.Parsec.Char (char, string, digit, space, spaces, lower)
 import Control.Monad.State (StateT)
 import Control.Monad.Trans (lift)
@@ -58,12 +59,10 @@ val = List <$> list <|> Nat <$> nat
 ex :: Monad m => Parser m Ex
 ex = Val <$> val
  <|> Var <$> var
- <|> parens ((string "+"    >> (Plus <$> (spaces1 >> ex) <*> (spaces1 >> ex)))
-         <|> try (string "head" >> (Head <$> (spaces1 >> ex)))
-         <|> try (string "tail" >> (Tail <$> (spaces1 >> ex)))
-         <|> try (string "if"   >> (If   <$> (spaces1 >> ex) <*> (spaces1 >> ex) <*> (spaces1 >> ex)))
-         <|> try (App <$> var <*> (spaces1 >> ex))
-         <|> ex)
+ <|> parens (try $ do v <- V <$> string "+" <|> var
+                      es <- count (arity v) (spaces1 >> ex)
+                      return $ App v es
+             <|> ex)
 
 ty :: Monad m => Parser m Ty
 ty = try (string "Nat" >> return NatTy)

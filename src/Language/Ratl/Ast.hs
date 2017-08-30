@@ -60,7 +60,7 @@ instance Show Val where
 data Fun = Fun FunTy Var Ex
     deriving (Show)
 
-data Ex = Plus Ex Ex | Head Ex | Tail Ex | Var Var | Val Val | App Var Ex | If Ex Ex Ex
+data Ex = Var Var | Val Val | App Var [Ex]
     deriving (Show, Eq)
 
 type Prog = [(Var, Fun)]
