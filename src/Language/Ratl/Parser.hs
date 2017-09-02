@@ -13,14 +13,9 @@ import Language.Ratl.Ast (
     Ex(..),
     Prog
     )
-import Language.Ratl.Anno (Anno)
 import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
-    )
-import Language.Ratl.Elab (
-    freshFunTy,
-    freshListTy,
     )
 import Language.Ratl.Basis (arity)
 
@@ -30,7 +25,7 @@ import Text.Parsec.Char (char, string, digit, space, spaces, lower)
 import Control.Monad.State (StateT)
 import Control.Monad.Trans (lift)
 
-type Parser m a = ParsecT String () (StateT Anno m) a
+type Parser m a = ParsecT String () m a
 
 spaces1 :: Monad m => Parser m ()
 spaces1 = space >> spaces
@@ -64,17 +59,16 @@ ex = Val <$> val
                       return $ App v es
              <|> ex)
 
-ty :: Monad m => Parser m (Ty Anno)
+ty :: Monad m => Parser m (Ty ())
 ty = try (string "Nat" >> return NatTy)
-  <|> do t <- brackets ty
-         lift $ freshListTy t
+  <|> ListTy () <$> brackets ty
 
-funty :: Monad m => Parser m (FunTy Anno)
+funty :: Monad m => Parser m (FunTy ())
 funty = do t1 <- ty
            t2 <- (spaces1 >> string "->" >> spaces1 >> ty)
-           lift $ freshFunTy t1 t2
+           return $ Arrow () t1 t2
 
-fun :: Monad m => Parser m (Var, Fun Anno)
+fun :: Monad m => Parser m (Var, Fun ())
 fun = spaces >>
       parens (string "fn" >>
               (,) <$> (spaces1 >> var)
@@ -82,5 +76,5 @@ fun = spaces >>
                            <*> (spaces1 >> parens var)
                            <*> (spaces1 >> ex))) <* spaces
 
-prog :: Monad m => Parser m (Prog Anno)
+prog :: Monad m => Parser m (Prog ())
 prog = many1 fun

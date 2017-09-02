@@ -16,7 +16,7 @@ import System.Environment (getArgs)
 import Data.Clp.Clp
 import Data.Clp.StandardForm (StandardForm(..), solve)
 import Language.Ratl.Parser (prog, val)
-import Language.Ratl.Anno (Anno)
+import Language.Ratl.Anno (Anno, annotate)
 import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
@@ -26,8 +26,6 @@ import Language.Ratl.Elab (
     FunEnv,
     Cost,
     Constraint,
-    freshListTy,
-    freshFunTy,
     check,
     )
 
@@ -69,7 +67,8 @@ main = do
                 pargs <- runParserT val () "" argstr
                 case (parse, pargs) of
                     (Right p, Right a) -> do
-                        checked <- check p
+                        p' <- annotate p
+                        checked <- check p'
                         return (checked, p, a)
                     (e1, e2) -> do
                         liftIO $ mapM_ print $ lefts [e1] ++ lefts [e2]

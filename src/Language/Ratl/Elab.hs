@@ -2,8 +2,6 @@ module Language.Ratl.Elab (
     FunEnv,
     Cost,
     Constraint,
-    freshListTy,
-    freshFunTy,
     check,
 ) where
 
@@ -11,10 +9,14 @@ import Data.Maybe (isJust)
 import Control.Applicative (empty)
 import Control.Arrow (second)
 import Control.Monad (guard)
-import Control.Monad.State (StateT, get, put)
+import Control.Monad.State (StateT)
 import Control.Monad.Trans.Maybe (MaybeT)
 
-import Language.Ratl.Anno (Anno)
+import Language.Ratl.Anno (
+    Anno,
+    freshAnno,
+    freshListTy,
+    )
 import Language.Ratl.Ty (
     Ty(..),
     isListTy,
@@ -22,7 +24,6 @@ import Language.Ratl.Ty (
     eqTy,
     FunTy(..),
     )
-
 import Language.Ratl.Ast (
     Nat(..),
     List(..),
@@ -49,22 +50,6 @@ k_app = 2.0
 k_ifp = 1.0
 k_ift = 1.0
 k_iff = 1.0
-
-freshAnno :: Monad m => StateT Anno m Anno
-freshAnno = do
-    q <- get
-    put (q + 1)
-    return q
-
-freshListTy :: Monad m => Ty Anno -> StateT Anno m (Ty Anno)
-freshListTy tau = do
-    p <- freshAnno
-    return $ ListTy p tau
-
-freshFunTy :: Monad m => Ty Anno -> Ty Anno -> StateT Anno m (FunTy Anno)
-freshFunTy tau tau' = do
-    q <- freshAnno
-    return $ Arrow q tau tau'
 
 data Annos = Pay Anno | Exchange Anno Anno
 
