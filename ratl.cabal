@@ -18,6 +18,7 @@ library
   exposed-modules:     Data.Clp.Clp
                        Data.Clp.StandardForm
                        Language.Ratl.Ast
+                       Language.Ratl.Anno
                        Language.Ratl.Basis
                        Language.Ratl.Elab
                        Language.Ratl.Eval

@@ -16,7 +16,7 @@ import Language.Ratl.Ast (
     )
 import Language.Ratl.Basis (apply)
 
-run :: Prog -> Val -> Val
+run :: Prog a -> Val -> Val
 run phi args = eval [] (App (V "main") [(Val args)])
     where eval rho (Var x) = fromJust $ lookup x rho
           eval rho (Val v) = v

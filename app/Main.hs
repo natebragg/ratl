@@ -16,6 +16,7 @@ import System.Environment (getArgs)
 import Data.Clp.Clp
 import Data.Clp.StandardForm (StandardForm(..), solve)
 import Language.Ratl.Parser (prog, val)
+import Language.Ratl.Anno (Anno)
 import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
@@ -37,13 +38,13 @@ xlate (cs, c) = (map negate $ xl 0 (replicate (1 + (maximum $ map fst cs)) 0.0) 
           xl n (r:row)          [] = r:xl (n + 1) row cs
           xl n (r:row) ((q, v):cs) = xl n ((if q == n then r + v else r):row) cs
 
-objective :: FunEnv -> [Double]
+objective :: FunEnv Anno -> [Double]
 objective sigma = fst $ xlate $ (obj sigma, 0.0)
     where obj [] = []
           obj ((_, Arrow q (ListTy p _) _):sigma) = (q, 1.0):(p, 1000):obj sigma
           obj ((_, Arrow q            _ _):sigma) = (q, 1.0):obj sigma
 
-interpret :: [Double] -> FunTy -> String
+interpret :: [Double] -> FunTy Anno -> String
 interpret optimum (Arrow q (ListTy p _) _) = lin_term ++ join ++ const_term
     where lin = optimum !! p
           const = optimum !! q

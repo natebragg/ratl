@@ -1,5 +1,4 @@
 module Language.Ratl.Ty (
-    Anno,
     Ty(..),
     isListTy,
     isNatTy,
@@ -8,34 +7,32 @@ module Language.Ratl.Ty (
     eqFun,
 ) where
 
-type Anno = Int
+data Ty a = NatTy | ListTy a (Ty a) | MysteryTy
 
-data Ty = NatTy | ListTy Anno Ty | MysteryTy
-
-instance Show Ty where
+instance Show (Ty a) where
     show NatTy = "Nat"
     show (ListTy _ t) = "[" ++ show t ++ "]"
     show MysteryTy = "forall a. a"
 
-isListTy :: Ty -> Bool
+isListTy :: Ty a -> Bool
 isListTy NatTy = False
 isListTy     _ = True
 
-isNatTy :: Ty -> Bool
+isNatTy :: Ty a -> Bool
 isNatTy (ListTy _ _) = False
 isNatTy            _ = True
 
-eqTy :: Ty -> Ty -> Bool
+eqTy :: Ty a -> Ty a -> Bool
 eqTy MysteryTy _ = True
 eqTy _ MysteryTy = True
 eqTy NatTy NatTy = True
 eqTy (ListTy _ t) (ListTy _ t') = eqTy t t'
 eqTy     _     _ = False
 
-data FunTy = Arrow Anno Ty Ty
+data FunTy a = Arrow a (Ty a) (Ty a)
 
-eqFun :: FunTy -> FunTy -> Bool
+eqFun :: FunTy a -> FunTy a -> Bool
 eqFun (Arrow _ t t'') (Arrow _ t' t''') = eqTy t t' && eqTy t'' t'''
 
-instance Show FunTy where
+instance Show (FunTy a) where
     show (Arrow _ t t') = show t ++ " -> " ++ show t'

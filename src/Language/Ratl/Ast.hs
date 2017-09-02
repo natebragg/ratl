@@ -57,10 +57,10 @@ instance Show Val where
     show (List xs) = show xs
     show (Nat n) = show n
 
-data Fun = Fun FunTy Var Ex
+data Fun a = Fun (FunTy a) Var Ex
     deriving (Show)
 
 data Ex = Var Var | Val Val | App Var [Ex]
     deriving (Show, Eq)
 
-type Prog = [(Var, Fun)]
+type Prog a = [(Var, Fun a)]

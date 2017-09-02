@@ -13,8 +13,8 @@ import Language.Ratl.Ast (
     Ex(..),
     Prog
     )
+import Language.Ratl.Anno (Anno)
 import Language.Ratl.Ty (
-    Anno,
     Ty(..),
     FunTy(..),
     )
@@ -64,17 +64,17 @@ ex = Val <$> val
                       return $ App v es
              <|> ex)
 
-ty :: Monad m => Parser m Ty
+ty :: Monad m => Parser m (Ty Anno)
 ty = try (string "Nat" >> return NatTy)
   <|> do t <- brackets ty
          lift $ freshListTy t
 
-funty :: Monad m => Parser m FunTy
+funty :: Monad m => Parser m (FunTy Anno)
 funty = do t1 <- ty
            t2 <- (spaces1 >> string "->" >> spaces1 >> ty)
            lift $ freshFunTy t1 t2
 
-fun :: Monad m => Parser m (Var, Fun)
+fun :: Monad m => Parser m (Var, Fun Anno)
 fun = spaces >>
       parens (string "fn" >>
               (,) <$> (spaces1 >> var)
@@ -82,5 +82,5 @@ fun = spaces >>
                            <*> (spaces1 >> parens var)
                            <*> (spaces1 >> ex))) <* spaces
 
-prog :: Monad m => Parser m Prog
+prog :: Monad m => Parser m (Prog Anno)
 prog = many1 fun

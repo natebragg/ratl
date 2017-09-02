@@ -14,8 +14,8 @@ import Control.Monad (guard)
 import Control.Monad.State (StateT, get, put)
 import Control.Monad.Trans.Maybe (MaybeT)
 
+import Language.Ratl.Anno (Anno)
 import Language.Ratl.Ty (
-    Anno,
     Ty(..),
     isListTy,
     isNatTy,
@@ -33,7 +33,7 @@ import Language.Ratl.Ast (
     Prog,
     )
 
-type FunEnv = [(Var, FunTy)]
+type FunEnv a = [(Var, FunTy a)]
 
 type Cost = Double
 
@@ -56,12 +56,12 @@ freshAnno = do
     put (q + 1)
     return q
 
-freshListTy :: Monad m => Ty -> StateT Anno m Ty
+freshListTy :: Monad m => Ty Anno -> StateT Anno m (Ty Anno)
 freshListTy tau = do
     p <- freshAnno
     return $ ListTy p tau
 
-freshFunTy :: Monad m => Ty -> Ty -> StateT Anno m FunTy
+freshFunTy :: Monad m => Ty Anno -> Ty Anno -> StateT Anno m (FunTy Anno)
 freshFunTy tau tau' = do
     q <- freshAnno
     return $ Arrow q tau tau'
@@ -72,11 +72,11 @@ transact :: (Annos, Double) -> [(Anno, Double)]
 transact (Pay q, c) = [(q, c)]
 transact (Exchange q' q'', c) = [(q', c), (q'', negate c)]
 
-check :: Monad m => Prog -> StateT Anno (MaybeT m) (FunEnv, [Constraint])
+check :: Monad m => Prog Anno -> StateT Anno (MaybeT m) (FunEnv Anno, [Constraint])
 check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
     where sigma = map (second tyOf) fs
           tyOf (Fun ty _ _) = ty
-          elabF :: Monad m => Fun -> StateT Anno (MaybeT m) [Constraint]
+          elabF :: Monad m => Fun Anno -> StateT Anno (MaybeT m) [Constraint]
           elabF (Fun (Arrow qf ty ty') x e) = do
                     (ty'', q, cs) <- elabE [(x, ty)] e
                     guard $ eqTy ty' ty''
@@ -86,9 +86,9 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
                                  _                                   -> []
                     return $ ((qf, 1.0):transact (q, -1.0), 0.0):
                              ((qf, -1.0):transact (q, 1.0), 0.0):equiv ++ cs
-          elabE :: Monad m => [(Var, Ty)] -> Ex -> StateT Anno (MaybeT m) (Ty, Annos, [Constraint])
+          elabE :: Monad m => [(Var, Ty Anno)] -> Ex -> StateT Anno (MaybeT m) (Ty Anno, Annos, [Constraint])
           elabE gamma e = elab e
-             where elab :: Monad m => Ex -> StateT Anno (MaybeT m) (Ty, Annos, [Constraint])
+             where elab :: Monad m => Ex -> StateT Anno (MaybeT m) (Ty Anno, Annos, [Constraint])
                    elab (Var x)       = do let bnd = lookup x gamma
                                            guard $ isJust bnd
                                            let Just ty = bnd
@@ -136,10 +136,10 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
                                                                                                 ([(p, -1.0), (pf, 1.0)], 0.0)]
                                                         _                                   -> []
                                            return (ty'', Pay q, ([(q, 1.0), (qf, -1.0)] ++ transact (qe, -1.0), k_app):equiv ++ cs)
-          elabV :: Monad m => Val -> StateT Anno (MaybeT m) Ty
+          elabV :: Monad m => Val -> StateT Anno (MaybeT m) (Ty Anno)
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l
-          elabL :: Monad m => List -> StateT Anno (MaybeT m) Ty
+          elabL :: Monad m => List -> StateT Anno (MaybeT m) (Ty Anno)
           elabL Nil        = freshListTy MysteryTy
           elabL (Cons v l) = do
                 vty <- elabV v
