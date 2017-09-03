@@ -8,7 +8,7 @@ import Control.Monad.Trans (liftIO)
 import Control.Arrow (second)
 import Data.Either (lefts)
 import Data.List (intercalate)
-import Text.Parsec (runParserT)
+import Text.Parsec (runParser)
 import System.Exit (exitFailure)
 import System.IO (readFile)
 import System.Environment (getArgs)
@@ -62,9 +62,9 @@ main = do
         (fn:args) -> do
             inp <- readFile fn
             let argstr = intercalate " " args
+            let parse = runParser prog () fn inp
+            let pargs = runParser val () "" argstr
             result <- runMaybeT $ flip evalStateT 0 $ do
-                parse <- runParserT prog () fn inp
-                pargs <- runParserT val () "" argstr
                 case (parse, pargs) of
                     (Right p, Right a) -> do
                         p' <- annotate p

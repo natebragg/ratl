@@ -19,39 +19,35 @@ import Language.Ratl.Ty (
     )
 import Language.Ratl.Basis (arity)
 
-import Text.Parsec (ParsecT)
 import Text.Parsec (try, many1, count, sepEndBy, between, (<|>))
 import Text.Parsec.Char (char, string, digit, space, spaces, lower)
-import Control.Monad.State (StateT)
-import Control.Monad.Trans (lift)
+import Text.Parsec.String (Parser)
 
-type Parser m a = ParsecT String () m a
-
-spaces1 :: Monad m => Parser m ()
+spaces1 :: Parser ()
 spaces1 = space >> spaces
 
-parens :: Monad m => Parser m a -> Parser m a
+parens :: Parser a -> Parser a
 parens = between (char '(' >> spaces) (spaces >> char ')')
 
-brackets :: Monad m => Parser m a -> Parser m a
+brackets :: Parser a -> Parser a
 brackets = between (char '[' >> spaces) (spaces >> char ']')
 
-identifier :: Monad m => Parser m String
+identifier :: Parser String
 identifier = many1 (char '_' <|> lower)
 
-nat :: Monad m => Parser m Nat
+nat :: Parser Nat
 nat = embed <$> read <$> many1 digit
 
-list :: Monad m => Parser m List
+list :: Parser List
 list = embed <$> brackets (sepEndBy val (spaces >> char ',' >> spaces))
 
-var :: Monad m => Parser m Var
+var :: Parser Var
 var = V <$> identifier
 
-val :: Monad m => Parser m Val
+val :: Parser Val
 val = List <$> list <|> Nat <$> nat
 
-ex :: Monad m => Parser m Ex
+ex :: Parser Ex
 ex = Val <$> val
  <|> Var <$> var
  <|> parens (try $ do v <- V <$> string "+" <|> var
@@ -59,16 +55,16 @@ ex = Val <$> val
                       return $ App v es
              <|> ex)
 
-ty :: Monad m => Parser m (Ty ())
+ty :: Parser (Ty ())
 ty = try (string "Nat" >> return NatTy)
   <|> ListTy () <$> brackets ty
 
-funty :: Monad m => Parser m (FunTy ())
+funty :: Parser (FunTy ())
 funty = do t1 <- ty
            t2 <- (spaces1 >> string "->" >> spaces1 >> ty)
            return $ Arrow () t1 t2
 
-fun :: Monad m => Parser m (Var, Fun ())
+fun :: Parser (Var, Fun ())
 fun = spaces >>
       parens (string "fn" >>
               (,) <$> (spaces1 >> var)
@@ -76,5 +72,5 @@ fun = spaces >>
                            <*> (spaces1 >> parens var)
                            <*> (spaces1 >> ex))) <* spaces
 
-prog :: Monad m => Parser m (Prog ())
+prog :: Parser (Prog ())
 prog = many1 fun
