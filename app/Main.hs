@@ -17,6 +17,7 @@ import Data.Clp.Clp
 import Data.Clp.StandardForm (StandardForm(..), solve)
 import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Anno (Anno, annotate)
+import Language.Ratl.Basis (basis)
 import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
@@ -67,9 +68,9 @@ main = do
             result <- runMaybeT $ flip evalStateT 0 $ do
                 case (parse, pargs) of
                     (Right p, Right a) -> do
-                        p' <- annotate p
+                        p' <- annotate $ basis ++ p
                         checked <- check p'
-                        return (checked, p, a)
+                        return (checked, p', a)
                     (e1, e2) -> do
                         liftIO $ mapM_ print $ lefts [e1] ++ lefts [e2]
                         liftIO $ exitFailure

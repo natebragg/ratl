@@ -2,8 +2,6 @@ module Language.Ratl.Eval (
     run,
 ) where
 
-import Data.Maybe (fromJust)
-
 import Language.Ratl.Ast (
     Embeddable(..),
     Nat(..),
@@ -14,7 +12,9 @@ import Language.Ratl.Ast (
     Ex(..),
     Prog,
     )
-import Language.Ratl.Basis (apply)
+
+import Data.Maybe (fromJust)
+import Control.Monad (guard)
 
 run :: Prog a -> Val -> Val
 run phi args = eval [] (App (V "main") [(Val args)])
@@ -25,8 +25,10 @@ run phi args = eval [] (App (V "main") [(Val args)])
                     (List Nil) -> eval rho ef
                     (Nat (N 0))-> eval rho ef
                     _          -> eval rho et
-          eval rho (App f es) =
-                let vs = map (eval rho) es in
-                case (apply f vs, fromJust (lookup f phi)) of
-                    (Just v, _) -> v
-                    (Nothing, Fun _ x b) -> eval (zip [x] vs) b
+          eval rho (App x es) = fromJust $ do
+                let vs = map (eval rho) es
+                f <- lookup x phi
+                case f of
+                    Fun    _ x b -> Just $ eval (zip [x] vs) b
+                    Native _ a f -> do guard $ a == length vs
+                                       return $ f vs

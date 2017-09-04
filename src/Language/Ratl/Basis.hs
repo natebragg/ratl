@@ -1,6 +1,6 @@
 module Language.Ratl.Basis (
     arity,
-    apply,
+    basis,
 ) where
 
 import Language.Ratl.Ty (
@@ -16,7 +16,6 @@ import Language.Ratl.Ast (
     Fun(..),
     )
 
-import Control.Monad (guard)
 import Prelude hiding (head, tail)
 
 ifte :: [Val] -> Val
@@ -33,12 +32,6 @@ tail [List (Cons _ xs)] = List xs
 
 arity :: Var -> Int
 arity x = maybe 1 (\(Native _ a _) -> a) $ lookup x basis
-
-apply :: Var -> [Val] -> Maybe Val
-apply x vs = do
-    Native _ arity f <- lookup x basis
-    guard $ arity == length vs
-    return $ f vs
 
 basis :: [(Var, Fun ())]
 basis = [
