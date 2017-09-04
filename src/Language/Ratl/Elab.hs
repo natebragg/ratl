@@ -61,6 +61,7 @@ check :: Monad m => Prog Anno -> StateT Anno (MaybeT m) (FunEnv Anno, [Constrain
 check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
     where sigma = map (second tyOf) fs
           tyOf (Fun ty _ _) = ty
+          tyOf (Native ty _ _) = ty
           elabF :: Monad m => Fun Anno -> StateT Anno (MaybeT m) [Constraint]
           elabF (Fun (Arrow qf [ty] ty') x e) = do
                     (ty'', q, cs) <- elabE [(x, ty)] e
@@ -71,6 +72,8 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
                                  _                                   -> []
                     return $ ((qf, 1.0):transact (q, -1.0), 0.0):
                              ((qf, -1.0):transact (q, 1.0), 0.0):equiv ++ cs
+          elabF (Native (Arrow qf _ _) _ _) = do
+                    return []
           elabE :: Monad m => [(Var, Ty Anno)] -> Ex -> StateT Anno (MaybeT m) (Ty Anno, Annos, [Constraint])
           elabE gamma e = elab e
              where elab :: Monad m => Ex -> StateT Anno (MaybeT m) (Ty Anno, Annos, [Constraint])

@@ -3,12 +3,17 @@ module Language.Ratl.Basis (
     apply,
 ) where
 
+import Language.Ratl.Ty (
+    Ty(..),
+    FunTy(..),
+    )
 import Language.Ratl.Ast (
     Embeddable(..),
     Nat(..),
     List(..),
     Val(..),
     Var(..),
+    Fun(..),
     )
 
 import Control.Monad (guard)
@@ -27,18 +32,18 @@ tail :: [Val] -> Val
 tail [List (Cons _ xs)] = List xs
 
 arity :: Var -> Int
-arity x = maybe 1 fst $ lookup x basis
+arity x = maybe 1 (\(Native _ a _) -> a) $ lookup x basis
 
 apply :: Var -> [Val] -> Maybe Val
 apply x vs = do
-    (arity, f) <- lookup x basis
+    Native _ arity f <- lookup x basis
     guard $ arity == length vs
     return $ f vs
 
-basis :: [(Var, (Int, [Val] -> Val))]
+basis :: [(Var, Fun ())]
 basis = [
-    (V "if",   (3, ifte)),
-    (V "+",    (2, plus)),
-    (V "head", (1, head)),
-    (V "tail", (1, tail))
+    (V "if",   Native (Arrow () [MysteryTy, MysteryTy, MysteryTy] MysteryTy) 3 ifte),
+    (V "+",    Native (Arrow () [NatTy, NatTy] NatTy)                        2 plus),
+    (V "head", Native (Arrow () [ListTy () MysteryTy] MysteryTy)             1 head),
+    (V "tail", Native (Arrow () [ListTy () MysteryTy] (ListTy () MysteryTy)) 1 tail)
     ]

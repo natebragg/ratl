@@ -58,7 +58,10 @@ instance Show Val where
     show (Nat n) = show n
 
 data Fun a = Fun (FunTy a) Var Ex
-    deriving (Show)
+           | Native (FunTy a) Int ([Val] -> Val)
+
+instance Show (Fun a) where
+    show _ = "(fn ...)"
 
 data Ex = Var Var | Val Val | App Var [Ex]
     deriving (Show, Eq)

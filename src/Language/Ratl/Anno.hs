@@ -30,6 +30,9 @@ annotate = mapM (mapM annoF)
     where annoF (Fun ty x e) = do
                 ty' <- annoFTy ty
                 return $ Fun ty' x e
+          annoF (Native ty a f) = do
+                ty' <- annoFTy ty
+                return $ Native ty' a f
           annoFTy (Arrow () ts1 t2) = do
                 ts1' <- mapM annoTy ts1
                 t2' <- annoTy t2
