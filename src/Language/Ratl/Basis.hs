@@ -14,14 +14,17 @@ import Language.Ratl.Ast (
 import Control.Monad (guard)
 import Prelude hiding (head, tail)
 
-plus :: Nat -> Nat -> Nat
-plus n m = embed (project n + project m)
+ifte :: [Val] -> Val
+ifte [p, t, f] = undefined
 
-head :: List -> Val
-head (Cons x _) = x
+plus :: [Val] -> Val
+plus [Nat n, Nat m] = Nat $ embed (project n + project m)
 
-tail :: List -> List
-tail (Cons _ xs) = xs
+head :: [Val] -> Val
+head [List (Cons x _)] = x
+
+tail :: [Val] -> Val
+tail [List (Cons _ xs)] = List xs
 
 arity :: Var -> Int
 arity x = maybe 1 fst $ lookup x basis
@@ -34,8 +37,8 @@ apply x vs = do
 
 basis :: [(Var, (Int, [Val] -> Val))]
 basis = [
-    (V "if",   (3, \[p, t, f] -> undefined)),
-    (V "+",    (2, \[Nat n, Nat m] -> Nat $ plus n m)),
-    (V "head", (1, \[List xs] -> head xs)),
-    (V "tail", (1, \[List xs] -> List $ tail xs))
+    (V "if",   (3, ifte)),
+    (V "+",    (2, plus)),
+    (V "head", (1, head)),
+    (V "tail", (1, tail))
     ]
