@@ -4,7 +4,6 @@ module Language.Ratl.Ty (
     isNatTy,
     eqTy,
     FunTy(..),
-    eqFun,
 ) where
 
 data Ty a = NatTy | ListTy a (Ty a) | MysteryTy
@@ -29,10 +28,7 @@ eqTy NatTy NatTy = True
 eqTy (ListTy _ t) (ListTy _ t') = eqTy t t'
 eqTy     _     _ = False
 
-data FunTy a = Arrow a (Ty a) (Ty a)
-
-eqFun :: FunTy a -> FunTy a -> Bool
-eqFun (Arrow _ t t'') (Arrow _ t' t''') = eqTy t t' && eqTy t'' t'''
+data FunTy a = Arrow a [Ty a] (Ty a)
 
 instance Show (FunTy a) where
-    show (Arrow _ t t') = show t ++ " -> " ++ show t'
+    show (Arrow _ ts t') = concatMap (\t -> show t ++ " -> ") ts ++ show t'

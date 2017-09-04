@@ -30,10 +30,10 @@ annotate = mapM (mapM annoF)
     where annoF (Fun ty x e) = do
                 ty' <- annoFTy ty
                 return $ Fun ty' x e
-          annoFTy (Arrow () t1 t2) = do
-                t1' <- annoTy t1
+          annoFTy (Arrow () ts1 t2) = do
+                ts1' <- mapM annoTy ts1
                 t2' <- annoTy t2
-                freshFunTy t1' t2'
+                freshFunTy ts1' t2'
           annoTy (ListTy () ty) = do
                 ty' <- annoTy ty
                 freshListTy ty'
@@ -51,7 +51,7 @@ freshListTy tau = do
     p <- freshAnno
     return $ ListTy p tau
 
-freshFunTy :: Monad m => Ty Anno -> Ty Anno -> StateT Anno m (FunTy Anno)
-freshFunTy tau tau' = do
+freshFunTy :: Monad m => [Ty Anno] -> Ty Anno -> StateT Anno m (FunTy Anno)
+freshFunTy taus tau' = do
     q <- freshAnno
-    return $ Arrow q tau tau'
+    return $ Arrow q taus tau'

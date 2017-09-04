@@ -62,7 +62,7 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
     where sigma = map (second tyOf) fs
           tyOf (Fun ty _ _) = ty
           elabF :: Monad m => Fun Anno -> StateT Anno (MaybeT m) [Constraint]
-          elabF (Fun (Arrow qf ty ty') x e) = do
+          elabF (Fun (Arrow qf [ty] ty') x e) = do
                     (ty'', q, cs) <- elabE [(x, ty)] e
                     guard $ eqTy ty' ty''
                     let equiv = case (ty', ty'') of
@@ -110,17 +110,18 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
                                            guard $ eqTy tyt tyf
                                            return (tyt, Pay q, ((q, 1.0):transact (qp, -1.0) ++ transact (qt, -1.0), k_ifp + k_ift):
                                                                ((q, 1.0):transact (qp, -1.0) ++ transact (qf, -1.0), k_ifp + k_iff):csp ++ cst ++ csf)
-                   elab (App f es)    = do [(ty, qe, cs)] <- mapM elab es
+                   elab (App f es)    = do (tys, qs, cs) <- unzip3 <$> mapM elab es
                                            q <- freshAnno
                                            let sig = lookup f sigma
                                            guard $ isJust sig
-                                           let Just (Arrow qf ty' ty'') = sig
-                                           guard $ eqTy ty ty'
-                                           let equiv = case (ty, ty') of
+                                           let Just (Arrow qf tys' ty'') = sig
+                                           guard $ all (uncurry eqTy) (zip tys tys')
+                                           let ts = concatMap (transact . flip (,) (-1.0)) qs
+                                           let equiv = flip concatMap (zip tys tys') $ \(ty, ty') -> case (ty, ty') of
                                                         (ListTy p _, ListTy pf _) | p /= pf -> [([(p, 1.0), (pf, -1.0)], 0.0),
                                                                                                 ([(p, -1.0), (pf, 1.0)], 0.0)]
                                                         _                                   -> []
-                                           return (ty'', Pay q, ([(q, 1.0), (qf, -1.0)] ++ transact (qe, -1.0), k_app):equiv ++ cs)
+                                           return (ty'', Pay q, ([(q, 1.0), (qf, -1.0)] ++ ts, k_app):equiv ++ concat cs)
           elabV :: Monad m => Val -> StateT Anno (MaybeT m) (Ty Anno)
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l

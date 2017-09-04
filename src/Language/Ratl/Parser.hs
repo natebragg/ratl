@@ -96,7 +96,7 @@ ty = (reserved "Nat" >> return NatTy)
 funty :: Parser (FunTy ())
 funty = do t1 <- ty
            t2 <- reservedOp "->" >> ty
-           return $ Arrow () t1 t2
+           return $ Arrow () [t1] t2
 
 fun :: Parser (Var, Fun ())
 fun = parens (reserved "fn" >>
