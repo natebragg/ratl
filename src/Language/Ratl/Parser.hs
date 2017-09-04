@@ -19,27 +19,61 @@ import Language.Ratl.Ty (
     )
 import Language.Ratl.Basis (arity)
 
-import Text.Parsec (try, many1, count, sepEndBy, between, (<|>))
-import Text.Parsec.Char (char, string, digit, space, spaces, lower)
+import Text.Parsec (try, many1, count, sepEndBy, (<|>))
+import Text.Parsec.Char (char, lower)
 import Text.Parsec.String (Parser)
+import Text.Parsec.Language (LanguageDef, emptyDef)
+import Text.Parsec.Token (GenLanguageDef(..))
+import qualified Text.Parsec.Token as P
+import Control.Monad (mzero)
 
-spaces1 :: Parser ()
-spaces1 = space >> spaces
+lispStyle :: LanguageDef st
+lispStyle = emptyDef {
+                commentLine    = ";",
+                nestedComments = True,
+                identStart     = identLetter lispStyle,
+                identLetter    = char '_' <|> lower,
+                opStart        = opLetter lispStyle,
+                opLetter       = mzero,
+                reservedOpNames= [],
+                reservedNames  = [],
+                caseSensitive  = True
+            }
+
+lexer = P.makeTokenParser lispStyle
+
+whiteSpace :: Parser ()
+whiteSpace = P.whiteSpace lexer
 
 parens :: Parser a -> Parser a
-parens = between (char '(' >> spaces) (spaces >> char ')')
+parens = P.parens lexer
+
+reserved :: String -> Parser ()
+reserved = P.reserved lexer
+
+reservedOp :: String -> Parser ()
+reservedOp = P.reservedOp lexer
 
 brackets :: Parser a -> Parser a
-brackets = between (char '[' >> spaces) (spaces >> char ']')
+brackets = P.brackets lexer
 
 identifier :: Parser String
-identifier = many1 (char '_' <|> lower)
+identifier = P.identifier lexer
+
+comma :: Parser ()
+comma = P.comma lexer >> return ()
+
+symbol :: String -> Parser String
+symbol = P.symbol lexer
+
+num :: Parser Integer
+num = P.lexeme lexer (P.decimal lexer)
 
 nat :: Parser Nat
-nat = embed <$> read <$> many1 digit
+nat = embed <$> fromInteger <$> num
 
 list :: Parser List
-list = embed <$> brackets (sepEndBy val (spaces >> char ',' >> spaces))
+list = embed <$> brackets (sepEndBy val comma)
 
 var :: Parser Var
 var = V <$> identifier
@@ -50,27 +84,26 @@ val = List <$> list <|> Nat <$> nat
 ex :: Parser Ex
 ex = Val <$> val
  <|> Var <$> var
- <|> parens (try $ do v <- V <$> string "+" <|> var
-                      es <- count (arity v) (spaces1 >> ex)
+ <|> parens (try $ do v <- V <$> symbol "+" <|> var
+                      es <- count (arity v) ex
                       return $ App v es
              <|> ex)
 
 ty :: Parser (Ty ())
-ty = try (string "Nat" >> return NatTy)
+ty = (reserved "Nat" >> return NatTy)
   <|> ListTy () <$> brackets ty
 
 funty :: Parser (FunTy ())
 funty = do t1 <- ty
-           t2 <- (spaces1 >> string "->" >> spaces1 >> ty)
+           t2 <- reservedOp "->" >> ty
            return $ Arrow () t1 t2
 
 fun :: Parser (Var, Fun ())
-fun = spaces >>
-      parens (string "fn" >>
-              (,) <$> (spaces1 >> var)
-                  <*> (Fun <$> (spaces1 >> parens funty)
-                           <*> (spaces1 >> parens var)
-                           <*> (spaces1 >> ex))) <* spaces
+fun = parens (reserved "fn" >>
+              (,) <$> var
+                  <*> (Fun <$> parens funty
+                           <*> parens var
+                           <*> ex))
 
 prog :: Parser (Prog ())
-prog = many1 fun
+prog = whiteSpace >> many1 fun
