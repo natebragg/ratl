@@ -39,9 +39,7 @@ type Cost = Double
 
 type Constraint = ([(Anno, Double)], Cost)
 
-k_head, k_tail, k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Cost
-k_head = 1.0
-k_tail = 1.0
+k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Cost
 k_var = 1.0
 k_val = 1.0
 k_app = 2.0
@@ -83,28 +81,24 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
                    elab (Val v)       = do ty <- elabV v
                                            q <- freshAnno
                                            return (ty, Pay q, [([(q, 1.0)], k_val)])
-                   elab (App (V "head") es) =
-                                        do [(ty, qe, cs)] <- mapM elab es
-                                           guard $ isListTy ty
-                                           let ListTy p ty' = ty
+                   elab (App f es) | f == V "head" || f == V "tail" =
+                                        do (tys, qs, cs) <- unzip3 <$> mapM elab es
                                            q' <- freshAnno
                                            q'' <- freshAnno
-                                           return (ty', Exchange q' q'', ([(q', 1.0), (q'', -1.0), (p, 1.0)] ++ transact (qe, -1.0), k_head):cs)
-                   elab (App (V "tail") es) =
-                                        do [(ty, qe, cs)] <- mapM elab es
-                                           guard $ isListTy ty
-                                           let ListTy p _ = ty
-                                           q' <- freshAnno
-                                           q'' <- freshAnno
-                                           return (ty, Exchange q' q'', ([(q', 1.0), (q'', -1.0), (p, 1.0)] ++ transact (qe, -1.0), k_tail):cs)
+                                           let sig = lookup f sigma
+                                           guard $ isJust sig
+                                           let Just (Arrow qf tys' ty'') = sig
+                                           guard $ all (uncurry eqTy) (zip tys tys')
+                                           let ts = concatMap (transact . flip (,) (-1.0)) qs
+                                           let [ty@(ListTy p ty')] = tys
+                                           let ty'' = if f == V "head" then ty' else ty
+                                           return (ty'', Exchange q' q'', ([(q', 1.0), (q'', -1.0), (p, 1.0)] ++ ts, k_app):concat cs)
                    elab (App (V "if") es) =
-                                        do [(typ, qp, csp),
-                                            (tyt, qt, cst),
-                                            (tyf, qf, csf)] <- mapM elab es
+                                        do ([typ, tyt, tyf], [qp, qt, qf], cs) <- unzip3 <$> mapM elab es
                                            q <- freshAnno
                                            guard $ eqTy tyt tyf
                                            return (tyt, Pay q, ((q, 1.0):transact (qp, -1.0) ++ transact (qt, -1.0), k_ifp + k_ift):
-                                                               ((q, 1.0):transact (qp, -1.0) ++ transact (qf, -1.0), k_ifp + k_iff):csp ++ cst ++ csf)
+                                                               ((q, 1.0):transact (qp, -1.0) ++ transact (qf, -1.0), k_ifp + k_iff):concat cs)
                    elab (App f es)    = do (tys, qs, cs) <- unzip3 <$> mapM elab es
                                            q <- freshAnno
                                            let sig = lookup f sigma

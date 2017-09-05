@@ -50,7 +50,7 @@ Now, a more complex example (I will skip the autobiography from now on):
 
     $ echo "(fn main ([Nat] -> Nat) (args) (head args))" > head.ratl
     $ ./ratl head.ratl [3,2,1]
-    main: 2.0
+    main: 3.0
     3
 
 With the addition of the call to `head`, the program outputs the first element
@@ -62,7 +62,7 @@ Let's analyze a more interesting program, shall we?
     $ echo "(fn main ([Nat] -> Nat) (args)
                 (if args (+ 1 (main (tail args))) 0))" > length.ratl
     $ ./ratl length.ratl [9,8,7,6,5,4,3,2,1]
-    main: 9.0*n + 5.0
+    main: 11.0*n + 6.0
     9
 
 The program outputs the length of the list, but more importantly Ratl outputs
@@ -220,10 +220,10 @@ that constraint.
 |            |          |            |          | -1.0 |      |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      | ≥ |  **2.0** |
 |            |          |            |          |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
 |            |          |            |          |      |      | -1.0 |  1.0 |      |      |      | -1.0 |  1.0 |      |      |      |      | ≥ |  **2.0** |
-|     1.0    |          |            |          |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
+|     1.0    |          |            |          |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      | ≥ |  **2.0** |
 |            |          |            |          |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
 |            |   -1.0   |            |          |      |      |      |      |      | -1.0 |  1.0 |  1.0 |      |      |      |      |      | ≥ |  **2.0** |
-|     1.0    |          |            |          |      |      |      |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      | ≥ |  **1.0** |
+|     1.0    |          |            |          |      |      |      |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      | ≥ |  **2.0** |
 |            |          |            |          |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
 |            |          |            |          |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      | ≥ |  **1.0** |
 |            |          |            |    1.0   |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 | ≥ |  **0.0** |
@@ -242,14 +242,15 @@ The optmimum determined by Ratl is given in the next table:
 
 |   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |
 | ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
-|     5.5    |    4.0   |     5.5    |    7.0   |  1.0 |  1.0 |  0.0 |  3.5 |  1.0 |  0.0 |  3.5 |  2.5 |  1.0 |  1.0 |  4.0 |  1.0 |  7.0 |
+|     6.5    |    4.0   |     6.5    |    7.0   |  1.0 |  1.0 |  0.0 |  3.5 |  1.0 |  0.0 |  3.5 |  2.5 |  1.0 |  1.0 |  4.0 |  1.0 |  7.0 |
+
 
 The optimum values for the list type variables are the linear upper bounds,
 while the optimum values for the function types are the constant factors.  This
 corresponds to the reported bounds for the two functions:
 
-    sum: 5.5*n + 4.0
-    main: 5.5*n + 7.0
+    sum: 6.5*n + 4.0
+    main: 6.5*n + 7.0
 
 For the actual implementation, this formulation is actually not how the problem
 is fed to the solver.  Instead it is put into standard form, which requires a
@@ -272,25 +273,25 @@ When run on the sample programs in `examples/ratl`, here are the resulting
 bounds predicted:
 
     examples/ratl/all.ratl
-    all: 5.5*n + 4.0
-    main: 5.5*n + 7.0
+    all: 6.5*n + 4.0
+    main: 6.5*n + 7.0
 
     examples/ratl/any.ratl
-    any: 5.5*n + 4.0
-    main: 5.5*n + 7.0
+    any: 6.5*n + 4.0
+    main: 6.5*n + 7.0
 
     examples/ratl/id.ratl
     id_list: 1.0
     id_nat: 1.0
-    main: 8.0
+    main: 9.0
 
     examples/ratl/last.ratl
-    last: 4.0*n
-    main: 4.0*n + 3.0
+    last: 5.0*n
+    main: 5.0*n + 3.0
 
     examples/ratl/length.ratl
-    length: 10.0*n + 6.0
-    main: 10.0*n + 9.0
+    length: 11.0*n + 6.0
+    main: 11.0*n + 9.0
 
     examples/ratl/loop.ratl
     Analysis was infeasible
@@ -300,8 +301,8 @@ bounds predicted:
     main: 4.0
 
     examples/ratl/sum.ratl
-    sum: 5.5*n + 4.0
-    main: 5.5*n + 7.0
+    sum: 6.5*n + 4.0
+    main: 6.5*n + 7.0
 
     examples/ratl/zero.ratl
     main: 1.0
