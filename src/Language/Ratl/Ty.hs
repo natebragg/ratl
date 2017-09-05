@@ -1,7 +1,6 @@
 module Language.Ratl.Ty (
     Ty(..),
     isListTy,
-    isNatTy,
     eqTy,
     FunTy(..),
 ) where
@@ -16,10 +15,6 @@ instance Show (Ty a) where
 isListTy :: Ty a -> Bool
 isListTy NatTy = False
 isListTy     _ = True
-
-isNatTy :: Ty a -> Bool
-isNatTy (ListTy _ _) = False
-isNatTy            _ = True
 
 eqTy :: Ty a -> Ty a -> Bool
 eqTy MysteryTy _ = True

@@ -20,7 +20,6 @@ import Language.Ratl.Anno (
 import Language.Ratl.Ty (
     Ty(..),
     isListTy,
-    isNatTy,
     eqTy,
     FunTy(..),
     )
@@ -40,8 +39,7 @@ type Cost = Double
 
 type Constraint = ([(Anno, Double)], Cost)
 
-k_plus, k_head, k_tail, k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Cost
-k_plus = 1.0
+k_head, k_tail, k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Cost
 k_head = 1.0
 k_tail = 1.0
 k_var = 1.0
@@ -85,12 +83,6 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
                    elab (Val v)       = do ty <- elabV v
                                            q <- freshAnno
                                            return (ty, Pay q, [([(q, 1.0)], k_val)])
-                   elab (App (V "+") es) =
-                                        do [(ty1, q1, cs1),
-                                            (ty2, q2, cs2)] <- mapM elab es
-                                           q <- freshAnno
-                                           guard $ isNatTy ty1 && isNatTy ty2
-                                           return (NatTy, Pay q, ((q, 1.0):transact (q1, -1.0) ++ transact (q2, -1.0), k_plus):cs1 ++ cs2)
                    elab (App (V "head") es) =
                                         do [(ty, qe, cs)] <- mapM elab es
                                            guard $ isListTy ty
