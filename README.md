@@ -219,7 +219,7 @@ that constraint.
 |            |          |            |          | -1.0 |      |      |      |      |      |      |      | -1.0 |      |  1.0 |      |      | ≥ |  **2.0** |
 |            |          |            |          | -1.0 |      |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      | ≥ |  **2.0** |
 |            |          |            |          |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
-|            |          |            |          |      |      | -1.0 |  1.0 |      |      |      | -1.0 |  1.0 |      |      |      |      | ≥ |  **1.0** |
+|            |          |            |          |      |      | -1.0 |  1.0 |      |      |      | -1.0 |  1.0 |      |      |      |      | ≥ |  **2.0** |
 |     1.0    |          |            |          |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
 |            |          |            |          |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
 |            |   -1.0   |            |          |      |      |      |      |      | -1.0 |  1.0 |  1.0 |      |      |      |      |      | ≥ |  **2.0** |
@@ -242,14 +242,14 @@ The optmimum determined by Ratl is given in the next table:
 
 |   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |
 | ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
-|     5.0    |    4.0   |     5.0    |    7.0   |  1.0 |  1.0 |  0.0 |  3.0 |  1.0 |  0.0 |  3.0 |  3.0 |  1.0 |  1.0 |  4.0 |  1.0 |  7.0 |
+|     5.5    |    4.0   |     5.5    |    7.0   |  1.0 |  1.0 |  0.0 |  3.5 |  1.0 |  0.0 |  3.5 |  2.5 |  1.0 |  1.0 |  4.0 |  1.0 |  7.0 |
 
 The optimum values for the list type variables are the linear upper bounds,
 while the optimum values for the function types are the constant factors.  This
 corresponds to the reported bounds for the two functions:
 
-    sum: 5.0*n + 4.0
-    main: 5.0*n + 7.0
+    sum: 5.5*n + 4.0
+    main: 5.5*n + 7.0
 
 For the actual implementation, this formulation is actually not how the problem
 is fed to the solver.  Instead it is put into standard form, which requires a
@@ -289,15 +289,19 @@ bounds predicted:
     main: 4.0*n + 3.0
 
     examples/ratl/length.ratl
-    length: 9.0*n + 5.0
-    main: 9.0*n + 8.0
+    length: 10.0*n + 6.0
+    main: 10.0*n + 9.0
 
     examples/ratl/loop.ratl
     Analysis was infeasible
 
+    examples/ratl/nil.ratl
+    nil: 1.0
+    main: 4.0
+
     examples/ratl/sum.ratl
-    sum: 5.0*n + 4.0
-    main: 5.0*n + 7.0
+    sum: 5.5*n + 4.0
+    main: 5.5*n + 7.0
 
     examples/ratl/zero.ratl
     main: 1.0
