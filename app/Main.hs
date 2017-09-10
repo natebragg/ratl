@@ -38,10 +38,9 @@ xlate (cs, c) = (map negate $ xl 0 (replicate (1 + (maximum $ map fst cs)) 0.0) 
           xl n (r:row) ((q, v):cs) = xl n ((if q == n then r + v else r):row) cs
 
 objective :: FunEnv Anno -> [Double]
-objective sigma = fst $ xlate $ (obj sigma, 0.0)
-    where obj [] = []
-          obj ((_, Arrow q [ListTy p _] _):sigma) = (q, 1.0):(p, 1000):obj sigma
-          obj ((_, Arrow q            _ _):sigma) = (q, 1.0):obj sigma
+objective sigma = fst $ xlate $ (concatMap (obj . snd) sigma, 0.0)
+    where obj (Arrow q [ListTy p _] _) = [(q, 1.0), (p, 1000)]
+          obj (Arrow q            _ _) = [(q, 1.0)]
 
 interpret :: [Double] -> FunTy Anno -> String
 interpret optimum (Arrow q [ListTy p _] _) = lin_term ++ join ++ const_term
@@ -78,7 +77,8 @@ main = do
                 Nothing ->
                     putStrLn "Typechecking failed"
                 Just ((env, constraints), p, a) -> do
-                    let optimum = solve $ StandardForm (objective env, map xlate constraints)
+                    let constraints' = map xlate constraints
+                    let optimum = solve $ StandardForm (objective env, constraints')
                     when (null optimum) $ do
                         putStrLn "Analysis was infeasible"
                         exitFailure
