@@ -7,7 +7,7 @@ import Control.Monad.Trans.Maybe (runMaybeT)
 import Control.Monad.Trans (liftIO)
 import Control.Arrow (second)
 import Data.Either (lefts)
-import Data.List (intercalate)
+import Data.List (intercalate, transpose)
 import Text.Parsec (runParser)
 import System.Exit (exitFailure)
 import System.IO (readFile)
@@ -37,10 +37,12 @@ xlate (cs, c) = (map negate $ xl 0 (replicate (1 + (maximum $ map fst cs)) 0.0) 
           xl n (r:row)          [] = r:xl (n + 1) row cs
           xl n (r:row) ((q, v):cs) = xl n ((if q == n then r + v else r):row) cs
 
-objective :: FunEnv Anno -> [Double]
-objective sigma = fst $ xlate $ (concatMap (obj . snd) sigma, 0.0)
-    where obj (Arrow q [ListTy p _] _) = [(q, 1.0), (p, 1000)]
-          obj (Arrow q            _ _) = [(q, 1.0)]
+objective :: FunEnv Anno -> Int -> [Double]
+objective sigma degree = fst $ xlate $ (concatMap (objF . snd) sigma, 0.0)
+    where payIf d = if degree == d then 1.0 else 0.0
+          objF (Arrow q tys _) = (q, payIf 0):concatMap objTy tys
+          objTy (ListTy p _) = map (second ((1000 *) . payIf)) $ zip [p] [1..]
+          objTy           _  = []
 
 interpret :: [Double] -> FunTy Anno -> String
 interpret optimum (Arrow q [ListTy p _] _) = lin_term ++ join ++ const_term
@@ -60,6 +62,7 @@ main = do
     case args of
         [] -> putStrLn $ "filename required"
         (fn:args) -> do
+            let deg_max = 1
             inp <- readFile fn
             let argstr = intercalate " " args
             let parse = runParser prog () fn inp
@@ -78,7 +81,8 @@ main = do
                     putStrLn "Typechecking failed"
                 Just ((env, constraints), p, a) -> do
                     let constraints' = map xlate constraints
-                    let optimum = solve $ StandardForm (objective env, constraints')
+                    let objectives = map (objective env) [deg_max,deg_max-1..0]
+                    let optimum = solve $ StandardForm (map sum $ transpose objectives, constraints')
                     when (null optimum) $ do
                         putStrLn "Analysis was infeasible"
                         exitFailure
