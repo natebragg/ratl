@@ -3,7 +3,7 @@ import Test.QuickCheck.Modifiers (NonZero(..))
 import Test.QuickCheck.Arbitrary (Arbitrary(..))
 
 --import Randoms (problems)
-import Data.Clp.StandardForm (StandardForm(..), solve)
+import Data.Clp.Program (StandardForm(..), solve)
 
 notBothZero :: Gen [Double]
 notBothZero = do

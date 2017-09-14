@@ -1,4 +1,4 @@
-module Data.Clp.StandardForm (
+module Data.Clp.Program (
     StandardForm(..),
     solve,
 ) where

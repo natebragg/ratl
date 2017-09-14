@@ -14,7 +14,7 @@ import System.IO (readFile)
 import System.Environment (getArgs)
 
 import Data.Clp.Clp
-import Data.Clp.StandardForm (StandardForm(..), solve)
+import Data.Clp.Program (StandardForm(..), solve)
 import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Anno (Anno, annotate)
 import Language.Ratl.Basis (basis)

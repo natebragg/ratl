@@ -16,7 +16,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Data.Clp.Clp
-                       Data.Clp.StandardForm
+                       Data.Clp.Program
                        Language.Ratl.Ast
                        Language.Ratl.Anno
                        Language.Ratl.Basis
