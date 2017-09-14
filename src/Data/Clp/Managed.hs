@@ -13,9 +13,11 @@ module Data.Clp.Managed (
     addColumns,
 
     setOptimizationDirection,
+    objectiveValue,
     setLogLevel,
 
     initialSolve,
+    dual,
 
     getNumRows,
     getNumCols,
@@ -65,6 +67,10 @@ setOptimizationDirection :: SimplexHandle -> Double -> IO ()
 setOptimizationDirection model value = withForeignPtr model $ \model ->
     Unmanaged.setOptimizationDirection model value
 
+objectiveValue :: SimplexHandle -> IO Double
+objectiveValue model = withForeignPtr model $ \model ->
+    Unmanaged.objectiveValue model
+
 setLogLevel :: SimplexHandle -> Int -> IO ()
 setLogLevel model value = withForeignPtr model $ \model ->
     Unmanaged.setLogLevel model value
@@ -72,6 +78,10 @@ setLogLevel model value = withForeignPtr model $ \model ->
 initialSolve :: SimplexHandle -> IO Int
 initialSolve model = withForeignPtr model $ \model ->
     Unmanaged.initialSolve model
+
+dual :: SimplexHandle -> Int -> IO Int
+dual model pass = withForeignPtr model $ \model ->
+    Unmanaged.dual model pass
 
 getNumRows :: SimplexHandle -> IO Int
 getNumRows model = withForeignPtr model $ \model ->

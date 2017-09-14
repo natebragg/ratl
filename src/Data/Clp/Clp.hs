@@ -14,11 +14,14 @@ module Data.Clp.Clp (
 
     OptimizationDirection(..),
     setOptimizationDirection,
+    objectiveValue,
     LogLevel(..),
     setLogLevel,
 
     Status(..),
     initialSolve,
+    Pass(..),
+    dual,
 
     isAbandoned,
     isProvenOptimal,
@@ -40,6 +43,8 @@ import Data.Clp.Managed (
     SimplexHandle,
 
     newModel,
+
+    objectiveValue,
 
     getNumRows,
     getNumCols,
@@ -119,6 +124,14 @@ data Status = Event3
 
 initialSolve :: SimplexHandle -> IO Status
 initialSolve model = fmap (toEnum . (3 +)) $ Clp.initialSolve model
+
+data Pass = Initial
+          | ValuesPass
+          | Cleanup
+    deriving (Eq, Ord, Enum)
+
+dual :: SimplexHandle -> Pass -> IO Status
+dual model pass = fmap (toEnum . (3 +)) $ Clp.dual model $ fromEnum pass
 
 getRowActivity :: SimplexHandle -> IO [Double]
 getRowActivity model = do
