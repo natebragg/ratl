@@ -1,36 +1,81 @@
 module Data.Clp.Program (
+    LinearProgram(..),
+    LinearFunction(..),
+    compact,
+    Objective,
+    GeneralConstraint(..),
+    GeneralForm(..),
+    StandardConstraint(..),
     StandardForm(..),
-    solve,
 ) where
 
 import qualified Data.Clp.Clp as Clp
 
+import Data.List (sort)
 import System.IO.Unsafe (unsafePerformIO)
 
-_FLT_MAX = encodeFloat s e
-    where v = 1.0 :: Float
-          r = floatRadix v
-          d = floatDigits v
-          e = (snd $ floatRange v) - d
-          s = r ^ d - 1
+inf = read "Infinity"
 
-newtype StandardForm = StandardForm ([Double], [([Double], Double)])
+class LinearProgram a where
+    solve :: a -> ([Double], Double)
+
+data LinearFunction = Dense [Double]
+                    | Sparse [(Int, Double)]
     deriving Show
 
-solve :: StandardForm -> [Double]
-solve (StandardForm (objective, constraints)) =
-    let (elements, bounds) = unzip constraints
-        row_length = maximum $ map length elements
-        columnBounds = [(0.0, _FLT_MAX, obj) | obj <- objective] ++
-                       replicate (row_length - length objective) (0.0, _FLT_MAX, 0.0)
-        rowBounds = [(-_FLT_MAX, bound) | bound <- bounds]
-    in  unsafePerformIO $ do
-    model <- Clp.newModel
-    Clp.setLogLevel model Clp.None
-    Clp.setOptimizationDirection model Clp.Maximize
-    Clp.addColumns model columnBounds []
-    Clp.addRows model rowBounds elements
-    status <- Clp.initialSolve model
-    case status of
-        Clp.Optimal -> Clp.getColSolution model
-        _ -> return []
+compact :: LinearFunction -> [Double]
+compact (Dense  d) = d
+compact (Sparse s) = decode 0 $ sort s
+    where decode _ [] = []
+          decode c cvs = sum (map snd eqc):decode (c + 1) gtc
+                where (eqc, gtc) = span ((c ==) . fst) cvs
+
+type Objective = LinearFunction
+
+data GeneralConstraint = Leq LinearFunction Double
+                       | Eql LinearFunction Double
+                       | Geq LinearFunction Double
+
+lf :: GeneralConstraint -> LinearFunction
+lf (Leq f _) = f
+lf (Eql f _) = f
+lf (Geq f _) = f
+
+bound :: GeneralConstraint -> (Double, Double)
+bound (Leq _ n) = (-inf, n)
+bound (Eql _ n) = (n, n)
+bound (Geq _ n) = (n, inf)
+
+data GeneralForm = GeneralForm Clp.OptimizationDirection Objective [GeneralConstraint]
+
+instance LinearProgram GeneralForm where
+    solve (GeneralForm direction objective constraints) =
+        let elements = map (compact . lf) constraints
+            row_length = maximum $ map length elements
+            obj_dec = compact objective
+            columnBounds = [(0.0, inf, obj) | obj <- obj_dec] ++
+                           replicate (row_length - length obj_dec) (0.0, inf, 0.0)
+            rowBounds = map bound constraints
+        in  unsafePerformIO $ do
+        model <- Clp.newModel
+        Clp.setLogLevel model Clp.None
+        Clp.setOptimizationDirection model direction
+        Clp.addColumns model columnBounds []
+        Clp.addRows model rowBounds elements
+        status <- Clp.initialSolve model
+        case status of
+            Clp.Optimal -> (,) <$> Clp.getColSolution model <*> Clp.objectiveValue model
+            _ -> return ([], 0.0)
+
+data StandardConstraint = Lteq LinearFunction Double
+    deriving Show
+
+generalize :: StandardConstraint -> GeneralConstraint
+generalize (Lteq f b) = Leq f b
+
+data StandardForm = StandardForm Objective [StandardConstraint]
+    deriving Show
+
+instance LinearProgram StandardForm where
+    solve (StandardForm objective constraints) =
+        solve $ GeneralForm Clp.Maximize objective $ map generalize constraints

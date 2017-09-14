@@ -14,7 +14,7 @@ import System.IO (readFile)
 import System.Environment (getArgs)
 
 import Data.Clp.Clp
-import Data.Clp.Program (StandardForm(..), solve)
+import Data.Clp.Program (LinearProgram(..), LinearFunction(..), compact, StandardConstraint(..), StandardForm(..))
 import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Anno (Anno, annotate)
 import Language.Ratl.Basis (basis)
@@ -31,13 +31,10 @@ import Language.Ratl.Elab (
     )
 
 
-xlate :: Constraint -> ([Double], Cost)
-xlate (cs, c) = (map negate $ xl 0 (replicate (1 + (maximum $ map fst cs)) 0.0) cs, negate c)
-    where xl _      []           _ = []
-          xl n (r:row)          [] = r:xl (n + 1) row cs
-          xl n (r:row) ((q, v):cs) = xl n ((if q == n then r + v else r):row) cs
+xlate :: Constraint -> (LinearFunction, Cost)
+xlate (cs, c) = (Sparse $ map (second negate) cs, negate c)
 
-objective :: FunEnv Anno -> Int -> [Double]
+objective :: FunEnv Anno -> Int -> LinearFunction
 objective sigma degree = fst $ xlate $ (concatMap (objF . snd) sigma, 0.0)
     where payIf d = if degree == d then 1.0 else 0.0
           objF (Arrow q tys _) = (q, payIf 0):concatMap objTy tys
@@ -80,9 +77,9 @@ main = do
                 Nothing ->
                     putStrLn "Typechecking failed"
                 Just ((env, constraints), p, a) -> do
-                    let constraints' = map xlate constraints
-                    let objectives = map (objective env) [deg_max,deg_max-1..0]
-                    let optimum = solve $ StandardForm (map sum $ transpose objectives, constraints')
+                    let constraints' = map (uncurry Lteq . xlate) constraints
+                    let objectives = map (compact . objective env) [deg_max,deg_max-1..0]
+                    let (optimum, _) = solve $ StandardForm (Dense $ map sum $ transpose objectives) constraints'
                     when (null optimum) $ do
                         putStrLn "Analysis was infeasible"
                         exitFailure
