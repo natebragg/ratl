@@ -5,7 +5,7 @@ import Control.Monad (when)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Trans.Maybe (runMaybeT)
 import Control.Monad.Trans (liftIO)
-import Control.Arrow (second)
+import Control.Arrow (first, second)
 import Data.Either (lefts)
 import Data.List (intercalate, transpose)
 import Text.Parsec (runParser)
@@ -29,10 +29,6 @@ import Language.Ratl.Elab (
     Constraint,
     check,
     )
-
-
-xlate :: Constraint -> (LinearFunction, Cost)
-xlate (cs, c) = (Sparse $ map (second negate) cs, negate c)
 
 objective :: FunEnv Anno -> Int -> LinearFunction
 objective sigma degree = Sparse $ concatMap (objF . snd) sigma
@@ -77,7 +73,7 @@ main = do
                 Nothing ->
                     putStrLn "Typechecking failed"
                 Just ((env, constraints), p, a) -> do
-                    let constraints' = map (uncurry Leq . xlate) constraints
+                    let constraints' = map (uncurry Geq . first Sparse) constraints
                     let objectives = map (compact . objective env) [deg_max,deg_max-1..0]
                     let (optimum, _) = solve $ GeneralForm Minimize (Dense $ map sum $ transpose objectives) constraints'
                     when (null optimum) $ do
