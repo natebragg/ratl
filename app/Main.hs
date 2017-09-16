@@ -5,7 +5,7 @@ import Control.Monad (when)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Trans.Maybe (runMaybeT)
 import Control.Monad.Trans (liftIO)
-import Control.Arrow (first, second)
+import Control.Arrow (second)
 import Data.Either (lefts)
 import Data.List (intercalate, transpose)
 import Text.Parsec (runParser)
@@ -25,8 +25,6 @@ import Language.Ratl.Ty (
 import Language.Ratl.Eval (run)
 import Language.Ratl.Elab (
     FunEnv,
-    Cost,
-    Constraint,
     check,
     )
 
@@ -73,9 +71,8 @@ main = do
                 Nothing ->
                     putStrLn "Typechecking failed"
                 Just ((env, constraints), p, a) -> do
-                    let constraints' = map (uncurry Geq . first Sparse) constraints
                     let objectives = map (compact . objective env) [deg_max,deg_max-1..0]
-                    let (optimum, _) = solve $ GeneralForm Minimize (Dense $ map sum $ transpose objectives) constraints'
+                    let (optimum, _) = solve $ GeneralForm Minimize (Dense $ map sum $ transpose objectives) constraints
                     when (null optimum) $ do
                         putStrLn "Analysis was infeasible"
                         exitFailure
