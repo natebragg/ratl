@@ -1,7 +1,6 @@
 module Data.Clp.Program (
     LinearProgram(..),
     LinearFunction(..),
-    compact,
     Objective,
     GeneralConstraint(..),
     GeneralForm(..),
