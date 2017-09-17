@@ -34,6 +34,7 @@ type Objective = LinearFunction
 data GeneralConstraint = Leq LinearFunction Double
                        | Eql LinearFunction Double
                        | Geq LinearFunction Double
+    deriving Show
 
 lf :: GeneralConstraint -> LinearFunction
 lf (Leq f _) = f
@@ -46,6 +47,7 @@ bound (Eql _ n) = (n, n)
 bound (Geq _ n) = (n, inf)
 
 data GeneralForm = GeneralForm Clp.OptimizationDirection Objective [GeneralConstraint]
+    deriving Show
 
 instance LinearProgram GeneralForm where
     solve (GeneralForm direction objective constraints) =

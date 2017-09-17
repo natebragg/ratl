@@ -100,13 +100,13 @@ addColumns model bounds elematrix =
                      in  withArray columnStarts $ withArray rows . (withArray elements .) . addElements
 
 data OptimizationDirection = Maximize | Ignore | Minimize
-    deriving (Eq, Ord, Enum)
+    deriving (Eq, Ord, Enum, Show)
 
 setOptimizationDirection :: SimplexHandle -> OptimizationDirection -> IO ()
 setOptimizationDirection model dir = Clp.setOptimizationDirection model $ (fromIntegral $ fromEnum dir) - 1.0
 
 data LogLevel = None | Final | Factorizations | PlusABitMore | Verbose
-    deriving (Eq, Ord, Enum)
+    deriving (Eq, Ord, Enum, Show)
 
 setLogLevel :: SimplexHandle -> LogLevel -> IO ()
 setLogLevel model level = Clp.setLogLevel model $ fromEnum level
@@ -120,7 +120,7 @@ data Status = Event3
             | Stopped
             | Errors
             | UserStopped
-    deriving (Eq, Ord, Enum)
+    deriving (Eq, Ord, Enum, Show)
 
 initialSolve :: SimplexHandle -> IO Status
 initialSolve model = fmap (toEnum . (3 +)) $ Clp.initialSolve model
@@ -128,7 +128,7 @@ initialSolve model = fmap (toEnum . (3 +)) $ Clp.initialSolve model
 data Pass = Initial
           | ValuesPass
           | Cleanup
-    deriving (Eq, Ord, Enum)
+    deriving (Eq, Ord, Enum, Show)
 
 dual :: SimplexHandle -> Pass -> IO Status
 dual model pass = fmap (toEnum . (3 +)) $ Clp.dual model $ fromEnum pass
