@@ -83,12 +83,15 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
                                            q'' <- freshAnno
                                            let sig = lookup f sigma
                                            guard $ isJust sig
-                                           let Just (Arrow qf tys' ty'') = sig
+                                           let Just (Arrow qf tys' ty) = sig
                                            guard $ all (uncurry eqTy) (zip tys tys')
                                            let ts = concatMap (transact . flip (,) (-1.0)) qs
-                                           let [ty@(ListTy p ty')] = tys
-                                           let ty'' = if f == V "head" then ty' else ty
-                                           return (ty'', Exchange q' q'', (Sparse ([(q', 1.0), (q'', -1.0), (p, 1.0)] ++ ts) `Geq` k_app):concat cs)
+                                           let [ListTy p ty'] = tys
+                                           let ty'' = if f == V "head" then ty' else let ListTy p' _ = ty in ListTy p' ty'
+                                           let equiv = flip concatMap (zip tys tys') $ \(ty, ty') -> case (ty, ty') of
+                                                        (ListTy p _, ListTy pf _) | p /= pf -> [(Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0)]
+                                                        _                                   -> []
+                                           return (ty'', Exchange q' q'', (Sparse ([(q', 1.0), (q'', -1.0), (p, 1.0)] ++ ts) `Geq` k_app):equiv ++ concat cs)
                    elab (App (V "if") es) =
                                         do ([typ, tyt, tyf], [qp, qt, qf], cs) <- unzip3 <$> mapM elab es
                                            q <- freshAnno
