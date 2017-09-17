@@ -213,9 +213,8 @@ that constraint.
 
 |   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |   |          |
 | ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| -------- |
-| **1000.0** |  **1.0** | **1000.0** |  **1.0** |      |      |      |      |      |      |      |      |      |      |      |      |      |   |          |
-|            |    1.0   |            |          |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      | ≥ |  **0.0** |
-|            |   -1.0   |            |          |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      | ≥ |  **0.0** |
+|   **1.0**  |  **1.0** |   **1.0**  |  **1.0** |      |      |      |      |      |      |      |      |      |      |      |      |      |   |          |
+|            |    1.0   |            |          |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      | = |  **0.0** |
 |            |          |            |          | -1.0 |      |      |      |      |      |      |      | -1.0 |      |  1.0 |      |      | ≥ |  **2.0** |
 |            |          |            |          | -1.0 |      |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      | ≥ |  **2.0** |
 |            |          |            |          |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
@@ -226,11 +225,9 @@ that constraint.
 |     1.0    |          |            |          |      |      |      |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      | ≥ |  **2.0** |
 |            |          |            |          |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
 |            |          |            |          |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      | ≥ |  **1.0** |
-|            |          |            |    1.0   |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 | ≥ |  **0.0** |
-|            |          |            |   -1.0   |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | ≥ |  **0.0** |
+|            |          |            |    1.0   |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 | = |  **0.0** |
 |            |   -1.0   |            |          |      |      |      |      |      |      |      |      |      |      |      | -1.0 |  1.0 | ≥ |  **2.0** |
-|    -1.0    |          |     1.0    |          |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **0.0** |
-|     1.0    |          |    -1.0    |          |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **0.0** |
+|    -1.0    |          |     1.0    |          |      |      |      |      |      |      |      |      |      |      |      |      |      | = |  **0.0** |
 |            |          |            |          |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | ≥ |  **1.0** |
 
 To consider the last row, this corresponds to the term `args` discussed
@@ -252,20 +249,14 @@ corresponds to the reported bounds for the two functions:
     sum: 6.5*n + 4.0
     main: 6.5*n + 7.0
 
-For the actual implementation, this formulation is actually not how the problem
-is fed to the solver.  Instead it is put into standard form, which requires a
-number of transformations.  Standard form requires the problem to be a
-minimization problem, with only inequalities (no equalities), have inequalities
-all be less-than-or-equal, and for all variables to have non-negativity
-constraints.
-
-In Ratl's case, the problem is a minimization problem, there are equalities,
-all inequalities are greater-than-or-equal, and some variables don't have
-non-negativity constraints.  To transform, the objective is negated and
-maximized, and the constraints are all made into less-than-or-equal constraints
-by negating them.  Equalities are made into inequalities by negating a
-duplicate constraint.  Non-negativity constraints are added by splitting
-variables that can range negatively in two in every constraint.
+For the actual implementation, this formulation is actually how the problem is
+fed to the solver.  It is kept in this form in order to minimize the number of
+transformations, because in Ratl's case, the problem is a minimization problem,
+there are equalities, all inequalities are greater-than-or-equal, and some
+variables don't have non-negativity constraints.  The only transformation
+required is for this last one: non-negativity constraints are added by
+splitting variables that can range negatively in two in every constraint.
+This can be seen in the table above in the case of `head` and `tail`.
 
 ## Analysis
 
