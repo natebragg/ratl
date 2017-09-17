@@ -8,6 +8,7 @@ import Control.Monad.Trans (liftIO)
 import Control.Arrow (second)
 import Data.Either (lefts)
 import Data.List (intercalate)
+import Data.Maybe (isNothing)
 import Text.Parsec (runParser)
 import System.Exit (exitFailure)
 import System.IO (readFile)
@@ -82,6 +83,7 @@ main = do
                     when (any null optimums) $ do
                         putStrLn "Analysis was infeasible"
                         exitFailure
-                    let complexities = map (second $ interpret optimums) env
+                    let module_env = filter (isNothing . flip lookup basis . fst) env
+                    let complexities = map (second $ interpret optimums) module_env
                     mapM_ (\(f, complexity) -> putStrLn $ show f ++ ": " ++ complexity) complexities
                     print $ run p a
