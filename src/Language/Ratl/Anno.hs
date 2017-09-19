@@ -41,7 +41,7 @@ annotate = mapM (mapM annoF)
                 ty' <- annoTy ty
                 freshListTy ty'
           annoTy NatTy = return NatTy
-          annoTy MysteryTy = return MysteryTy
+          annoTy (Tyvar x) = return (Tyvar x)
 
 freshAnno :: Monad m => StateT Anno m Anno
 freshAnno = do

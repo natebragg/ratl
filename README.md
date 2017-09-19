@@ -76,12 +76,13 @@ function definitions, denoted by the keyword `fn`.  Functions are typed using
 arrow syntax, and must have a single argument, whose name is given in
 parentheses.  The body is an expression.
 
-Expressions include addition with `+`, fetching the `head` and `tail` of a
-list, recalling a variable by name, literal values, testing truthiness with
-`if`, and function application.
+Expressions include recalling a variable by name, literal values, and function
+application.
 
-Functions and builtins (`+`, `head`, `tail`, and `if`) are called in prefix
-position, wrapped in parentheses.
+Functions called in prefix position, wrapped in parentheses.
+
+Builtin functions include addition with `+`, fetching the `head` and `tail` of
+a list, and testing truthiness with `if`.
 
 Literal values include the natural numbers starting at zero, and lists.  Lists
 can be over the naturals, or over lists of naturals, etc.  Naturals are
@@ -170,7 +171,7 @@ program found in `./examples/ratl/sum.ratl`, reproduced below:
             (+ (head vals)
                (sum (tail vals)))
             0))
-    
+
     (fn main ([Nat] -> Nat) (args)
         (sum args))
 
@@ -211,24 +212,24 @@ inequalities collected during type checking.  The right-most column gives the
 cost for that constraint.  Empty cells are variables with zero coefficients for
 that constraint.
 
-|   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |   |          |
-| ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| -------- |
-|   **1.0**  |  **1.0** |   **1.0**  |  **1.0** |      |      |      |      |      |      |      |      |      |      |      |      |      |   |          |
-|            |    1.0   |            |          |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      | = |  **0.0** |
-|            |          |            |          | -1.0 |      |      |      |      |      |      |      | -1.0 |      |  1.0 |      |      | ≥ |  **2.0** |
-|            |          |            |          | -1.0 |      |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      | ≥ |  **2.0** |
-|            |          |            |          |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
-|            |          |            |          |      |      | -1.0 |  1.0 |      |      |      | -1.0 |  1.0 |      |      |      |      | ≥ |  **2.0** |
-|     1.0    |          |            |          |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      | ≥ |  **2.0** |
-|            |          |            |          |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
-|            |   -1.0   |            |          |      |      |      |      |      | -1.0 |  1.0 |  1.0 |      |      |      |      |      | ≥ |  **2.0** |
-|     1.0    |          |            |          |      |      |      |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      | ≥ |  **2.0** |
-|            |          |            |          |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      | ≥ |  **1.0** |
-|            |          |            |          |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      | ≥ |  **1.0** |
-|            |          |            |    1.0   |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 | = |  **0.0** |
-|            |   -1.0   |            |          |      |      |      |      |      |      |      |      |      |      |      | -1.0 |  1.0 | ≥ |  **2.0** |
-|    -1.0    |          |     1.0    |          |      |      |      |      |      |      |      |      |      |      |      |      |      | = |  **0.0** |
-|            |          |            |          |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | ≥ |  **1.0** |
+| `[Nat]` |  `sum`  | `[Nat]` | `main`  |`vals`|`vals`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |   |         |
+| ------- | ------- | ------- | ------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| ------- |
+| **1.0** | **1.0** | **1.0** | **1.0** |      |      |      |      |      |      |      |      |      |      |      |      |   |         |
+|         |   1.0   |         |         |      |      |      |      |      |      |      |      |      | -1.0 |      |      | = | **0.0** |
+|         |         |         |         | -1.0 |      |      |      |      |      |      | -1.0 |      |  1.0 |      |      | ≥ | **2.0** |
+|         |         |         |         | -1.0 |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      | ≥ | **2.0** |
+|         |         |         |         |  1.0 |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      | -1.0 |      |      |      | -1.0 |  1.0 |      |      |      |      | ≥ | **2.0** |
+|         |         |         |         |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |      | ≥ | **2.0** |
+|         |         |         |         |      |  1.0 |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |  -1.0   |         |         |      |      |      |      | -1.0 |  1.0 |  1.0 |      |      |      |      |      | ≥ | **2.0** |
+|   1.0   |         |         |         |      |      |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      | ≥ | **2.0** |
+|         |         |         |         |      |      |      |  1.0 |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |      |      |      |      |      |      |  1.0 |      |      |      | ≥ | **1.0** |
+|         |         |         |   1.0   |      |      |      |      |      |      |      |      |      |      |      | -1.0 | = | **0.0** |
+|         |  -1.0   |         |         |      |      |      |      |      |      |      |      |      |      | -1.0 |  1.0 | ≥ | **2.0** |
+|  -1.0   |         |   1.0   |         |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |      |      |      |      |      |      |      |      |  1.0 |      | ≥ | **1.0** |
 
 To consider the last row, this corresponds to the term `args` discussed
 previously.  It has a presumed cost of 1.0, and a coefficient of 1.0 (as it
@@ -237,17 +238,17 @@ occurs once in the equation).  This in turn corresponds to the equation
 
 The optmimum determined by Ratl is given in the next table:
 
-|   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |
-| ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
-|     6.5    |    4.0   |     6.5    |    7.0   |  1.0 |  1.0 |  0.0 |  3.5 |  1.0 |  0.0 |  3.5 |  2.5 |  1.0 |  1.0 |  4.0 |  1.0 |  7.0 |
+|   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |
+| ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+|    13.0    |    8.0   |    13.0    |   11.0   |  1.0 |  1.0 |  3.0 |  1.0 |  0.0 | 10.0 |  0.0 |  5.0 |  1.0 |  8.0 |  1.0 | 11.0 |
 
 
 The optimum values for the list type variables are the linear upper bounds,
 while the optimum values for the function types are the constant factors.  This
 corresponds to the reported bounds for the two functions:
 
-    sum: 6.5*n + 4.0
-    main: 6.5*n + 7.0
+    sum: 13.0*n + 8.0
+    main: 13.0*n + 11.0
 
 For the actual implementation, this formulation is actually how the problem is
 fed to the solver.  It is kept in this form in order to minimize the number of
@@ -256,7 +257,7 @@ there are equalities, all inequalities are greater-than-or-equal, and some
 variables don't have non-negativity constraints.  The only transformation
 required is for this last one: non-negativity constraints are added by
 splitting variables that can range negatively in two in every constraint.
-This can be seen in the table above in the case of `head` and `tail`.
+This can be seen in the table above in the case of `tail`.
 
 ## Analysis
 
@@ -264,12 +265,12 @@ When run on the sample programs in `examples/ratl`, here are the resulting
 bounds predicted:
 
     examples/ratl/all.ratl
-    all: 6.5*n + 4.0
-    main: 6.5*n + 7.0
+    all: 13.0*n + 9.0
+    main: 13.0*n + 12.0
 
     examples/ratl/any.ratl
-    any: 6.5*n + 4.0
-    main: 6.5*n + 7.0
+    any: 13.0*n + 9.0
+    main: 13.0*n + 12.0
 
     examples/ratl/id.ratl
     id_list: 1.0
@@ -277,8 +278,8 @@ bounds predicted:
     main: 9.0
 
     examples/ratl/last.ratl
-    last: 5.0*n
-    main: 5.0*n + 3.0
+    last: 5.0*n + 3.0
+    main: 5.0*n + 6.0
 
     examples/ratl/length.ratl
     length: 11.0*n + 6.0
@@ -292,8 +293,8 @@ bounds predicted:
     main: 4.0
 
     examples/ratl/sum.ratl
-    sum: 6.5*n + 4.0
-    main: 6.5*n + 7.0
+    sum: 13.0*n + 8.0
+    main: 13.0*n + 11.0
 
     examples/ratl/zero.ratl
     main: 1.0
@@ -301,8 +302,7 @@ bounds predicted:
 Most of these seem plausible.  `all` and `any` are virtually the same program,
 and their bounds are identical.  As expected, `id` is constant time.  The
 program `loop` does not terminate, so Ratl is unsurprisingly unable to produce
-an upper bound.  The only surprise to my eyes is `length`, which by inspection
-seems like it should be cheaper.
+an upper bound.
 
 Performance-wise, Ratl is bound quadratically by the program size.  This makes
 sense, as Simplex runs in linear time for most problems, and the problem size

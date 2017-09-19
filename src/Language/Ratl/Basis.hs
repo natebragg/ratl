@@ -35,8 +35,8 @@ arity x = maybe 1 (\(Native _ a _) -> a) $ lookup x basis
 
 basis :: [(Var, Fun ())]
 basis = [
-    (V "if",   Native (Arrow () [MysteryTy, MysteryTy, MysteryTy] MysteryTy) 3 ifte),
-    (V "+",    Native (Arrow () [NatTy, NatTy] NatTy)                        2 plus),
-    (V "head", Native (Arrow () [ListTy () MysteryTy] MysteryTy)             1 head),
-    (V "tail", Native (Arrow () [ListTy () MysteryTy] (ListTy () MysteryTy)) 1 tail)
+    (V "if",   Native (Arrow () [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b"))   3 ifte),
+    (V "+",    Native (Arrow () [NatTy, NatTy] NatTy)                            2 plus),
+    (V "head", Native (Arrow () [ListTy () (Tyvar "a")] (Tyvar "a"))             1 head),
+    (V "tail", Native (Arrow () [ListTy () (Tyvar "a")] (ListTy () (Tyvar "a"))) 1 tail)
     ]

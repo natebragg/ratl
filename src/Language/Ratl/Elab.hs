@@ -3,9 +3,10 @@ module Language.Ratl.Elab (
     check,
 ) where
 
-import Data.Maybe (isJust)
+import Data.List (intersect, union, nub, foldl')
+import Data.Maybe (isJust, fromJust)
 import Control.Applicative (empty)
-import Control.Arrow (second)
+import Control.Arrow (second, (&&&))
 import Control.Monad (guard)
 import Control.Monad.State (StateT)
 import Control.Monad.Trans.Maybe (MaybeT)
@@ -21,8 +22,9 @@ import Language.Ratl.Anno (
     )
 import Language.Ratl.Ty (
     Ty(..),
-    isListTy,
     eqTy,
+    varname,
+    varnum,
     FunTy(..),
     )
 import Language.Ratl.Ast (
@@ -36,6 +38,7 @@ import Language.Ratl.Ast (
     )
 
 type FunEnv a = [(Var, FunTy a)]
+type TyvarEnv a = [(String, Ty a)]
 
 k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Double
 k_var = 1.0
@@ -47,6 +50,40 @@ k_iff = 1.0
 
 data Annos = Pay Anno | Exchange Anno Anno
 
+freein :: Ty a -> [String]
+freein         NatTy = []
+freein (ListTy _ ty) = freein ty
+freein     (Tyvar y) = [y]
+
+solve :: TyvarEnv a -> (Ty a, Ty a) -> TyvarEnv a
+solve theta (ty, ty') = compose (assoc (tysubst theta ty) (tysubst theta ty')) theta
+  where assoc (ListTy _ ty) (ListTy _ ty') = assoc ty ty'
+        assoc     (Tyvar x)            ty' = [(x, ty')]
+        assoc             _              _ = []
+
+compose :: TyvarEnv a -> TyvarEnv a -> TyvarEnv a
+compose theta2 theta1 = map (id &&& replace) domain
+  where domain  = union (map fst theta2) (map fst theta1)
+        replace = tysubst theta2 . varsubst theta1
+
+varsubst :: TyvarEnv a -> String -> Ty a
+varsubst theta x = maybe (Tyvar x) id $ lookup x theta
+
+tysubst :: TyvarEnv a -> Ty a -> Ty a
+tysubst theta = subst
+  where subst         NatTy = NatTy
+        subst (ListTy p ty) = ListTy p $ subst ty
+        subst     (Tyvar x) = varsubst theta x
+
+instantiate :: [Ty a] -> FunTy a -> FunTy a
+instantiate tys (Arrow q tys' ty) = Arrow q (map (tysubst varenv) tys') (tysubst varenv ty)
+    where (tys'', ty') = (map (tysubst env) tys', tysubst env ty)
+            where env = zip (map varname $ intersect frees bound) (map (Tyvar . varname) [next_var..])
+                  next_var = 1 + (maximum $ union frees bound)
+                  frees = nub $ map varnum $ concatMap freein tys
+                  bound = nub $ map varnum $ concatMap freein $ ty:tys'
+          varenv = foldl' solve [] $ zip tys'' tys
+
 transact :: (Annos, Double) -> [(Anno, Double)]
 transact (Pay q, c) = [(q, c)]
 transact (Exchange q' q'', c) = [(q', c), (q'', negate c)]
@@ -57,8 +94,9 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
           tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
           elabF :: Monad m => Fun Anno -> StateT Anno (MaybeT m) [GeneralConstraint]
-          elabF (Fun (Arrow qf [ty] ty') x e) = do
-                    (ty'', q, cs) <- elabE [(x, ty)] e
+          elabF (Fun (Arrow qf tys ty') x e) = do
+                    (ty, q, cs) <- elabE (zip [x] tys) e
+                    let ty'' = tysubst (solve [] (ty, ty')) ty
                     guard $ eqTy ty' ty''
                     let equiv = case (ty', ty'') of
                                  (ListTy pf _, ListTy p _) | p /= pf -> [(Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0)]
@@ -77,32 +115,34 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
                    elab (Val v)       = do ty <- elabV v
                                            q <- freshAnno
                                            return (ty, Pay q, [(Sparse [(q, 1.0)] `Geq` k_val)])
-                   elab (App f es) | f == V "head" || f == V "tail" =
+                   elab (App f es) | f == V "tail" =
                                         do (tys, qs, cs) <- unzip3 <$> mapM elab es
                                            q' <- freshAnno
                                            q'' <- freshAnno
                                            let sig = lookup f sigma
                                            guard $ isJust sig
-                                           let Just (Arrow qf tys' ty) = sig
+                                           let (Arrow qf tys' ty'') = instantiate tys $ fromJust sig
                                            guard $ all (uncurry eqTy) (zip tys tys')
                                            let ts = concatMap (transact . flip (,) (-1.0)) qs
                                            let [ListTy p ty'] = tys
-                                           let ty'' = if f == V "head" then ty' else let ListTy p' _ = ty in ListTy p' ty'
                                            let equiv = flip concatMap (zip tys tys') $ \(ty, ty') -> case (ty, ty') of
                                                         (ListTy p _, ListTy pf _) | p /= pf -> [(Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0)]
                                                         _                                   -> []
                                            return (ty'', Exchange q' q'', (Sparse ([(q', 1.0), (q'', -1.0), (p, 1.0)] ++ ts) `Geq` k_app):equiv ++ concat cs)
-                   elab (App (V "if") es) =
-                                        do ([typ, tyt, tyf], [qp, qt, qf], cs) <- unzip3 <$> mapM elab es
+                   elab (App f es) | f == V "if" =
+                                        do (tys, [qp, qt, qf], cs) <- unzip3 <$> mapM elab es
                                            q <- freshAnno
-                                           guard $ eqTy tyt tyf
-                                           return (tyt, Pay q, (Sparse ((q, 1.0):transact (qp, -1.0) ++ transact (qt, -1.0)) `Geq` (k_ifp + k_ift)):
-                                                               (Sparse ((q, 1.0):transact (qp, -1.0) ++ transact (qf, -1.0)) `Geq` (k_ifp + k_iff)):concat cs)
+                                           let sig = lookup f sigma
+                                           guard $ isJust sig
+                                           let (Arrow qif tys' ty'') = instantiate tys $ fromJust sig
+                                           guard $ all (uncurry eqTy) (zip tys tys')
+                                           return (ty'', Pay q, (Sparse ((q, 1.0):(qif, -1.0):transact (qp, -1.0) ++ transact (qt, -1.0)) `Geq` (k_ifp + k_ift)):
+                                                                (Sparse ((q, 1.0):(qif, -1.0):transact (qp, -1.0) ++ transact (qf, -1.0)) `Geq` (k_ifp + k_iff)):concat cs)
                    elab (App f es)    = do (tys, qs, cs) <- unzip3 <$> mapM elab es
                                            q <- freshAnno
                                            let sig = lookup f sigma
                                            guard $ isJust sig
-                                           let Just (Arrow qf tys' ty'') = sig
+                                           let (Arrow qf tys' ty'') = instantiate tys $ fromJust sig
                                            guard $ all (uncurry eqTy) (zip tys tys')
                                            let ts = concatMap (transact . flip (,) (-1.0)) qs
                                            let equiv = flip concatMap (zip tys tys') $ \(ty, ty') -> case (ty, ty') of
@@ -113,11 +153,11 @@ check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l
           elabL :: Monad m => List -> StateT Anno (MaybeT m) (Ty Anno)
-          elabL Nil        = freshListTy MysteryTy
+          elabL Nil        = freshListTy $ Tyvar "a"
           elabL (Cons v l) = do
                 vty <- elabV v
                 lty <- elabL l
                 case lty of
-                    ListTy p MysteryTy      -> return $ ListTy p vty
+                    ListTy p (Tyvar _)      -> return $ ListTy p vty
                     ListTy _ l | eqTy l vty -> return lty
                     _                       -> empty

@@ -1,27 +1,34 @@
 module Language.Ratl.Ty (
     Ty(..),
-    isListTy,
     eqTy,
+    varname,
+    varnum,
     FunTy(..),
 ) where
 
-data Ty a = NatTy | ListTy a (Ty a) | MysteryTy
+import Data.Char (chr, ord)
+
+data Ty a = NatTy
+          | ListTy a (Ty a)
+          | Tyvar String
 
 instance Show (Ty a) where
     show NatTy = "Nat"
     show (ListTy _ t) = "[" ++ show t ++ "]"
-    show MysteryTy = "forall a. a"
-
-isListTy :: Ty a -> Bool
-isListTy NatTy = False
-isListTy     _ = True
+    show (Tyvar x) = "'" ++ x
 
 eqTy :: Ty a -> Ty a -> Bool
-eqTy MysteryTy _ = True
-eqTy _ MysteryTy = True
-eqTy NatTy NatTy = True
+eqTy        NatTy         NatTy = True
 eqTy (ListTy _ t) (ListTy _ t') = eqTy t t'
-eqTy     _     _ = False
+eqTy    (Tyvar x)     (Tyvar y) = x == y
+eqTy            _             _ = False
+
+varname :: Int -> String
+varname n = if m > 0 then 'z':show m else [chr (ord 'a' + n)]
+    where m = n - (ord 'z' - ord 'a')
+
+varnum :: String -> Int
+varnum (v:ms) = (ord v - ord 'a') + read ms
 
 data FunTy a = Arrow a [Ty a] (Ty a)
 
