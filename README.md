@@ -286,7 +286,8 @@ bounds predicted:
     main: 11.0*n + 9.0
 
     examples/ratl/loop.ratl
-    Analysis was infeasible
+    loop: Analysis was infeasible
+    main: Analysis was infeasible
 
     examples/ratl/nil.ratl
     nil: 1.0

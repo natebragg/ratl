@@ -6,7 +6,7 @@ module Language.Ratl.Elab (
 import Data.List (intersect, union, nub, foldl')
 import Data.Maybe (isJust, fromJust)
 import Control.Applicative (empty)
-import Control.Arrow (second, (&&&))
+import Control.Arrow (second, (&&&), (***))
 import Control.Monad (guard)
 import Control.Monad.State (StateT)
 import Control.Monad.Trans.Maybe (MaybeT)
@@ -41,6 +41,7 @@ import Language.Ratl.Ast (
 
 type FunEnv a = [(Var, FunTy a)]
 type TyvarEnv a = [(String, Ty a)]
+type ProgEnv = [(Var, [GeneralForm])]
 
 k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Double
 k_var = 1.0
@@ -86,8 +87,8 @@ instantiate tys (Arrow q tys' ty) = Arrow q (map (tysubst varenv) tys') (tysubst
                   bound = nub $ map varnum $ concatMap freein $ ty:tys'
           varenv = foldl' solve [] $ zip tys'' tys
 
-objective :: FunEnv Anno -> Int -> LinearFunction
-objective sigma degree = Sparse $ concatMap (objF . snd) sigma
+objective :: FunTy Anno -> Int -> LinearFunction
+objective fty degree = Sparse $ objF fty
     where payIf d = if degree == d then 1.0 else 0.0
           objF (Arrow q tys _) = (q, payIf 0):concatMap objTy tys
           objTy (ListTy p _) = map (second payIf) $ zip [p] [1..]
@@ -97,25 +98,25 @@ transact :: (Annos, Double) -> [(Anno, Double)]
 transact (Pay q, c) = [(q, c)]
 transact (Exchange q' q'', c) = [(q', c), (q'', negate c)]
 
-check :: Monad m => Prog Anno -> Int -> StateT Anno (MaybeT m) (FunEnv Anno, [GeneralForm])
-check fs deg_max = (,) sigma <$> sequence programs
+check :: Monad m => Prog Anno -> Int -> StateT Anno (MaybeT m) ProgEnv
+check fs deg_max = programs
     where sigma = map (second tyOf) fs
-          objectives = map (objective sigma) [deg_max,deg_max-1..0]
-          constraints = concat <$> mapM (elabF . snd) fs
-          programs = [GeneralForm Minimize o <$> constraints | o <- objectives]
           tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
-          elabF :: Monad m => Fun Anno -> StateT Anno (MaybeT m) [GeneralConstraint]
-          elabF (Fun (Arrow qf tys ty') x e) = do
+          programs = do (los, cs) <- (zip (map fst fs) *** concat) <$> unzip <$> mapM (elabF . snd) fs
+                        return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
+          elabF :: Monad m => Fun Anno -> StateT Anno (MaybeT m) ([LinearFunction], [GeneralConstraint])
+          elabF (Fun fty@(Arrow qf tys ty') x e) = do
                     (ty, q, cs) <- elabE (zip [x] tys) e
                     let ty'' = tysubst (solve [] (ty, ty')) ty
                     guard $ eqTy ty' ty''
                     let equiv = case (ty', ty'') of
                                  (ListTy pf _, ListTy p _) | p /= pf -> [(Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0)]
                                  _                                   -> []
-                    return $ (Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0):equiv ++ cs
+                    let objectives = map (objective fty) [deg_max,deg_max-1..0]
+                    return $ (objectives, (Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0):equiv ++ cs)
           elabF (Native (Arrow qf _ _) _ _) = do
-                    return []
+                    return ([], [])
           elabE :: Monad m => [(Var, Ty Anno)] -> Ex -> StateT Anno (MaybeT m) (Ty Anno, Annos, [GeneralConstraint])
           elabE gamma e = elab e
              where elab :: Monad m => Ex -> StateT Anno (MaybeT m) (Ty Anno, Annos, [GeneralConstraint])
