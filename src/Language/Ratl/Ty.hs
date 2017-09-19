@@ -24,11 +24,12 @@ eqTy    (Tyvar x)     (Tyvar y) = x == y
 eqTy            _             _ = False
 
 varname :: Int -> String
-varname n = if m > 0 then 'z':show m else [chr (ord 'a' + n)]
+varname n = if m > 0 then 'a':show m else [chr (ord 'a' + n)]
     where m = n - (ord 'z' - ord 'a')
 
 varnum :: String -> Int
-varnum (v:ms) = (ord v - ord 'a') + read ms
+varnum (v:ms) = (ord v - ord 'a') +
+                if not $ null ms then (ord 'z' - ord 'a') + read ms else 0
 
 data FunTy a = Arrow a [Ty a] (Ty a)
 
