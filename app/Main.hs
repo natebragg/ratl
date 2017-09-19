@@ -15,7 +15,7 @@ import System.IO (readFile)
 import System.Environment (getArgs)
 
 import Data.Clp.Clp
-import Data.Clp.Program (LinearProgram(..), LinearFunction(..), GeneralConstraint(..), GeneralForm(..))
+import Data.Clp.Program (LinearProgram(..), GeneralConstraint(..), GeneralForm(..))
 import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Anno (Anno, annotate)
 import Language.Ratl.Basis (basis)
@@ -33,13 +33,6 @@ progressive_solve :: [GeneralForm] -> [([Double], Double)]
 progressive_solve gfs = fst $ foldl accum ([], []) gfs
     where accum (ss, cs') (GeneralForm dir obj cs) = (ss ++ [sol], (obj `Leq` snd sol):cs)
             where sol = solve $ GeneralForm dir obj (cs' ++ cs)
-
-objective :: FunEnv Anno -> Int -> LinearFunction
-objective sigma degree = Sparse $ concatMap (objF . snd) sigma
-    where payIf d = if degree == d then 1.0 else 0.0
-          objF (Arrow q tys _) = (q, payIf 0):concatMap objTy tys
-          objTy (ListTy p _) = map (second payIf) $ zip [p] [1..]
-          objTy           _  = []
 
 interpret :: [[Double]] -> FunTy Anno -> String
 interpret optimums (Arrow q [ListTy p _] _) = lin_term ++ join ++ const_term
@@ -68,7 +61,7 @@ main = do
                 case (parse, pargs) of
                     (Right p, Right a) -> do
                         p' <- annotate $ basis ++ p
-                        checked <- check p'
+                        checked <- check p' deg_max
                         return (checked, p', a)
                     (e1, e2) -> do
                         liftIO $ mapM_ print $ lefts [e1] ++ lefts [e2]
@@ -76,9 +69,7 @@ main = do
             case result of
                 Nothing ->
                     putStrLn "Typechecking failed"
-                Just ((env, constraints), p, a) -> do
-                    let objectives = map (objective env) [deg_max,deg_max-1..0]
-                    let programs = [GeneralForm Minimize o constraints | o <- objectives]
+                Just ((env, programs), p, a) -> do
                     let (optimums, _) = unzip $ progressive_solve programs
                     when (any null optimums) $ do
                         putStrLn "Analysis was infeasible"

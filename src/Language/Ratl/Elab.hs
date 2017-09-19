@@ -11,9 +11,11 @@ import Control.Monad (guard)
 import Control.Monad.State (StateT)
 import Control.Monad.Trans.Maybe (MaybeT)
 
+import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.Program (
     LinearFunction(..),
     GeneralConstraint(..),
+    GeneralForm(..),
     )
 import Language.Ratl.Anno (
     Anno,
@@ -84,13 +86,23 @@ instantiate tys (Arrow q tys' ty) = Arrow q (map (tysubst varenv) tys') (tysubst
                   bound = nub $ map varnum $ concatMap freein $ ty:tys'
           varenv = foldl' solve [] $ zip tys'' tys
 
+objective :: FunEnv Anno -> Int -> LinearFunction
+objective sigma degree = Sparse $ concatMap (objF . snd) sigma
+    where payIf d = if degree == d then 1.0 else 0.0
+          objF (Arrow q tys _) = (q, payIf 0):concatMap objTy tys
+          objTy (ListTy p _) = map (second payIf) $ zip [p] [1..]
+          objTy           _  = []
+
 transact :: (Annos, Double) -> [(Anno, Double)]
 transact (Pay q, c) = [(q, c)]
 transact (Exchange q' q'', c) = [(q', c), (q'', negate c)]
 
-check :: Monad m => Prog Anno -> StateT Anno (MaybeT m) (FunEnv Anno, [GeneralConstraint])
-check fs = (,) sigma <$> concat <$> mapM (elabF . snd) fs
+check :: Monad m => Prog Anno -> Int -> StateT Anno (MaybeT m) (FunEnv Anno, [GeneralForm])
+check fs deg_max = (,) sigma <$> sequence programs
     where sigma = map (second tyOf) fs
+          objectives = map (objective sigma) [deg_max,deg_max-1..0]
+          constraints = concat <$> mapM (elabF . snd) fs
+          programs = [GeneralForm Minimize o <$> constraints | o <- objectives]
           tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
           elabF :: Monad m => Fun Anno -> StateT Anno (MaybeT m) [GeneralConstraint]
