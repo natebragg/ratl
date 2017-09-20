@@ -26,8 +26,8 @@ import Language.Ratl.Ast (
 
 type Anno = Int
 
-annotate :: Monad m => Prog () -> StateT Anno m (Prog Anno)
-annotate = mapM (mapM annoF)
+annotate :: Monad m => Int -> Prog () -> StateT Anno m (Prog Anno)
+annotate deg_max = mapM (mapM annoF)
     where annoF (Fun ty x e) = do
                 ty' <- annoFTy ty
                 return $ Fun ty' x e
@@ -40,7 +40,7 @@ annotate = mapM (mapM annoF)
                 freshFunTy ts1' t2'
           annoTy (ListTy _ ty) = do
                 ty' <- annoTy ty
-                freshListTy ty'
+                freshListTy deg_max ty'
           annoTy NatTy = return NatTy
           annoTy (Tyvar x) = return (Tyvar x)
 
@@ -50,9 +50,9 @@ freshAnno = do
     put (q + 1)
     return q
 
-freshListTy :: Monad m => Ty Anno -> StateT Anno m (Ty Anno)
-freshListTy tau = do
-    ps <- replicateM 1 freshAnno
+freshListTy :: Monad m => Int -> Ty Anno -> StateT Anno m (Ty Anno)
+freshListTy deg_max tau = do
+    ps <- replicateM deg_max freshAnno
     return $ ListTy ps tau
 
 freshFunTy :: Monad m => [Ty Anno] -> Ty Anno -> StateT Anno m (FunTy Anno)

@@ -51,8 +51,8 @@ main = do
             result <- runMaybeT $ flip evalStateT 0 $ do
                 case (parse, pargs) of
                     (Right p, Right a) -> do
-                        p' <- annotate $ basis ++ p
-                        checked <- check p' deg_max
+                        p' <- annotate deg_max $ basis ++ p
+                        checked <- check deg_max p'
                         return (checked, p', a)
                     (e1, e2) -> do
                         liftIO $ mapM_ print $ lefts [e1] ++ lefts [e2]

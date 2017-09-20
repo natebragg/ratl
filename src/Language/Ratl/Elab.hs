@@ -98,8 +98,8 @@ transact :: (Annos, Double) -> [(Anno, Double)]
 transact (Pay q, c) = [(q, c)]
 transact (Exchange q' q'', c) = [(q', c), (q'', negate c)]
 
-check :: Monad m => Prog Anno -> Int -> StateT Anno (MaybeT m) ProgEnv
-check fs deg_max = programs
+check :: Monad m => Int -> Prog Anno -> StateT Anno (MaybeT m) ProgEnv
+check deg_max fs = programs
     where sigma = map (second tyOf) fs
           tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
@@ -150,7 +150,7 @@ check fs deg_max = programs
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l
           elabL :: Monad m => List -> StateT Anno (MaybeT m) (Ty Anno)
-          elabL Nil        = freshListTy $ Tyvar "a"
+          elabL Nil        = freshListTy deg_max $ Tyvar "a"
           elabL (Cons v l) = do
                 vty <- elabV v
                 lty <- elabL l
