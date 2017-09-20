@@ -4,15 +4,17 @@ import Control.Monad (when, forM)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Trans.Maybe (runMaybeT)
 import Control.Monad.Trans (liftIO)
-import Data.Either (lefts)
+import Data.Either (lefts, rights)
 import Data.List (intercalate)
 import Data.Maybe (isNothing, fromJust)
 import Text.Parsec (runParser)
-import System.Exit (exitFailure)
+import Text.Read (readEither)
+import System.Exit (exitSuccess, exitFailure)
 import System.IO (readFile)
 import System.Environment (getArgs)
+import System.Console.GetOpt (usageInfo, getOpt, OptDescr(..), ArgDescr(..), ArgOrder(RequireOrder))
 
-import Data.Clp.Clp
+import qualified Data.Clp.Clp as Clp (version)
 import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralForm(..))
 import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Anno (annotate)
@@ -20,6 +22,7 @@ import Language.Ratl.Basis (basis)
 import Language.Ratl.Ast (Var(V))
 import Language.Ratl.Eval (run)
 import Language.Ratl.Elab (check)
+import PackageInfo (version, appName, synopsis)
 
 progressive_solve :: [GeneralForm] -> [([Double], Double)]
 progressive_solve gfs = fst $ foldl accum ([], []) gfs
@@ -34,20 +37,53 @@ pretty_bound cs = if null bounds then show 0.0 else intercalate " + " bounds
           coeff (1,   c) = [show c ++ "*n"]
           coeff (n,   c) = [show c ++ "*n^" ++ show n]
 
-main :: IO ()
-main = do
+data Flag = Version
+          | Help
+          | DegreeMax String
+    deriving Eq
+
+opts :: [OptDescr Flag]
+opts = [Option ['v'] ["version"] (NoArg Version) "Version information.",
+        Option ['h'] ["help"] (NoArg Help) "Print this message.",
+        Option ['d'] ["degreemax"] (ReqArg DegreeMax "DEGREE") "Maximum degree of analysis."]
+
+printUsage :: IO ()
+printUsage = putStr (usageInfo header opts)
+    where header = "Usage: " ++ appName ++ " [-d] filename <args>\n" ++ synopsis ++ "\n"
+
+printVersion :: IO ()
+printVersion = do
+    putStrLn $ appName ++ ": " ++ synopsis
+    putStrLn $ "Version " ++ version
+    putStrLn $ "Using Clp version " ++ Clp.version
+
+handleArgs :: IO (Int, String, String)
+handleArgs = do
     args <- getArgs
-    putStrLn $ "Ratl: Resource-aware toy language"
-    putStrLn $ "Using Clp version " ++ version ++ ": "
-                                    ++ show (versionMajor, versionMinor, versionRelease)
-    case args of
-        [] -> putStrLn $ "filename required"
-        (fn:args) -> do
-            let deg_max = 1
+    case getOpt RequireOrder opts args of
+        (os,  _, [])
+            | elem Help os -> printUsage >> exitSuccess
+            | elem Version os -> printVersion >> exitSuccess
+        (os, [], es) -> putStrLn "Filename required" >> putStr (concat es) >> printUsage >> exitFailure
+        (os, fn:args, es)
+            | not $ null es -> putStr (concat es) >> printUsage >> exitFailure
+            | otherwise -> let degrees = [readEither d | DegreeMax d <- os] in
+                           case (lefts degrees, rights degrees) of
+                             ([], degrees) -> return (last $ 1:degrees, fn, unwords args)
+                             ( _, _) -> do putStrLn "Integer required for degreemax"
+                                           printUsage >> exitFailure
+
+main :: IO ()
+main = do   (deg_max, fn, cmdline) <- handleArgs
+            when (deg_max < 0) $ do
+                putStrLn "Maximum degree cannot be negative"
+                exitFailure
+            when (deg_max > 1) $ do
+                putStrLn "Maximum degree greater than 1 not supported"
+                exitFailure
             inp <- readFile fn
-            let argstr = intercalate " " args
             let parse = runParser prog () fn inp
-            let pargs = runParser val () "" argstr
+            let pargs = runParser val () "" cmdline
             result <- runMaybeT $ flip evalStateT 0 $ do
                 case (parse, pargs) of
                     (Right p, Right a) -> do

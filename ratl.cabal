@@ -1,7 +1,7 @@
 name:                ratl
 version:             1.0.0.0
-synopsis:            Resource Aware Toy Language
-description:         Resource Aware Toy Language
+synopsis:            Resource-Aware Toy Language
+description:         Resource-Aware Toy Language
 homepage:            https://github.com/natebragg/ratl#readme
 license:             BSD3
 license-file:        LICENSE
@@ -9,7 +9,7 @@ author:              Nate Bragg
 maintainer:          Nate Bragg <nate@cs.tufts.edu>
 copyright:           (c) 2017 Nate Bragg
 category:            Language
-build-type:          Simple
+build-type:          Custom
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
@@ -37,6 +37,7 @@ executable ratl
   hs-source-dirs:      app
   main-is:             Main.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  other-modules:       PackageInfo
   build-depends:       base
                      , ratl
                      , mtl

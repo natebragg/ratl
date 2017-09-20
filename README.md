@@ -29,6 +29,19 @@ Ratl can then be run:
 
     stack exec ratl examples/ratl/sum.ratl [1, 2, 3, 4, 5]
 
+## Usage
+
+To run ratl, supply the ratl file to analyze, the arguments to main, and
+optionally, a maximum degree:
+
+    $ ./ratl -h
+    Usage: ratl [-d] filename <args>
+    Resource-Aware Toy Language
+
+      -v         --version           Version information.
+      -h         --help              Print this message.
+      -d DEGREE  --degreemax=DEGREE  Maximum degree of analysis.
+
 ## Examples
 
 Ratl executes on a `.ratl` file, and outputs the bounds of the functions and
@@ -37,16 +50,13 @@ run the following commands:
 
     $ echo "(fn main ([Nat] -> [Nat]) (args) args)" > id.ratl
     $ ./ratl id.ratl [1,2,3]
-    Ratl: Resource-aware toy language
-    Using Clp version 1.15.10: (1,15,10)
     main: 1.0
     [1,2,3]
 
-Ratl printed out a friendly autobiography.  The program faithfully returned its
-input.  Even better, Ratl analyzed `main`, and decided that it would execute in
-constant time: 1.0!  Sounds fast.
+The program faithfully returned its input.  Even better, Ratl analyzed `main`,
+and decided that it would execute in constant time: 1.0!  Sounds fast.
 
-Now, a more complex example (I will skip the autobiography from now on):
+Now, a more complex example:
 
     $ echo "(fn main ([Nat] -> Nat) (args) (head args))" > head.ratl
     $ ./ratl head.ratl [3,2,1]
