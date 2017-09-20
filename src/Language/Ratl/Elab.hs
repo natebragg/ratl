@@ -74,9 +74,9 @@ varsubst theta x = maybe (Tyvar x) id $ lookup x theta
 
 tysubst :: TyvarEnv a -> Ty a -> Ty a
 tysubst theta = subst
-  where subst         NatTy = NatTy
-        subst (ListTy p ty) = ListTy p $ subst ty
-        subst     (Tyvar x) = varsubst theta x
+  where subst          NatTy = NatTy
+        subst (ListTy ps ty) = ListTy ps $ subst ty
+        subst      (Tyvar x) = varsubst theta x
 
 instantiate :: [Ty a] -> FunTy a -> FunTy a
 instantiate tys (Arrow q tys' ty) = Arrow q (map (tysubst varenv) tys') (tysubst varenv ty)
@@ -91,8 +91,8 @@ objective :: FunTy Anno -> Int -> LinearFunction
 objective fty degree = Sparse $ objF fty
     where payIf d = if degree == d then 1.0 else 0.0
           objF (Arrow q tys _) = (q, payIf 0):concatMap objTy tys
-          objTy (ListTy p _) = map (second payIf) $ zip [p] [1..]
-          objTy           _  = []
+          objTy (ListTy ps _) = map (second payIf) $ zip ps [1..]
+          objTy            _  = []
 
 transact :: (Annos, Double) -> [(Anno, Double)]
 transact (Pay q, c) = [(q, c)]
@@ -111,8 +111,8 @@ check fs deg_max = programs
                     let ty'' = tysubst (solve [] (ty, ty')) ty
                     guard $ eqTy ty' ty''
                     let equiv = case (ty', ty'') of
-                                 (ListTy pf _, ListTy p _) | p /= pf -> [(Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0)]
-                                 _                                   -> []
+                                 (ListTy pfs _, ListTy ps _) -> [Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0 | (p, pf) <- zip ps pfs, p /= pf]
+                                 _                           -> []
                     let objectives = map (objective fty) [deg_max,deg_max-1..0]
                     return $ (objectives, (Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0):equiv ++ cs)
           elabF (Native (Arrow qf _ _) _ _) = do
@@ -135,16 +135,16 @@ check fs deg_max = programs
                                            let (Arrow qf tys' ty'') = instantiate tys $ fromJust sig
                                            guard $ all (uncurry eqTy) (zip tys tys')
                                            let equiv = flip concatMap (zip tys tys') $ \(ty, ty') -> case (ty, ty') of
-                                                        (ListTy p _, ListTy pf _) | p /= pf -> [(Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0)]
-                                                        _                                   -> []
+                                                        (ListTy ps _, ListTy pfs _) -> [Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0 | (p, pf) <- zip ps pfs, p /= pf]
+                                                        _                           -> []
                                            let ts = map (transact . flip (,) (-1.0)) qs
                                            case (f, ts, tys) of
                                                 (V "if", [tp, tt, tf], _) ->
                                                        return (ty'', Pay q, (Sparse ((q, 1.0):(qf, -1.0):tp ++ tt) `Geq` (k_ifp + k_ift)):
                                                                             (Sparse ((q, 1.0):(qf, -1.0):tp ++ tf) `Geq` (k_ifp + k_iff)):equiv ++ concat cs)
-                                                (V "tail", _, [ListTy p _]) ->
+                                                (V "tail", _, [ListTy ps _]) ->
                                                     do q' <- freshAnno
-                                                       return (ty'', Exchange q q', (Sparse ([(q, 1.0), (q', -1.0), (p, 1.0), (qf, -1.0)] ++ concat ts) `Geq` k_app):equiv ++ concat cs)
+                                                       return (ty'', Exchange q q', (Sparse ([(q, 1.0), (q', -1.0), (qf, -1.0)] ++ map (flip (,) (1.0)) ps ++ concat ts) `Geq` k_app):equiv ++ concat cs)
                                                 _ -> return (ty'', Pay q, (Sparse ([(q, 1.0), (qf, -1.0)] ++ concat ts) `Geq` k_app):equiv ++ concat cs)
           elabV :: Monad m => Val -> StateT Anno (MaybeT m) (Ty Anno)
           elabV (Nat _)  = return NatTy
@@ -155,6 +155,6 @@ check fs deg_max = programs
                 vty <- elabV v
                 lty <- elabL l
                 case lty of
-                    ListTy p (Tyvar _)      -> return $ ListTy p vty
+                    ListTy ps (Tyvar _)     -> return $ ListTy ps vty
                     ListTy _ l | eqTy l vty -> return lty
                     _                       -> empty

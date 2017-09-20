@@ -37,6 +37,6 @@ basis :: [(Var, Fun ())]
 basis = [
     (V "if",   Native (Arrow () [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b"))   3 ifte),
     (V "+",    Native (Arrow () [NatTy, NatTy] NatTy)                            2 plus),
-    (V "head", Native (Arrow () [ListTy () (Tyvar "a")] (Tyvar "a"))             1 head),
-    (V "tail", Native (Arrow () [ListTy () (Tyvar "a")] (ListTy () (Tyvar "a"))) 1 tail)
+    (V "head", Native (Arrow () [ListTy [] (Tyvar "a")] (Tyvar "a"))             1 head),
+    (V "tail", Native (Arrow () [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 1 tail)
     ]

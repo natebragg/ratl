@@ -9,7 +9,7 @@ module Language.Ratl.Ty (
 import Data.Char (chr, ord)
 
 data Ty a = NatTy
-          | ListTy a (Ty a)
+          | ListTy [a] (Ty a)
           | Tyvar String
 
 instance Show (Ty a) where

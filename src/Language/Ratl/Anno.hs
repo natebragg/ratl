@@ -6,6 +6,7 @@ module Language.Ratl.Anno (
     freshFunTy,
 ) where
 
+import Control.Monad (replicateM)
 import Control.Monad.State (StateT, get, put)
 import Control.Arrow (second)
 
@@ -33,11 +34,11 @@ annotate = mapM (mapM annoF)
           annoF (Native ty a f) = do
                 ty' <- annoFTy ty
                 return $ Native ty' a f
-          annoFTy (Arrow () ts1 t2) = do
+          annoFTy (Arrow _ ts1 t2) = do
                 ts1' <- mapM annoTy ts1
                 t2' <- annoTy t2
                 freshFunTy ts1' t2'
-          annoTy (ListTy () ty) = do
+          annoTy (ListTy _ ty) = do
                 ty' <- annoTy ty
                 freshListTy ty'
           annoTy NatTy = return NatTy
@@ -51,8 +52,8 @@ freshAnno = do
 
 freshListTy :: Monad m => Ty Anno -> StateT Anno m (Ty Anno)
 freshListTy tau = do
-    p <- freshAnno
-    return $ ListTy p tau
+    ps <- replicateM 1 freshAnno
+    return $ ListTy ps tau
 
 freshFunTy :: Monad m => [Ty Anno] -> Ty Anno -> StateT Anno m (FunTy Anno)
 freshFunTy taus tau' = do

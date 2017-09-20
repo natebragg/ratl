@@ -91,7 +91,7 @@ ex = Val <$> val
 
 ty :: Parser (Ty ())
 ty = (reserved "Nat" >> return NatTy)
-  <|> ListTy () <$> brackets ty
+  <|> ListTy [] <$> brackets ty
 
 funty :: Parser (FunTy ())
 funty = do t1 <- ty
