@@ -74,37 +74,38 @@ handleArgs = do
                                            printUsage >> exitFailure
 
 main :: IO ()
-main = do   (deg_max, fn, cmdline) <- handleArgs
-            when (deg_max < 0) $ do
-                putStrLn "Maximum degree cannot be negative"
-                exitFailure
-            when (deg_max > 1) $ do
-                putStrLn "Maximum degree greater than 1 not supported"
-                exitFailure
-            inp <- readFile fn
-            let parse = runParser prog () fn inp
-            let pargs = runParser val () "" cmdline
-            result <- runMaybeT $ flip evalStateT 0 $ do
-                case (parse, pargs) of
-                    (Right p, Right a) -> do
-                        p' <- annotate deg_max $ basis ++ p
-                        checked <- check deg_max p'
-                        return (checked, p', a)
-                    (e1, e2) -> do
-                        liftIO $ mapM_ print $ lefts [e1] ++ lefts [e2]
-                        liftIO $ exitFailure
-            case result of
-                Nothing ->
-                    putStrLn "Typechecking failed"
-                Just (programs, p, a) -> do
-                    let module_programs = filter (isNothing . flip lookup basis . fst) programs
-                    feasible <- forM module_programs $ \(f, program) ->  do
-                       let (optimums, magnitudes) = unzip $ progressive_solve program
-                       let infeasible = any null optimums
-                       let bound = if infeasible
-                                   then ": Analysis was infeasible"
-                                   else ": " ++ pretty_bound magnitudes
-                       putStrLn $ show f ++ bound
-                       return $ (f, not infeasible)
-                    when (fromJust $ lookup (V "main") feasible) $
-                        print $ run p a
+main = do
+    (deg_max, fn, cmdline) <- handleArgs
+    when (deg_max < 0) $ do
+        putStrLn "Maximum degree cannot be negative"
+        exitFailure
+    when (deg_max > 1) $ do
+        putStrLn "Maximum degree greater than 1 not supported"
+        exitFailure
+    inp <- readFile fn
+    let parse = runParser prog () fn inp
+    let pargs = runParser val () "" cmdline
+    result <- runMaybeT $ flip evalStateT 0 $ do
+        case (parse, pargs) of
+            (Right p, Right a) -> do
+                p' <- annotate deg_max $ basis ++ p
+                checked <- check deg_max p'
+                return (checked, p', a)
+            (e1, e2) -> do
+                liftIO $ mapM_ print $ lefts [e1] ++ lefts [e2]
+                liftIO $ exitFailure
+    case result of
+        Nothing ->
+            putStrLn "Typechecking failed"
+        Just (programs, p, a) -> do
+            let module_programs = filter (isNothing . flip lookup basis . fst) programs
+            feasible <- forM module_programs $ \(f, program) ->  do
+               let (optimums, magnitudes) = unzip $ progressive_solve program
+               let infeasible = any null optimums
+               let bound = if infeasible
+                           then ": Analysis was infeasible"
+                           else ": " ++ pretty_bound magnitudes
+               putStrLn $ show f ++ bound
+               return $ (f, not infeasible)
+            when (fromJust $ lookup (V "main") feasible) $
+                print $ run p a
