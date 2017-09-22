@@ -31,15 +31,16 @@ Ratl can then be run:
 
 ## Usage
 
-To run ratl, supply the ratl file to analyze, the arguments to main, and
-optionally, a maximum degree:
+To run ratl, supply the ratl file to analyze, the arguments to main (only
+needed when `mode` is `Run`), and optionally, a maximum degree:
 
     $ ./ratl -h
-    Usage: ratl [-d] filename <args>
+    Usage: ratl [-d <n>] [-m <m>] filename <args>
     Resource-Aware Toy Language
 
       -v         --version           Version information.
       -h         --help              Print this message.
+      -m MODE    --mode=MODE         One of: Analyze, Run
       -d DEGREE  --degreemax=DEGREE  Maximum degree of analysis.
 
 ## Examples

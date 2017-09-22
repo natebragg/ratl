@@ -39,17 +39,26 @@ pretty_bound cs = if null bounds then show 0.0 else intercalate " + " bounds
 
 data Flag = Version
           | Help
+          | Mode String
           | DegreeMax String
     deriving Eq
+
+data Mode = Analyze
+          | Run
+    deriving (Show, Read, Ord, Bounded, Enum, Eq)
+
+modelist :: String
+modelist = intercalate ", " (map show [(Analyze)..])
 
 opts :: [OptDescr Flag]
 opts = [Option ['v'] ["version"] (NoArg Version) "Version information.",
         Option ['h'] ["help"] (NoArg Help) "Print this message.",
+        Option ['m'] ["mode"] (ReqArg Mode "MODE") ("One of: " ++ modelist),
         Option ['d'] ["degreemax"] (ReqArg DegreeMax "DEGREE") "Maximum degree of analysis."]
 
 printUsage :: IO ()
 printUsage = putStr (usageInfo header opts)
-    where header = "Usage: " ++ appName ++ " [-d] filename <args>\n" ++ synopsis ++ "\n"
+    where header = "Usage: " ++ appName ++ " [-d <n>] [-m <m>] filename <args>\n" ++ synopsis ++ "\n"
 
 printVersion :: IO ()
 printVersion = do
@@ -57,7 +66,7 @@ printVersion = do
     putStrLn $ "Version " ++ version
     putStrLn $ "Using Clp version " ++ Clp.version
 
-handleArgs :: IO (Int, String, String)
+handleArgs :: IO (Int, Mode, String, String)
 handleArgs = do
     args <- getArgs
     case getOpt RequireOrder opts args of
@@ -68,14 +77,20 @@ handleArgs = do
         (os, fn:args, es)
             | not $ null es -> putStr (concat es) >> printUsage >> exitFailure
             | otherwise -> let degrees = [readEither d | DegreeMax d <- os] in
-                           case (lefts degrees, rights degrees) of
-                             ([], degrees) -> return (last $ 1:degrees, fn, unwords args)
-                             ( _, _) -> do putStrLn "Integer required for degreemax"
-                                           printUsage >> exitFailure
+                           let modes = [readEither m | Mode m <- os] in
+                           case (lefts degrees, lefts modes, rights degrees, rights modes) of
+                             ([], [], ds, ms) ->
+                                return (last $ 1:ds, last $ Run:ms, fn, unwords args)
+                             (ds, ms,  _, _) -> do
+                                when (not $ null ds) $
+                                     putStrLn "Option degreemax requires integer argument"
+                                when (not $ null ms) $
+                                     putStrLn $ "Option mode requires one of: " ++ modelist
+                                printUsage >> exitFailure
 
 main :: IO ()
 main = do
-    (deg_max, fn, cmdline) <- handleArgs
+    (deg_max, mode, fn, cmdline) <- handleArgs
     when (deg_max < 0) $ do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
@@ -83,21 +98,18 @@ main = do
         putStrLn "Maximum degree greater than 1 not supported"
         exitFailure
     inp <- readFile fn
-    let parse = runParser prog () fn inp
-    let pargs = runParser val () "" cmdline
     result <- runMaybeT $ flip evalStateT 0 $ do
-        case (parse, pargs) of
-            (Right p, Right a) -> do
+        case runParser prog () fn inp of
+            (Right p) -> do
                 p' <- annotate deg_max $ basis ++ p
                 checked <- check deg_max p'
-                return (checked, p', a)
-            (e1, e2) -> do
-                liftIO $ mapM_ print $ lefts [e1] ++ lefts [e2]
-                liftIO $ exitFailure
+                return (checked, p')
+            (Left e) -> do
+                liftIO $ print e >> exitFailure
     case result of
         Nothing ->
             putStrLn "Typechecking failed"
-        Just (programs, p, a) -> do
+        Just (programs, p) -> do
             let module_programs = filter (isNothing . flip lookup basis . fst) programs
             feasible <- forM module_programs $ \(f, program) ->  do
                let (optimums, magnitudes) = unzip $ progressive_solve program
@@ -107,5 +119,9 @@ main = do
                            else ": " ++ pretty_bound magnitudes
                putStrLn $ show f ++ bound
                return $ (f, not infeasible)
-            when (fromJust $ lookup (V "main") feasible) $
-                print $ run p a
+            when (mode == Run) $ do
+                case runParser val () "" cmdline of
+                    (Right a) -> do
+                        print $ run p a
+                    (Left e) -> do
+                        print e >> exitFailure
