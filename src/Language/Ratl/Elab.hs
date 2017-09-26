@@ -3,7 +3,7 @@ module Language.Ratl.Elab (
     check,
 ) where
 
-import Data.List (intersect, union, nub, foldl')
+import Data.List (intersect, union, nub, foldl', transpose)
 import Data.Maybe (isJust, fromJust)
 import Control.Applicative (empty)
 import Control.Arrow (second, (&&&), (***))
@@ -98,6 +98,10 @@ transact :: (Annos, Double) -> [(Anno, Double)]
 transact (Pay q, c) = [(q, c)]
 transact (Exchange q' q'', c) = [(q', c), (q'', negate c)]
 
+shift :: [a] -> ([a], [[a]])
+shift ps = (p_1, transpose [ps, p_ik])
+    where (p_1, p_ik) = splitAt 1 ps
+
 check :: Monad m => Int -> Prog Anno -> StateT Anno (MaybeT m) ProgEnv
 check deg_max fs = programs
     where sigma = map (second tyOf) fs
@@ -124,10 +128,10 @@ check deg_max fs = programs
                                            guard $ isJust bnd
                                            let Just ty = bnd
                                            q <- freshAnno
-                                           return (ty, Pay q, [(Sparse [(q, 1.0)] `Geq` k_var)])
+                                           return (ty, Pay q, [Sparse [(q, 1.0)] `Geq` k_var])
                    elab (Val v)       = do ty <- elabV v
                                            q <- freshAnno
-                                           return (ty, Pay q, [(Sparse [(q, 1.0)] `Geq` k_val)])
+                                           return (ty, Pay q, [Sparse [(q, 1.0)] `Geq` k_val])
                    elab (App f es)    = do (tys, qs, cs) <- unzip3 <$> mapM elab es
                                            q <- freshAnno
                                            let sig = lookup f sigma
@@ -138,13 +142,16 @@ check deg_max fs = programs
                                                         (ListTy ps _, ListTy pfs _) -> [Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0 | (p, pf) <- zip ps pfs, p /= pf]
                                                         _                           -> []
                                            let ts = map (transact . flip (,) (-1.0)) qs
-                                           case (f, ts, tys) of
-                                                (V "if", [tp, tt, tf], _) ->
+                                           case (f, ts, tys, ty'') of
+                                                (V "if", [tp, tt, tf], _, _) ->
                                                        return (ty'', Pay q, (Sparse ((q, 1.0):(qf, -1.0):tp ++ tt) `Geq` (k_ifp + k_ift)):
                                                                             (Sparse ((q, 1.0):(qf, -1.0):tp ++ tf) `Geq` (k_ifp + k_iff)):equiv ++ concat cs)
-                                                (V "tail", _, [ListTy ps _]) ->
+                                                (V "tail", _, [ListTy ps _], ListTy rs _) ->
                                                     do q' <- freshAnno
-                                                       return (ty'', Exchange q q', (Sparse ([(q, 1.0), (q', -1.0), (qf, -1.0)] ++ map (flip (,) (1.0)) ps ++ concat ts) `Geq` k_app):equiv ++ concat cs)
+                                                       return (ty'', Exchange q q', (Sparse ([(q, 1.0), (q', -1.0), (qf, -1.0)] ++ sh_p1 ++ concat ts) `Geq` k_app):equiv ++ sh_p_ik ++ concat cs)
+                                                     where sh_p_ik = [Sparse ((r, -1.0):map (flip (,) 1.0) sps) `Geq` 0.0 | (sps, r) <- zip p_ik rs, not $ elem r sps]
+                                                           sh_p1 = map (flip (,) 1.0) p_1
+                                                           (p_1, p_ik) = shift ps
                                                 _ -> return (ty'', Pay q, (Sparse ([(q, 1.0), (qf, -1.0)] ++ concat ts) `Geq` k_app):equiv ++ concat cs)
           elabV :: Monad m => Val -> StateT Anno (MaybeT m) (Ty Anno)
           elabV (Nat _)  = return NatTy
