@@ -21,28 +21,37 @@ import Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog,
+    Prog(..),
     )
 
 type Anno = Int
 
-annotate :: Monad m => Int -> Prog () -> StateT Anno m (Prog Anno)
-annotate deg_max = mapM (mapM annoF)
-    where annoF (Fun ty x e) = do
-                ty' <- annoFTy ty
+class Annotatory a where
+    annotate :: Monad m => Int -> a b -> StateT Anno m (a Anno)
+
+instance Annotatory Prog where
+    annotate deg_max (Prog p) = Prog <$> mapM (mapM (annotate deg_max)) p
+
+instance Annotatory Fun where
+    annotate deg_max (Fun ty x e) = do
+                ty' <- annotate deg_max ty
                 return $ Fun ty' x e
-          annoF (Native ty a f) = do
-                ty' <- annoFTy ty
+    annotate deg_max (Native ty a f) = do
+                ty' <- annotate deg_max ty
                 return $ Native ty' a f
-          annoFTy (Arrow _ ts1 t2) = do
-                ts1' <- mapM annoTy ts1
-                t2' <- annoTy t2
-                freshFunTy ts1' t2'
-          annoTy (ListTy _ ty) = do
-                ty' <- annoTy ty
+
+instance Annotatory FunTy where
+    annotate deg_max (Arrow _ ts1 t2) = do
+        ts1' <- mapM (annotate deg_max) ts1
+        t2' <- annotate deg_max t2
+        freshFunTy ts1' t2'
+
+instance Annotatory Ty where
+    annotate deg_max (ListTy _ ty) = do
+                ty' <- annotate deg_max ty
                 freshListTy deg_max ty'
-          annoTy NatTy = return NatTy
-          annoTy (Tyvar x) = return (Tyvar x)
+    annotate deg_max NatTy = return NatTy
+    annotate deg_max (Tyvar x) = return (Tyvar x)
 
 freshAnno :: Monad m => StateT Anno m Anno
 freshAnno = do

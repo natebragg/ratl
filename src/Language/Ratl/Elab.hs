@@ -34,7 +34,7 @@ import Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog,
+    Prog(..),
     )
 
 type FunEnv a = [(Var, FunTy a)]
@@ -104,7 +104,7 @@ hoist :: MonadPlus m => Maybe a -> m a
 hoist = maybe mzero return
 
 check :: MonadPlus m => Int -> Prog Anno -> StateT Anno m ProgEnv
-check deg_max fs = programs
+check deg_max (Prog fs) = programs
     where sigma = map (second tyOf) fs
           tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty

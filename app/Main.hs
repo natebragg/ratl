@@ -19,7 +19,7 @@ import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralFo
 import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Anno (annotate)
 import Language.Ratl.Basis (basis)
-import Language.Ratl.Ast (Var(V))
+import Language.Ratl.Ast (Var(V), Prog(getProg))
 import Language.Ratl.Eval (run)
 import Language.Ratl.Elab (check)
 import PackageInfo (version, appName, synopsis)
@@ -101,7 +101,7 @@ main = do
     result <- runMaybeT $ flip evalStateT 0 $ do
         case runParser prog () fn inp of
             (Right p) -> do
-                p' <- annotate deg_max $ basis ++ p
+                p' <- annotate deg_max $ basis `mappend` p
                 checked <- check deg_max p'
                 return (checked, p')
             (Left e) -> do
@@ -110,7 +110,7 @@ main = do
         Nothing ->
             putStrLn "Typechecking failed"
         Just (programs, p) -> do
-            let module_programs = filter (isNothing . flip lookup basis . fst) programs
+            let module_programs = filter (isNothing . flip lookup (getProg basis) . fst) programs
             feasible <- forM module_programs $ \(f, program) ->  do
                let (optimums, magnitudes) = unzip $ progressive_solve program
                let infeasible = any null optimums

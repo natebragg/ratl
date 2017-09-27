@@ -10,14 +10,14 @@ import Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog,
+    Prog(..),
     )
 
 import Data.Maybe (fromJust)
 import Control.Monad (guard)
 
 run :: Prog a -> Val -> Val
-run phi args = eval [] (App (V "main") [(Val args)])
+run (Prog phi) args = eval [] (App (V "main") [(Val args)])
     where eval rho (Var x) = fromJust $ lookup x rho
           eval rho (Val v) = v
           eval rho (App (V "if") [ep, et, ef]) =

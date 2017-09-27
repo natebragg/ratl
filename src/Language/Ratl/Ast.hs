@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Language.Ratl.Ast (
     Embeddable(..),
@@ -8,7 +9,7 @@ module Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog
+    Prog(..)
 ) where
 
 import Language.Ratl.Ty (FunTy)
@@ -66,4 +67,5 @@ instance Show (Fun a) where
 data Ex = Var Var | Val Val | App Var [Ex]
     deriving (Show, Eq)
 
-type Prog a = [(Var, Fun a)]
+newtype Prog a = Prog {getProg :: [(Var, Fun a)]}
+    deriving (Monoid)
