@@ -4,12 +4,10 @@ module Language.Ratl.Elab (
 ) where
 
 import Data.List (intersect, union, nub, foldl', transpose)
-import Data.Maybe (isJust, fromJust)
 import Control.Applicative (empty)
 import Control.Arrow (second, (&&&), (***))
-import Control.Monad (guard)
+import Control.Monad (guard, MonadPlus(..))
 import Control.Monad.State (StateT)
-import Control.Monad.Trans.Maybe (MaybeT)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.Program (
@@ -102,14 +100,17 @@ shift :: [a] -> ([a], [[a]])
 shift ps = (p_1, transpose [ps, p_ik])
     where (p_1, p_ik) = splitAt 1 ps
 
-check :: Monad m => Int -> Prog Anno -> StateT Anno (MaybeT m) ProgEnv
+hoist :: MonadPlus m => Maybe a -> m a
+hoist = maybe mzero return
+
+check :: MonadPlus m => Int -> Prog Anno -> StateT Anno m ProgEnv
 check deg_max fs = programs
     where sigma = map (second tyOf) fs
           tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
           programs = do (los, cs) <- (zip (map fst fs) *** concat) <$> unzip <$> mapM (elabF . snd) fs
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
-          elabF :: Monad m => Fun Anno -> StateT Anno (MaybeT m) ([LinearFunction], [GeneralConstraint])
+          elabF :: MonadPlus m => Fun Anno -> StateT Anno m ([LinearFunction], [GeneralConstraint])
           elabF (Fun fty@(Arrow qf tys ty') x e) = do
                     (ty, q, cs) <- elabE (zip [x] tys) e
                     let ty'' = tysubst (solve [] (ty, ty')) ty
@@ -121,22 +122,18 @@ check deg_max fs = programs
                     return $ (objectives, (Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0):equiv ++ cs)
           elabF (Native (Arrow qf _ _) _ _) = do
                     return ([], [])
-          elabE :: Monad m => [(Var, Ty Anno)] -> Ex -> StateT Anno (MaybeT m) (Ty Anno, Annos, [GeneralConstraint])
+          elabE :: MonadPlus m => [(Var, Ty Anno)] -> Ex -> StateT Anno m (Ty Anno, Annos, [GeneralConstraint])
           elabE gamma e = elab e
-             where elab :: Monad m => Ex -> StateT Anno (MaybeT m) (Ty Anno, Annos, [GeneralConstraint])
-                   elab (Var x)       = do let bnd = lookup x gamma
-                                           guard $ isJust bnd
-                                           let Just ty = bnd
+             where elab :: MonadPlus m => Ex -> StateT Anno m (Ty Anno, Annos, [GeneralConstraint])
+                   elab (Var x)       = do ty <- hoist $ lookup x gamma
                                            q <- freshAnno
                                            return (ty, Pay q, [Sparse [(q, 1.0)] `Geq` k_var])
                    elab (Val v)       = do ty <- elabV v
                                            q <- freshAnno
                                            return (ty, Pay q, [Sparse [(q, 1.0)] `Geq` k_val])
                    elab (App f es)    = do (tys, qs, cs) <- unzip3 <$> mapM elab es
+                                           sig@(Arrow qf tys' ty'') <- instantiate tys <$> hoist (lookup f sigma)
                                            q <- freshAnno
-                                           let sig = lookup f sigma
-                                           guard $ isJust sig
-                                           let (Arrow qf tys' ty'') = instantiate tys $ fromJust sig
                                            guard $ all (uncurry eqTy) (zip tys tys')
                                            let equiv = flip concatMap (zip tys tys') $ \(ty, ty') -> case (ty, ty') of
                                                         (ListTy ps _, ListTy pfs _) -> [Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0 | (p, pf) <- zip ps pfs, p /= pf]
@@ -153,10 +150,10 @@ check deg_max fs = programs
                                                            sh_p1 = map (flip (,) 1.0) p_1
                                                            (p_1, p_ik) = shift ps
                                                 _ -> return (ty'', Pay q, (Sparse ([(q, 1.0), (qf, -1.0)] ++ concat ts) `Geq` k_app):equiv ++ concat cs)
-          elabV :: Monad m => Val -> StateT Anno (MaybeT m) (Ty Anno)
+          elabV :: MonadPlus m => Val -> StateT Anno m (Ty Anno)
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l
-          elabL :: Monad m => List -> StateT Anno (MaybeT m) (Ty Anno)
+          elabL :: MonadPlus m => List -> StateT Anno m (Ty Anno)
           elabL Nil        = freshListTy deg_max $ Tyvar "a"
           elabL (Cons v l) = do
                 vty <- elabV v
