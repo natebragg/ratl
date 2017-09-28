@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Language.Ratl.Anno (
     Anno,
     annotate,
@@ -7,7 +9,7 @@ module Language.Ratl.Anno (
 ) where
 
 import Control.Monad (replicateM)
-import Control.Monad.State (StateT, get, put)
+import Control.Monad.State (MonadState, get, put)
 import Control.Arrow (second)
 
 import Language.Ratl.Ty (
@@ -27,7 +29,7 @@ import Language.Ratl.Ast (
 type Anno = Int
 
 class Annotatory a where
-    annotate :: Monad m => Int -> a b -> StateT Anno m (a Anno)
+    annotate :: MonadState Anno m => Int -> a b -> m (a Anno)
 
 instance Annotatory Prog where
     annotate deg_max (Prog p) = Prog <$> mapM (mapM (annotate deg_max)) p
@@ -53,18 +55,18 @@ instance Annotatory Ty where
     annotate deg_max NatTy = return NatTy
     annotate deg_max (Tyvar x) = return (Tyvar x)
 
-freshAnno :: Monad m => StateT Anno m Anno
+freshAnno :: MonadState Anno m => m Anno
 freshAnno = do
     q <- get
     put (q + 1)
     return q
 
-freshListTy :: Monad m => Int -> Ty Anno -> StateT Anno m (Ty Anno)
+freshListTy :: MonadState Anno m => Int -> Ty Anno -> m (Ty Anno)
 freshListTy deg_max tau = do
     ps <- replicateM deg_max freshAnno
     return $ ListTy ps tau
 
-freshFunTy :: Monad m => [Ty Anno] -> Ty Anno -> StateT Anno m (FunTy Anno)
+freshFunTy :: MonadState Anno m => [Ty Anno] -> Ty Anno -> m (FunTy Anno)
 freshFunTy taus tau' = do
     q <- freshAnno
     return $ Arrow q taus tau'
