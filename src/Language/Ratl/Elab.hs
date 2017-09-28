@@ -10,6 +10,7 @@ import Control.Applicative (empty)
 import Control.Arrow (second, (&&&), (***))
 import Control.Monad (guard, MonadPlus(..))
 import Control.Monad.State (MonadState)
+import Control.Monad.Reader (MonadReader, runReaderT, asks)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.Program (
@@ -114,7 +115,7 @@ check deg_max (Prog fs) = programs
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> m ([LinearFunction], [GeneralConstraint])
           elabF (Fun fty@(Arrow qf tys ty') x e) = do
-                    (ty, q, cs) <- elabE (zip [x] tys) e
+                    (ty, q, cs) <- runReaderT (elabE e) (zip [x] tys)
                     let ty'' = tysubst (solve [] (ty, ty')) ty
                     guard $ eqTy ty' ty''
                     let equiv = case (ty', ty'') of
@@ -124,34 +125,32 @@ check deg_max (Prog fs) = programs
                     return $ (objectives, (Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0):equiv ++ cs)
           elabF (Native (Arrow qf _ _) _ _) = do
                     return ([], [])
-          elabE :: (MonadPlus m, MonadState Anno m) => [(Var, Ty Anno)] -> Ex -> m (Ty Anno, Annos, [GeneralConstraint])
-          elabE gamma e = elab e
-             where elab :: (MonadPlus m, MonadState Anno m) => Ex -> m (Ty Anno, Annos, [GeneralConstraint])
-                   elab (Var x)       = do ty <- hoist $ lookup x gamma
-                                           q <- freshAnno
-                                           return (ty, Pay q, [Sparse [(q, 1.0)] `Geq` k_var])
-                   elab (Val v)       = do ty <- elabV v
-                                           q <- freshAnno
-                                           return (ty, Pay q, [Sparse [(q, 1.0)] `Geq` k_val])
-                   elab (App f es)    = do (tys, qs, cs) <- unzip3 <$> mapM elab es
-                                           sig@(Arrow qf tys' ty'') <- instantiate tys <$> hoist (lookup f sigma)
-                                           q <- freshAnno
-                                           guard $ all (uncurry eqTy) (zip tys tys')
-                                           let equiv = flip concatMap (zip tys tys') $ \(ty, ty') -> case (ty, ty') of
-                                                        (ListTy ps _, ListTy pfs _) -> [Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0 | (p, pf) <- zip ps pfs, p /= pf]
-                                                        _                           -> []
-                                           let ts = map (transact . flip (,) (-1.0)) qs
-                                           case (f, ts, tys, ty'') of
-                                                (V "if", [tp, tt, tf], _, _) ->
-                                                       return (ty'', Pay q, (Sparse ((q, 1.0):(qf, -1.0):tp ++ tt) `Geq` (k_ifp + k_ift)):
-                                                                            (Sparse ((q, 1.0):(qf, -1.0):tp ++ tf) `Geq` (k_ifp + k_iff)):equiv ++ concat cs)
-                                                (V "tail", _, [ListTy ps _], ListTy rs _) ->
-                                                    do q' <- freshAnno
-                                                       return (ty'', Exchange q q', (Sparse ([(q, 1.0), (q', -1.0), (qf, -1.0)] ++ sh_p1 ++ concat ts) `Geq` k_app):equiv ++ sh_p_ik ++ concat cs)
-                                                     where sh_p_ik = [Sparse ((r, -1.0):map (flip (,) 1.0) sps) `Geq` 0.0 | (sps, r) <- zip p_ik rs, not $ elem r sps]
-                                                           sh_p1 = map (flip (,) 1.0) p_1
-                                                           (p_1, p_ik) = shift ps
-                                                _ -> return (ty'', Pay q, (Sparse ([(q, 1.0), (qf, -1.0)] ++ concat ts) `Geq` k_app):equiv ++ concat cs)
+          elabE :: (MonadPlus m, MonadState Anno m, MonadReader [(Var, Ty Anno)] m) => Ex -> m (Ty Anno, Annos, [GeneralConstraint])
+          elabE (Var x)    = do ty <- hoist =<< asks (lookup x)
+                                q <- freshAnno
+                                return (ty, Pay q, [Sparse [(q, 1.0)] `Geq` k_var])
+          elabE (Val v)    = do ty <- elabV v
+                                q <- freshAnno
+                                return (ty, Pay q, [Sparse [(q, 1.0)] `Geq` k_val])
+          elabE (App f es) = do (tys, qs, cs) <- unzip3 <$> mapM elabE es
+                                sig@(Arrow qf tys' ty'') <- instantiate tys <$> hoist (lookup f sigma)
+                                q <- freshAnno
+                                guard $ all (uncurry eqTy) (zip tys tys')
+                                let equiv = flip concatMap (zip tys tys') $ \(ty, ty') -> case (ty, ty') of
+                                             (ListTy ps _, ListTy pfs _) -> [Sparse [(p, 1.0), (pf, -1.0)] `Eql` 0.0 | (p, pf) <- zip ps pfs, p /= pf]
+                                             _                           -> []
+                                let ts = map (transact . flip (,) (-1.0)) qs
+                                case (f, ts, tys, ty'') of
+                                     (V "if", [tp, tt, tf], _, _) ->
+                                            return (ty'', Pay q, (Sparse ((q, 1.0):(qf, -1.0):tp ++ tt) `Geq` (k_ifp + k_ift)):
+                                                                 (Sparse ((q, 1.0):(qf, -1.0):tp ++ tf) `Geq` (k_ifp + k_iff)):equiv ++ concat cs)
+                                     (V "tail", _, [ListTy ps _], ListTy rs _) ->
+                                         do q' <- freshAnno
+                                            return (ty'', Exchange q q', (Sparse ([(q, 1.0), (q', -1.0), (qf, -1.0)] ++ sh_p1 ++ concat ts) `Geq` k_app):equiv ++ sh_p_ik ++ concat cs)
+                                          where sh_p_ik = [Sparse ((r, -1.0):map (flip (,) 1.0) sps) `Geq` 0.0 | (sps, r) <- zip p_ik rs, not $ elem r sps]
+                                                sh_p1 = map (flip (,) 1.0) p_1
+                                                (p_1, p_ik) = shift ps
+                                     _ -> return (ty'', Pay q, (Sparse ([(q, 1.0), (qf, -1.0)] ++ concat ts) `Geq` k_app):equiv ++ concat cs)
           elabV :: (MonadPlus m, MonadState Anno m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l
