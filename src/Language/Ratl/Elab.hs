@@ -10,7 +10,7 @@ import Control.Applicative (empty)
 import Control.Arrow (second, (&&&))
 import Control.Monad (guard, MonadPlus(..))
 import Control.Monad.State (MonadState)
-import Control.Monad.Reader (MonadReader, runReaderT, ask, asks)
+import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, ReaderT, ask, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, mapWriterT, WriterT, tell)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
@@ -125,21 +125,25 @@ check deg_max (Prog fs) = programs
           costof k = asks (k . snd)
           equate (ListTy ps _) ts = [Sparse ((p, 1.0):map (flip (,) (-1.0)) qs) `Eql` 0.0 | (p:qs) <- transpose (ps:map psOf ts), not $ elem p qs]
           equate _ _ = []
-          programs = do (los, cs) <- flip runReaderT constant $ runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
+          programs = do (los, cs) <- runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
-          elabF :: (MonadPlus m, MonadState Anno m, MonadReader Cost m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
-          elabF (Fun fty@(Arrow qf tys ty') x e) = do
+          elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
+          elabF f@(Fun fty _ _) = do
                     mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
-                        do cost <- ask
-                           (ty, q) <- runReaderT (elabE e) (zip [x] tys, cost)
-                           let ty'' = tysubst (solve [] (ty, ty')) ty
-                           guard $ eqTy ty' ty''
-                           constrain $ equate ty' [ty'']
-                           constrain [Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0]
+                        runReaderT (elabFE f) constant
                     return $ map (objective fty) [deg_max,deg_max-1..0]
-          elabF (Native (Arrow qf _ _) _ _) = do
+          elabF (Native _ _ _) = do
                     return []
-          elabE :: (MonadPlus m, MonadState Anno m, MonadReader (TyEnv Anno, Cost) m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> m (Ty Anno, Annos)
+          elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT Cost m ()
+          elabFE (Fun (Arrow qf tys ty') x e) = do
+                    (ty, q) <- withReaderT ((,) $ zip [x] tys) $ elabE e
+                    let ty'' = tysubst (solve [] (ty, ty')) ty
+                    guard $ eqTy ty' ty''
+                    constrain $ equate ty' [ty'']
+                    constrain [Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0]
+          elabFE (Native _ _ _) = do
+                    return ()
+          elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT (TyEnv Anno, Cost) m (Ty Anno, Annos)
           elabE (Var x)    = do ty <- hoist =<< gamma x
                                 ty' <- annotate deg_max ty
                                 share [(ty, [ty'])]
