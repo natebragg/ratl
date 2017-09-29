@@ -11,6 +11,7 @@ import Data.Char (chr, ord)
 data Ty a = NatTy
           | ListTy [a] (Ty a)
           | Tyvar String
+    deriving (Eq, Ord)
 
 instance Show (Ty a) where
     show NatTy = "Nat"

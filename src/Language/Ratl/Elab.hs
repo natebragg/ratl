@@ -1,17 +1,17 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Language.Ratl.Elab (
-    FunEnv,
     check,
 ) where
 
 import Data.List (intersect, union, nub, foldl', transpose)
+import Data.Map (fromListWith, foldMapWithKey)
 import Control.Applicative (empty)
 import Control.Arrow (second, (&&&))
 import Control.Monad (guard, MonadPlus(..))
 import Control.Monad.State (MonadState)
 import Control.Monad.Reader (MonadReader, runReaderT, asks)
-import Control.Monad.Writer (MonadWriter, runWriterT, tell)
+import Control.Monad.Writer (MonadWriter, runWriterT, mapWriterT, WriterT, tell)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.Program (
@@ -21,6 +21,7 @@ import Data.Clp.Program (
     )
 import Language.Ratl.Anno (
     Anno,
+    annotate,
     freshAnno,
     freshListTy,
     )
@@ -41,7 +42,8 @@ import Language.Ratl.Ast (
     Prog(..),
     )
 
-type FunEnv a = [(Var, FunTy a)]
+type TyEnv a = [(Var, Ty a)]
+type SharedTys a = [(Ty a, [Ty a])]
 type TyvarEnv a = [(String, Ty a)]
 type ProgEnv = [(Var, [GeneralForm])]
 
@@ -114,27 +116,30 @@ check deg_max (Prog fs) = programs
           tyOf (Native ty _ _) = ty
           psOf (ListTy ps _) = ps
           psOf            _  = []
-          constrain c = tell c
+          share m = tell (empty, m)
+          constrain c = tell (c, empty)
           equate (ListTy ps _) ts = [Sparse ((p, 1.0):map (flip (,) (-1.0)) qs) `Eql` 0.0 | (p:qs) <- transpose (ps:map psOf ts), not $ elem p qs]
           equate _ _ = []
           programs = do (los, cs) <- runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
-          elabF :: (MonadPlus m, MonadState Anno m, MonadWriter [GeneralConstraint] m) => Fun Anno -> m [LinearFunction]
+          elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
           elabF (Fun fty@(Arrow qf tys ty') x e) = do
-                    (ty, q) <- runReaderT (elabE e) (zip [x] tys)
-                    let ty'' = tysubst (solve [] (ty, ty')) ty
-                    guard $ eqTy ty' ty''
-                    let objectives = map (objective fty) [deg_max,deg_max-1..0]
-                    tell $ equate ty' [ty'']
-                    tell [Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0]
-                    return objectives
+                    mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
+                        do (ty, q) <- runReaderT (elabE e) $ zip [x] tys
+                           let ty'' = tysubst (solve [] (ty, ty')) ty
+                           guard $ eqTy ty' ty''
+                           constrain $ equate ty' [ty'']
+                           constrain [Sparse ((qf, 1.0):transact (q, -1.0)) `Eql` 0.0]
+                    return $ map (objective fty) [deg_max,deg_max-1..0]
           elabF (Native (Arrow qf _ _) _ _) = do
                     return []
-          elabE :: (MonadPlus m, MonadState Anno m, MonadReader [(Var, Ty Anno)] m, MonadWriter [GeneralConstraint] m) => Ex -> m (Ty Anno, Annos)
+          elabE :: (MonadPlus m, MonadState Anno m, MonadReader (TyEnv Anno) m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> m (Ty Anno, Annos)
           elabE (Var x)    = do ty <- hoist =<< asks (lookup x)
+                                ty' <- annotate deg_max ty
+                                share [(ty, [ty'])]
                                 q <- freshAnno
                                 constrain [Sparse [(q, 1.0)] `Geq` k_var]
-                                return (ty, Pay q)
+                                return (ty', Pay q)
           elabE (Val v)    = do ty <- elabV v
                                 q <- freshAnno
                                 constrain [Sparse [(q, 1.0)] `Geq` k_val]
