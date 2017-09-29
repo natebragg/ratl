@@ -47,13 +47,16 @@ type SharedTys a = [(Ty a, [Ty a])]
 type TyvarEnv a = [(String, Ty a)]
 type ProgEnv = [(Var, [GeneralForm])]
 
-k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Double
-k_var = 1.0
-k_val = 1.0
-k_app = 2.0
-k_ifp = 1.0
-k_ift = 1.0
-k_iff = 1.0
+data Cost = Cost { k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Double }
+
+constant = Cost {
+        k_var = 1.0,
+        k_val = 1.0,
+        k_app = 2.0,
+        k_ifp = 1.0,
+        k_ift = 1.0,
+        k_iff = 1.0
+    }
 
 data Annos = Pay Anno | Exchange Anno Anno
 
@@ -118,6 +121,8 @@ check deg_max (Prog fs) = programs
           psOf            _  = []
           share m = tell (empty, m)
           constrain c = tell (c, empty)
+          gamma x = asks (lookup x . fst)
+          costof k = asks (k . snd)
           equate (ListTy ps _) ts = [Sparse ((p, 1.0):map (flip (,) (-1.0)) qs) `Eql` 0.0 | (p:qs) <- transpose (ps:map psOf ts), not $ elem p qs]
           equate _ _ = []
           programs = do (los, cs) <- runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
@@ -125,7 +130,7 @@ check deg_max (Prog fs) = programs
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
           elabF (Fun fty@(Arrow qf tys ty') x e) = do
                     mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
-                        do (ty, q) <- runReaderT (elabE e) $ zip [x] tys
+                        do (ty, q) <- runReaderT (elabE e) (zip [x] tys, constant)
                            let ty'' = tysubst (solve [] (ty, ty')) ty
                            guard $ eqTy ty' ty''
                            constrain $ equate ty' [ty'']
@@ -133,16 +138,18 @@ check deg_max (Prog fs) = programs
                     return $ map (objective fty) [deg_max,deg_max-1..0]
           elabF (Native (Arrow qf _ _) _ _) = do
                     return []
-          elabE :: (MonadPlus m, MonadState Anno m, MonadReader (TyEnv Anno) m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> m (Ty Anno, Annos)
-          elabE (Var x)    = do ty <- hoist =<< asks (lookup x)
+          elabE :: (MonadPlus m, MonadState Anno m, MonadReader (TyEnv Anno, Cost) m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> m (Ty Anno, Annos)
+          elabE (Var x)    = do ty <- hoist =<< gamma x
                                 ty' <- annotate deg_max ty
                                 share [(ty, [ty'])]
                                 q <- freshAnno
-                                constrain [Sparse [(q, 1.0)] `Geq` k_var]
+                                k <- costof k_var
+                                constrain [Sparse [(q, 1.0)] `Geq` k]
                                 return (ty', Pay q)
           elabE (Val v)    = do ty <- elabV v
                                 q <- freshAnno
-                                constrain [Sparse [(q, 1.0)] `Geq` k_val]
+                                k <- costof k_val
+                                constrain [Sparse [(q, 1.0)] `Geq` k]
                                 return (ty, Pay q)
           elabE (App f es) = do (tys, qs) <- unzip <$> mapM elabE es
                                 sig@(Arrow qf tys' ty'') <- instantiate tys <$> hoist (lookup f sigma)
@@ -152,17 +159,20 @@ check deg_max (Prog fs) = programs
                                 let ts = map (transact . flip (,) (-1.0)) qs
                                 case (f, ts, tys, ty'') of
                                      (V "if", [tp, tt, tf], _, _) ->
-                                         do constrain [Sparse ((q, 1.0):(qf, -1.0):tp ++ tt) `Geq` (k_ifp + k_ift),
-                                                       Sparse ((q, 1.0):(qf, -1.0):tp ++ tf) `Geq` (k_ifp + k_iff)]
+                                         do [kp, kt, kf] <- sequence [costof k_ifp, costof k_ift, costof k_iff]
+                                            constrain [Sparse ((q, 1.0):(qf, -1.0):tp ++ tt) `Geq` (kp + kt),
+                                                       Sparse ((q, 1.0):(qf, -1.0):tp ++ tf) `Geq` (kp + kf)]
                                             return (ty'', Pay q)
                                      (V "tail", _, [ListTy ps _], ListTy rs _) ->
                                          do q' <- freshAnno
-                                            constrain [Sparse ([(q, 1.0), (q', -1.0), (qf, -1.0)] ++ sh_p1 ++ concat ts) `Geq` k_app]
+                                            k <- costof k_app
+                                            constrain [Sparse ([(q, 1.0), (q', -1.0), (qf, -1.0)] ++ sh_p1 ++ concat ts) `Geq` k]
                                             constrain [Sparse ((r, -1.0):map (flip (,) 1.0) sps) `Geq` 0.0 | (sps, r) <- zip p_ik rs, not $ elem r sps]
                                             return (ty'', Exchange q q')
                                           where sh_p1 = map (flip (,) 1.0) p_1
                                                 (p_1, p_ik) = shift ps
-                                     _ -> do constrain [Sparse ([(q, 1.0), (qf, -1.0)] ++ concat ts) `Geq` k_app]
+                                     _ -> do k <- costof k_app
+                                             constrain [Sparse ([(q, 1.0), (qf, -1.0)] ++ concat ts) `Geq` k]
                                              return (ty'', Pay q)
           elabV :: (MonadPlus m, MonadState Anno m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
