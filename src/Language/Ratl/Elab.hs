@@ -10,7 +10,7 @@ import Control.Applicative (empty)
 import Control.Arrow (second, (&&&))
 import Control.Monad (guard, MonadPlus(..))
 import Control.Monad.State (MonadState)
-import Control.Monad.Reader (MonadReader, runReaderT, asks)
+import Control.Monad.Reader (MonadReader, runReaderT, ask, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, mapWriterT, WriterT, tell)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
@@ -125,12 +125,13 @@ check deg_max (Prog fs) = programs
           costof k = asks (k . snd)
           equate (ListTy ps _) ts = [Sparse ((p, 1.0):map (flip (,) (-1.0)) qs) `Eql` 0.0 | (p:qs) <- transpose (ps:map psOf ts), not $ elem p qs]
           equate _ _ = []
-          programs = do (los, cs) <- runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
+          programs = do (los, cs) <- flip runReaderT constant $ runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
-          elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
+          elabF :: (MonadPlus m, MonadState Anno m, MonadReader Cost m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
           elabF (Fun fty@(Arrow qf tys ty') x e) = do
                     mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
-                        do (ty, q) <- runReaderT (elabE e) (zip [x] tys, constant)
+                        do cost <- ask
+                           (ty, q) <- runReaderT (elabE e) (zip [x] tys, cost)
                            let ty'' = tysubst (solve [] (ty, ty')) ty
                            guard $ eqTy ty' ty''
                            constrain $ equate ty' [ty'']
