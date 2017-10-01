@@ -98,6 +98,10 @@ instantiate tys (Arrow q tys' ty) = Arrow q (map (tysubst varenv) tys') (tysubst
                   bound = nub $ map varnum $ concatMap freein $ ty:tys'
           varenv = foldl' solve [] $ zip tys'' tys
 
+instantiatefun :: [Ty a] -> Fun a -> Fun a
+instantiatefun tys (Fun ty x e) = Fun (instantiate tys ty) x e
+instantiatefun tys (Native ty a f) = Native (instantiate tys ty) a f
+
 objective :: FunTy Anno -> Int -> LinearFunction
 objective fty degree = Sparse $ objF fty
     where payIf d = if degree == d then 1.0 else 0.0
@@ -114,8 +118,7 @@ hoist = maybe mzero return
 
 check :: (MonadPlus m, MonadState Anno m) => Int -> Prog Anno -> m ProgEnv
 check deg_max (Prog fs) = programs
-    where sigma = map (second tyOf) fs
-          tyOf (Fun ty _ _) = ty
+    where tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
           psOf (ListTy ps _) = ps
           psOf            _  = []
@@ -157,7 +160,7 @@ check deg_max (Prog fs) = programs
                                 constrain [Sparse [exchange $ Consume q] `Geq` k]
                                 return (ty, Supply q)
           elabE (App f es) = do (tys, qs) <- unzip <$> mapM elabE es
-                                sig@(Arrow qf tys' ty'') <- instantiate tys <$> hoist (lookup f sigma)
+                                sig@(Arrow qf tys' ty'') <- tyOf <$> instantiatefun tys <$> hoist (lookup f fs)
                                 q <- freshAnno
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
