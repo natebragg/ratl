@@ -123,7 +123,7 @@ check deg_max (Prog fs) = programs
           constrain c = tell (c, empty)
           gamma x = asks (lookup x . fst)
           costof k = asks (k . snd)
-          equate (ListTy ps _) ts = [Sparse ((p, 1.0):map (flip (,) (-1.0)) qs) `Eql` 0.0 | (p:qs) <- transpose (ps:map psOf ts), not $ elem p qs]
+          equate (ListTy ps _) ts = [Sparse ((p, 1.0):map (flip (,) (-1.0)) qs) `Eql` 0.0 | (p, qs) <- zip ps $ transpose $ map psOf ts, not $ elem p qs]
           equate _ _ = []
           programs = do (los, cs) <- runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
