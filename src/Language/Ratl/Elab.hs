@@ -22,6 +22,7 @@ import Data.Clp.Program (
 import Language.Ratl.Anno (
     Anno,
     annotate,
+    reannotate,
     freshAnno,
     freshListTy,
     )
@@ -148,7 +149,7 @@ check deg_max (Prog fs) = programs
                     return ()
           elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT (TyEnv Anno, Cost) m (Ty Anno, Resource)
           elabE (Var x)    = do ty <- hoist =<< gamma x
-                                ty' <- annotate deg_max ty
+                                ty' <- reannotate ty
                                 share [(ty, [ty'])]
                                 q <- freshAnno
                                 k <- costof k_var
