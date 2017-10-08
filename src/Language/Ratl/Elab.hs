@@ -172,11 +172,14 @@ check deg_max (Prog fs) = programs
                                 constrain [Sparse [exchange $ Consume q] `Geq` k]
                                 return (ty, Supply q)
           elabE (App f es) = do (tys, qs) <- unzip <$> mapM elabE es
-                                sig@(Arrow qf tys' ty'') <- tyOf <$> instantiatefun tys <$> hoist (lookup f fs)
+                                asc <- hoist (lookup f fs)
+                                fun <- annotate deg_max $ instantiatefun tys asc
+                                sig@(Arrow qf tys' ty'') <- annotate deg_max $ tyOf fun
+                                constrain $ equate sig [tyOf asc, tyOf fun]
                                 q <- freshAnno
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
-                                case (f, qs, tys, ty'') of
+                                case (f, qs, tys', ty'') of
                                      (V "if", [qip, qit, qif], _, _) ->
                                          do [kp, kt, kf] <- sequence [costof k_ifp, costof k_ift, costof k_iff]
                                             constrain [Sparse (map exchange [Consume q, Supply qf, qip, qit]) `Geq` (kp + kt),
