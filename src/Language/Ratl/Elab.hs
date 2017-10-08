@@ -117,18 +117,29 @@ shift ps = (p_1, transpose [ps, p_ik])
 hoist :: MonadPlus m => Maybe a -> m a
 hoist = maybe mzero return
 
+class Equatable a where
+    equate :: a Anno -> [a Anno] -> [GeneralConstraint]
+
+instance Equatable Ty where
+    equate t ts = [Sparse (map exchange (Consume p:map Supply qs)) `Eql` 0.0 | (p, qs) <- zip (qsOf t) $ transpose $ map qsOf ts, not $ elem p qs]
+        where qsOf (ListTy qs _) = qs
+              qsOf            _  = []
+
+instance Equatable FunTy where
+    equate a as = (concatMap (uncurry equate) $ zip (psOf a) (transpose $ map psOf as) ++ [(rOf a, map rOf as)]) ++
+                  [Sparse (map exchange (Consume p:map Supply qs)) `Eql` 0.0 | (p, qs) <- [(qsOf a, map qsOf as)], not $ elem p qs]
+        where qsOf (Arrow qs   _   _) = qs
+              psOf (Arrow  _ tys   _) = tys
+              rOf  (Arrow  _   _ ty') = ty'
+
 check :: (MonadPlus m, MonadState Anno m) => Int -> Prog Anno -> m ProgEnv
 check deg_max (Prog fs) = programs
     where tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
-          psOf (ListTy ps _) = ps
-          psOf            _  = []
           share m = tell (empty, m)
           constrain c = tell (c, empty)
           gamma x = asks (lookup x . fst)
           costof k = asks (k . snd)
-          equate (ListTy ps _) ts = [Sparse (map exchange (Consume p:map Supply qs)) `Eql` 0.0 | (p, qs) <- zip ps $ transpose $ map psOf ts, not $ elem p qs]
-          equate _ _ = []
           programs = do (los, cs) <- runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
