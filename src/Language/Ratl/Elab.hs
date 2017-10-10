@@ -117,17 +117,22 @@ shift ps = (p_1, transpose [ps, p_ik])
 hoist :: MonadPlus m => Maybe a -> m a
 hoist = maybe mzero return
 
-class Equatable a where
+class Comparable a where
+    relate :: (LinearFunction -> Double -> GeneralConstraint) -> a Anno -> [a Anno] -> [GeneralConstraint]
     equate :: a Anno -> [a Anno] -> [GeneralConstraint]
+    exceed :: a Anno -> [a Anno] -> [GeneralConstraint]
 
-instance Equatable Ty where
-    equate t ts = [Sparse (map exchange (Consume p:map Supply qs)) `Eql` 0.0 | (p, qs) <- zip (qsOf t) $ transpose $ map qsOf ts, not $ elem p qs]
+    equate = relate Eql
+    exceed = relate Geq
+
+instance Comparable Ty where
+    relate c t ts = [Sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 | (p, qs) <- zip (qsOf t) $ transpose $ map qsOf ts, not $ elem p qs]
         where qsOf (ListTy qs _) = qs
               qsOf            _  = []
 
-instance Equatable FunTy where
-    equate a as = (concatMap (uncurry equate) $ zip (psOf a) (transpose $ map psOf as) ++ [(rOf a, map rOf as)]) ++
-                  [Sparse (map exchange (Consume p:map Supply qs)) `Eql` 0.0 | (p, qs) <- [(qsOf a, map qsOf as)], not $ elem p qs]
+instance Comparable FunTy where
+    relate c a as = (concatMap (uncurry (relate c)) $ zip (psOf a) (transpose $ map psOf as) ++ [(rOf a, map rOf as)]) ++
+                    [Sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 | (p, qs) <- [(qsOf a, map qsOf as)], not $ elem p qs]
         where qsOf (Arrow qs   _   _) = qs
               psOf (Arrow  _ tys   _) = tys
               rOf  (Arrow  _   _ ty') = ty'
@@ -180,8 +185,9 @@ check deg_max (Prog fs) = programs
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
                                 case (f, qs, tys', ty'') of
-                                     (V "if", [qip, qit, qif], _, _) ->
+                                     (V "if", [qip, qit, qif], [typ, tyt, tyf], _) ->
                                          do [kp, kt, kf] <- sequence [costof k_ifp, costof k_ift, costof k_iff]
+                                            constrain $ exceed tyt [ty''] ++ exceed tyf [ty'']
                                             constrain [Sparse (map exchange [Consume q, Supply qf, qip, qit]) `Geq` (kp + kt),
                                                        Sparse (map exchange [Consume q, Supply qf, qip, qif]) `Geq` (kp + kf)]
                                             return (ty'', Supply q)
