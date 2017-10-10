@@ -110,8 +110,8 @@ objective fty degree = Sparse $ objF fty
           objTy (ListTy ps _) = map (second payIf) $ zip ps [1..]
           objTy            _  = []
 
-shift :: [a] -> ([a], [[a]])
-shift ps = (p_1, transpose [ps, p_ik])
+shift :: [a] -> [[a]]
+shift ps = transpose [p_1] ++ transpose [ps, p_ik]
     where (p_1, p_ik) = splitAt 1 ps
 
 hoist :: MonadPlus m => Maybe a -> m a
@@ -193,11 +193,10 @@ check deg_max (Prog fs) = programs
                                             return (ty'', Supply q)
                                      (V "tail", _, [ListTy ps _], ListTy rs _) ->
                                          do k <- costof k_app
-                                            constrain [Sparse (map exchange (Supply q:Supply qf:sh_p1 ++ qs)) `Geq` k]
-                                            constrain [Sparse (map exchange (Supply r:map Consume sps)) `Geq` 0.0 | (sps, r) <- zip p_ik rs, not $ elem r sps]
+                                            constrain [Sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
+                                                       (r, sps) <- zip (qf:rs) (shift ps), not $ elem r sps]
+                                            constrain [Sparse (map exchange (Supply q:Consume qf:qs)) `Geq` k]
                                             return (ty'', Consume q)
-                                          where sh_p1 = map Consume p_1
-                                                (p_1, p_ik) = shift ps
                                      _ -> do k <- costof k_app
                                              constrain [Sparse (map exchange (Consume q:Supply qf:qs)) `Geq` k]
                                              return (ty'', Supply q)
