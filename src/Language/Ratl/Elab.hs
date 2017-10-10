@@ -148,12 +148,10 @@ check deg_max (Prog fs) = programs
           programs = do (los, cs) <- runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
-          elabF f@(Fun fty _ _) = do
+          elabF f = do
                     mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
                         runReaderT (elabFE f) constant
-                    return $ map (objective fty) [deg_max,deg_max-1..0]
-          elabF (Native _ _ _) = do
-                    return []
+                    return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT Cost m ()
           elabFE (Fun (Arrow qf tys ty') x e) = do
                     (ty, q) <- withReaderT ((,) $ zip [x] tys) $ elabE e
