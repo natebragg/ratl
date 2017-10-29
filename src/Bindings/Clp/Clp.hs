@@ -23,6 +23,10 @@ module Bindings.Clp.Clp (
     objective,
     columnLower,
     columnUpper,
+    getNumElements,
+    getIndices,
+    getVectorLengths,
+    getElements,
     objectiveValue,
     setLogLevel,
 
@@ -70,6 +74,10 @@ foreign import ccall "Clp_rowUpper"                      rowUpper               
 foreign import ccall "Clp_objective"                     objective                     :: SimplexHandle -> IO (Ptr CDouble)
 foreign import ccall "Clp_columnLower"                   columnLower                   :: SimplexHandle -> IO (Ptr CDouble)
 foreign import ccall "Clp_columnUpper"                   columnUpper                   :: SimplexHandle -> IO (Ptr CDouble)
+foreign import ccall "Clp_getNumElements"                getNumElements                :: SimplexHandle -> IO CInt
+foreign import ccall "Clp_getIndices"                    getIndices                    :: SimplexHandle -> IO (Ptr CInt)
+foreign import ccall "Clp_getVectorLengths"              getVectorLengths              :: SimplexHandle -> IO (Ptr CInt)
+foreign import ccall "Clp_getElements"                   getElements                   :: SimplexHandle -> IO (Ptr CDouble)
 foreign import ccall "Clp_objectiveValue"                objectiveValue                :: SimplexHandle -> IO CDouble
 foreign import ccall "Clp_setLogLevel"                   setLogLevel                   :: SimplexHandle -> CInt -> IO ()
 

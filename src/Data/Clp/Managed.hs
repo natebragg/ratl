@@ -19,6 +19,10 @@ module Data.Clp.Managed (
     objective,
     columnLower,
     columnUpper,
+    getNumElements,
+    getIndices,
+    getVectorLengths,
+    getElements,
     objectiveValue,
     setLogLevel,
 
@@ -97,6 +101,22 @@ columnLower model = withForeignPtr model $ \model ->
 columnUpper :: SimplexHandle -> IO (Ptr CDouble)
 columnUpper model = withForeignPtr model $ \model ->
     Unmanaged.columnUpper model
+
+getNumElements :: SimplexHandle -> IO CInt
+getNumElements model = withForeignPtr model $ \model ->
+    Unmanaged.getNumElements model
+
+getIndices :: SimplexHandle -> IO (Ptr CInt)
+getIndices model = withForeignPtr model $ \model ->
+    Unmanaged.getIndices model
+
+getVectorLengths :: SimplexHandle -> IO (Ptr CInt)
+getVectorLengths model = withForeignPtr model $ \model ->
+    Unmanaged.getVectorLengths model
+
+getElements :: SimplexHandle -> IO (Ptr CDouble)
+getElements model = withForeignPtr model $ \model ->
+    Unmanaged.getElements model
 
 objectiveValue :: SimplexHandle -> IO CDouble
 objectiveValue model = withForeignPtr model $ \model ->

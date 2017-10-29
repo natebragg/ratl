@@ -17,6 +17,8 @@ module Data.Clp.Clp (
     setOptimizationDirection,
     rowBounds,
     columnBounds,
+    unpack,
+    getElements,
     objectiveValue,
     LogLevel(..),
     setLogLevel,
@@ -52,6 +54,7 @@ import Data.Clp.Managed (
     )
 import qualified Data.Clp.Managed as Clp
 
+import Data.List (sort)
 import Foreign.Ptr (nullPtr)
 import Foreign.ForeignPtr (ForeignPtr)
 import Foreign.C.String (peekCString, withCString)
@@ -128,6 +131,27 @@ columnBounds model = do
     cu <- map realToFrac <$> (peekArray nc =<< Clp.columnUpper model)
     ob <- map realToFrac <$> (peekArray nc =<< Clp.objective model)
     return $ zip3 cl cu ob
+
+unpack :: [(Int, Double)] -> [Double]
+unpack s = decode 0 $ sort s
+    where decode _ [] = []
+          decode c cvs = sum (map snd eqc):decode (c + 1) gtc
+                where (eqc, gtc) = span ((c ==) . fst) cvs
+
+segment :: [Int] -> [a] -> [[a]]
+segment [] [] = []
+segment [] as = [as]
+segment (n:ls) as = a:segment ls as'
+    where (a, as') = splitAt n as
+
+getElements :: SimplexHandle -> IO [[Double]]
+getElements model = do
+    ne <- fromIntegral <$> Clp.getNumElements model
+    is <- map fromIntegral <$> (peekArray ne =<< Clp.getIndices model)
+    es <- map realToFrac <$> (peekArray ne =<< Clp.getElements model)
+    nc <- fromIntegral <$> Clp.getNumCols model
+    vl <- map fromIntegral <$> (peekArray nc =<< Clp.getVectorLengths model)
+    return $ map unpack $ segment vl (zip is es)
 
 objectiveValue :: SimplexHandle -> IO Double
 objectiveValue = (fmap realToFrac) . Clp.objectiveValue

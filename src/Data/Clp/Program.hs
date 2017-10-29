@@ -10,7 +10,6 @@ module Data.Clp.Program (
 
 import qualified Data.Clp.Clp as Clp
 
-import Data.List (sort)
 import System.IO.Unsafe (unsafePerformIO)
 
 inf = read "Infinity"
@@ -24,10 +23,7 @@ data LinearFunction = Dense [Double]
 
 compact :: LinearFunction -> [Double]
 compact (Dense  d) = d
-compact (Sparse s) = decode 0 $ sort s
-    where decode _ [] = []
-          decode c cvs = sum (map snd eqc):decode (c + 1) gtc
-                where (eqc, gtc) = span ((c ==) . fst) cvs
+compact (Sparse s) = Clp.unpack s
 
 type Objective = LinearFunction
 
