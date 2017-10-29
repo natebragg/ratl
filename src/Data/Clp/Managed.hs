@@ -44,6 +44,7 @@ import qualified Bindings.Clp.Clp as Unmanaged
 
 import Foreign.Ptr (Ptr)
 import Foreign.C.String (CString)
+import Foreign.C.Types (CDouble(..), CInt(..))
 import Foreign.ForeignPtr (ForeignPtr, newForeignPtr, withForeignPtr)
 
 type SimplexHandle = ForeignPtr Unmanaged.Simplex
@@ -51,43 +52,43 @@ type SimplexHandle = ForeignPtr Unmanaged.Simplex
 newModel :: IO SimplexHandle
 newModel = Unmanaged.newModel >>= newForeignPtr Unmanaged.deleteModel
 
-readMps :: SimplexHandle -> CString -> Bool -> Bool -> IO Int
+readMps :: SimplexHandle -> CString -> Bool -> Bool -> IO CInt
 readMps model filename keepNames ignoreErrors = withForeignPtr model $ \model ->
     Unmanaged.readMps model filename keepNames ignoreErrors
 
-addRows :: SimplexHandle -> Int -> Ptr Double -> Ptr Double -> Ptr Int -> Ptr Int -> Ptr Double -> IO ()
+addRows :: SimplexHandle -> CInt -> Ptr CDouble -> Ptr CDouble -> Ptr CInt -> Ptr CInt -> Ptr CDouble -> IO ()
 addRows model number rowLower rowUpper rowStarts columns elements = withForeignPtr model $ \model ->
     Unmanaged.addRows model number rowLower rowUpper rowStarts columns elements
 
-addColumns :: SimplexHandle -> Int -> Ptr Double -> Ptr Double -> Ptr Double -> Ptr Int -> Ptr Int -> Ptr Double -> IO ()
+addColumns :: SimplexHandle -> CInt -> Ptr CDouble -> Ptr CDouble -> Ptr CDouble -> Ptr CInt -> Ptr CInt -> Ptr CDouble -> IO ()
 addColumns model number columnLower columnUpper objective columnStarts rows elements = withForeignPtr model $ \model ->
     Unmanaged.addColumns model number columnLower columnUpper objective columnStarts rows elements
 
-setOptimizationDirection :: SimplexHandle -> Double -> IO ()
+setOptimizationDirection :: SimplexHandle -> CDouble -> IO ()
 setOptimizationDirection model value = withForeignPtr model $ \model ->
     Unmanaged.setOptimizationDirection model value
 
-objectiveValue :: SimplexHandle -> IO Double
+objectiveValue :: SimplexHandle -> IO CDouble
 objectiveValue model = withForeignPtr model $ \model ->
     Unmanaged.objectiveValue model
 
-setLogLevel :: SimplexHandle -> Int -> IO ()
+setLogLevel :: SimplexHandle -> CInt -> IO ()
 setLogLevel model value = withForeignPtr model $ \model ->
     Unmanaged.setLogLevel model value
 
-initialSolve :: SimplexHandle -> IO Int
+initialSolve :: SimplexHandle -> IO CInt
 initialSolve model = withForeignPtr model $ \model ->
     Unmanaged.initialSolve model
 
-dual :: SimplexHandle -> Int -> IO Int
+dual :: SimplexHandle -> CInt -> IO CInt
 dual model pass = withForeignPtr model $ \model ->
     Unmanaged.dual model pass
 
-getNumRows :: SimplexHandle -> IO Int
+getNumRows :: SimplexHandle -> IO CInt
 getNumRows model = withForeignPtr model $ \model ->
     Unmanaged.getNumRows model
 
-getNumCols :: SimplexHandle -> IO Int
+getNumCols :: SimplexHandle -> IO CInt
 getNumCols model = withForeignPtr model $ \model ->
     Unmanaged.getNumCols model
 
@@ -119,10 +120,10 @@ isIterationLimitReached :: SimplexHandle -> IO Bool
 isIterationLimitReached model = withForeignPtr model $ \model ->
     Unmanaged.isIterationLimitReached model
 
-getRowActivity :: SimplexHandle -> IO (Ptr Double)
+getRowActivity :: SimplexHandle -> IO (Ptr CDouble)
 getRowActivity model = withForeignPtr model $ \model ->
     Unmanaged.getRowActivity model
 
-getColSolution :: SimplexHandle -> IO (Ptr Double)
+getColSolution :: SimplexHandle -> IO (Ptr CDouble)
 getColSolution model = withForeignPtr model $ \model ->
     Unmanaged.getColSolution model
