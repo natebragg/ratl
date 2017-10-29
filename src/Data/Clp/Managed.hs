@@ -12,7 +12,13 @@ module Data.Clp.Managed (
     addRows,
     addColumns,
 
+    optimizationDirection,
     setOptimizationDirection,
+    rowLower,
+    rowUpper,
+    objective,
+    columnLower,
+    columnUpper,
     objectiveValue,
     setLogLevel,
 
@@ -64,9 +70,33 @@ addColumns :: SimplexHandle -> CInt -> Ptr CDouble -> Ptr CDouble -> Ptr CDouble
 addColumns model number columnLower columnUpper objective columnStarts rows elements = withForeignPtr model $ \model ->
     Unmanaged.addColumns model number columnLower columnUpper objective columnStarts rows elements
 
+optimizationDirection :: SimplexHandle -> IO CDouble
+optimizationDirection model = withForeignPtr model $ \model ->
+    Unmanaged.optimizationDirection model
+
 setOptimizationDirection :: SimplexHandle -> CDouble -> IO ()
 setOptimizationDirection model value = withForeignPtr model $ \model ->
     Unmanaged.setOptimizationDirection model value
+
+rowLower :: SimplexHandle -> IO (Ptr CDouble)
+rowLower model = withForeignPtr model $ \model ->
+    Unmanaged.rowLower model
+
+rowUpper :: SimplexHandle -> IO (Ptr CDouble)
+rowUpper model = withForeignPtr model $ \model ->
+    Unmanaged.rowUpper model
+
+objective :: SimplexHandle -> IO (Ptr CDouble)
+objective model = withForeignPtr model $ \model ->
+    Unmanaged.objective model
+
+columnLower :: SimplexHandle -> IO (Ptr CDouble)
+columnLower model = withForeignPtr model $ \model ->
+    Unmanaged.columnLower model
+
+columnUpper :: SimplexHandle -> IO (Ptr CDouble)
+columnUpper model = withForeignPtr model $ \model ->
+    Unmanaged.columnUpper model
 
 objectiveValue :: SimplexHandle -> IO CDouble
 objectiveValue model = withForeignPtr model $ \model ->

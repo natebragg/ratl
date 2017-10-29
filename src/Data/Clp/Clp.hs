@@ -13,7 +13,10 @@ module Data.Clp.Clp (
     addColumns,
 
     OptimizationDirection(..),
+    optimizationDirection,
     setOptimizationDirection,
+    rowBounds,
+    columnBounds,
     objectiveValue,
     LogLevel(..),
     setLogLevel,
@@ -105,8 +108,26 @@ addColumns model bounds elematrix =
 data OptimizationDirection = Maximize | Ignore | Minimize
     deriving (Eq, Ord, Enum, Show)
 
+optimizationDirection :: SimplexHandle -> IO OptimizationDirection
+optimizationDirection model = toEnum <$> truncate <$> (1.0 +) <$> Clp.optimizationDirection model
+
 setOptimizationDirection :: SimplexHandle -> OptimizationDirection -> IO ()
 setOptimizationDirection model dir = Clp.setOptimizationDirection model $ (fromIntegral $ fromEnum dir) - 1.0
+
+rowBounds :: SimplexHandle -> IO [(Double, Double)]
+rowBounds model = do
+    nr <- fromIntegral <$> Clp.getNumRows model
+    rl <- map realToFrac <$> (peekArray nr =<< Clp.rowLower model)
+    ru <- map realToFrac <$> (peekArray nr =<< Clp.rowUpper model)
+    return $ zip rl ru
+
+columnBounds :: SimplexHandle -> IO [(Double, Double, Double)]
+columnBounds model = do
+    nc <- fromIntegral <$> Clp.getNumCols model
+    cl <- map realToFrac <$> (peekArray nc =<< Clp.columnLower model)
+    cu <- map realToFrac <$> (peekArray nc =<< Clp.columnUpper model)
+    ob <- map realToFrac <$> (peekArray nc =<< Clp.objective model)
+    return $ zip3 cl cu ob
 
 objectiveValue :: SimplexHandle -> IO Double
 objectiveValue = (fmap realToFrac) . Clp.objectiveValue

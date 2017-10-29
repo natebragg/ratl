@@ -16,7 +16,13 @@ module Bindings.Clp.Clp (
     addRows,
     addColumns,
 
+    optimizationDirection,
     setOptimizationDirection,
+    rowLower,
+    rowUpper,
+    objective,
+    columnLower,
+    columnUpper,
     objectiveValue,
     setLogLevel,
 
@@ -57,7 +63,13 @@ foreign import ccall "Clp_readMps"        readMps        :: SimplexHandle -> CSt
 foreign import ccall "Clp_addRows"        addRows        :: SimplexHandle -> CInt -> Ptr CDouble -> Ptr CDouble -> Ptr CInt -> Ptr CInt -> Ptr CDouble -> IO ()
 foreign import ccall "Clp_addColumns"     addColumns     :: SimplexHandle -> CInt -> Ptr CDouble -> Ptr CDouble -> Ptr CDouble -> Ptr CInt -> Ptr CInt -> Ptr CDouble -> IO ()
 
+foreign import ccall "Clp_optimizationDirection"         optimizationDirection         :: SimplexHandle -> IO CDouble
 foreign import ccall "Clp_setOptimizationDirection"      setOptimizationDirection      :: SimplexHandle -> CDouble -> IO ()
+foreign import ccall "Clp_rowLower"                      rowLower                      :: SimplexHandle -> IO (Ptr CDouble)
+foreign import ccall "Clp_rowUpper"                      rowUpper                      :: SimplexHandle -> IO (Ptr CDouble)
+foreign import ccall "Clp_objective"                     objective                     :: SimplexHandle -> IO (Ptr CDouble)
+foreign import ccall "Clp_columnLower"                   columnLower                   :: SimplexHandle -> IO (Ptr CDouble)
+foreign import ccall "Clp_columnUpper"                   columnUpper                   :: SimplexHandle -> IO (Ptr CDouble)
 foreign import ccall "Clp_objectiveValue"                objectiveValue                :: SimplexHandle -> IO CDouble
 foreign import ccall "Clp_setLogLevel"                   setLogLevel                   :: SimplexHandle -> CInt -> IO ()
 
