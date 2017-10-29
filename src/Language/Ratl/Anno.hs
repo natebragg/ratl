@@ -86,5 +86,6 @@ freshListTy deg_max tau = do
 
 freshFunTy :: MonadState Anno m => [Ty Anno] -> Ty Anno -> m (FunTy Anno)
 freshFunTy taus tau' = do
-    q <- freshAnno
-    return $ Arrow q taus tau'
+    q  <- freshAnno
+    q' <- freshAnno
+    return $ Arrow (q, q') taus tau'

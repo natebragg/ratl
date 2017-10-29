@@ -32,7 +32,7 @@ varnum :: String -> Int
 varnum (v:ms) = (ord v - ord 'a') +
                 if not $ null ms then (ord 'z' - ord 'a') + read ms else 0
 
-data FunTy a = Arrow a [Ty a] (Ty a)
+data FunTy a = Arrow (a, a) [Ty a] (Ty a)
 
 instance Show (FunTy a) where
     show (Arrow _ ts t') = concatMap (\t -> show t ++ " -> ") ts ++ show t'

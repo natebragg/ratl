@@ -48,15 +48,17 @@ type SharedTys a = [(Ty a, [Ty a])]
 type TyvarEnv a = [(String, Ty a)]
 type ProgEnv = [(Var, [GeneralForm])]
 
-data Cost = Cost { k_var, k_val, k_app, k_ifp, k_ift, k_iff :: Double }
+data Cost = Cost { k_var, k_val, k_ap1, k_ap2, k_ifp, k_ift, k_iff, k_ifc :: Double }
 
 constant = Cost {
         k_var = 1.0,
         k_val = 1.0,
-        k_app = 2.0,
+        k_ap1 = 1.0,
+        k_ap2 = 1.0,
         k_ifp = 1.0,
         k_ift = 1.0,
-        k_iff = 1.0
+        k_iff = 1.0,
+        k_ifc = 1.0
     }
 
 data Resource = Consume Anno | Supply Anno
@@ -106,7 +108,7 @@ instantiatefun tys (Native ty a f) = Native (instantiate tys ty) a f
 objective :: FunTy Anno -> Int -> LinearFunction
 objective fty degree = Sparse $ objF fty
     where payIf d = if degree == d then 1.0 else 0.0
-          objF (Arrow q tys _) = (q, payIf 0):concatMap objTy tys
+          objF (Arrow (q, _) tys _) = (q, payIf 0):concatMap objTy tys
           objTy (ListTy ps _) = map (second payIf) $ zip ps [1..]
           objTy            _  = []
 
@@ -132,10 +134,11 @@ instance Comparable Ty where
 
 instance Comparable FunTy where
     relate c a as = (concatMap (uncurry (relate c)) $ zip (psOf a) (transpose $ map psOf as) ++ [(rOf a, map rOf as)]) ++
-                    [Sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 | (p, qs) <- [(qsOf a, map qsOf as)], not $ elem p qs]
-        where qsOf (Arrow qs   _   _) = qs
-              psOf (Arrow  _ tys   _) = tys
-              rOf  (Arrow  _   _ ty') = ty'
+                    [Sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 | (p, qs) <- [(qOf a, map qOf as), (q'Of a, map q'Of as)], not $ elem p qs]
+        where qOf  (Arrow (q,  _)   _   _) = q
+              q'Of (Arrow (_, q')   _   _) = q'
+              psOf (Arrow       _ tys   _) = tys
+              rOf  (Arrow       _   _ ty') = ty'
 
 check :: (MonadPlus m, MonadState Anno m) => Int -> Prog Anno -> m ProgEnv
 check deg_max (Prog fs) = programs
@@ -153,51 +156,62 @@ check deg_max (Prog fs) = programs
                         runReaderT (elabFE f) constant
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT Cost m ()
-          elabFE (Fun (Arrow qf tys ty') x e) = do
-                    (ty, q) <- withReaderT ((,) $ zip [x] tys) $ elabE e
+          elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
+                    (ty, (q, q')) <- withReaderT ((,) $ zip [x] tys) $ elabE e
                     let ty'' = tysubst (solve [] (ty, ty')) ty
                     guard $ eqTy ty' ty''
                     constrain $ equate ty' [ty'']
-                    constrain [Sparse (map exchange [Consume qf, q]) `Eql` 0.0]
+                    constrain [Sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
+                    constrain [Sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
           elabFE (Native _ _ _) = do
                     return ()
-          elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT (TyEnv Anno, Cost) m (Ty Anno, Resource)
+          elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT (TyEnv Anno, Cost) m (Ty Anno, (Anno, Anno))
           elabE (Var x)    = do ty <- hoist =<< gamma x
                                 ty' <- reannotate ty
                                 share [(ty, [ty'])]
-                                q <- freshAnno
+                                q  <- freshAnno
+                                q' <- freshAnno
                                 k <- costof k_var
-                                constrain [Sparse [exchange $ Consume q] `Geq` k]
-                                return (ty', Supply q)
+                                constrain [Sparse [exchange $ Consume q, exchange $ Supply q'] `Geq` k]
+                                return (ty', (q, q'))
           elabE (Val v)    = do ty <- elabV v
-                                q <- freshAnno
+                                q  <- freshAnno
+                                q' <- freshAnno
                                 k <- costof k_val
-                                constrain [Sparse [exchange $ Consume q] `Geq` k]
-                                return (ty, Supply q)
-          elabE (App f es) = do (tys, qs) <- unzip <$> mapM elabE es
+                                constrain [Sparse [exchange $ Consume q, exchange $ Supply q'] `Geq` k]
+                                return (ty, (q, q'))
+          elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
                                 asc <- hoist (lookup f fs)
                                 fun <- annotate deg_max $ instantiatefun tys asc
-                                sig@(Arrow qf tys' ty'') <- annotate deg_max $ tyOf fun
+                                sig@(Arrow (qf, qf') tys' ty'') <- annotate deg_max $ tyOf fun
                                 constrain $ equate sig [tyOf asc, tyOf fun]
-                                q <- freshAnno
+                                q  <- freshAnno
+                                q' <- freshAnno
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
-                                case (f, qs, tys', ty'') of
-                                     (V "if", [qip, qit, qif], [typ, tyt, tyf], _) ->
-                                         do [kp, kt, kf] <- sequence [costof k_ifp, costof k_ift, costof k_iff]
+                                case (f, qs, q's, tys', ty'') of
+                                     (V "if", [qip, qit, qif], [qip', qit', qif'], [typ, tyt, tyf], _) ->
+                                         do [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
                                             constrain $ exceed tyt [ty''] ++ exceed tyf [ty'']
-                                            constrain [Sparse (map exchange [Consume q, Supply qf, qip, qit]) `Geq` (kp + kt),
-                                                       Sparse (map exchange [Consume q, Supply qf, qip, qif]) `Geq` (kp + kf)]
-                                            return (ty'', Supply q)
-                                     (V "tail", _, [ListTy ps _], ListTy rs _) ->
-                                         do k <- costof k_app
+                                            constrain [Sparse [exchange $ Consume q,    exchange $ Supply qip] `Geq` kp,
+                                                       Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qit] `Geq` kt,
+                                                       Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qif] `Geq` kf,
+                                                       Sparse [exchange $ Consume qf',  exchange $ Consume qit', exchange $ Supply q']  `Geq` kc,
+                                                       Sparse [exchange $ Consume qf',  exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
+                                     (V "tail", _, _, [ListTy ps _], ListTy rs _) ->
+                                         do k1 <- costof k_ap1
+                                            k2 <- costof k_ap2
                                             constrain [Sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
-                                                       (r, sps) <- zip (qf:rs) (shift ps), not $ elem r sps]
-                                            constrain [Sparse (map exchange (Supply q:Consume qf:qs)) `Geq` k]
-                                            return (ty'', Consume q)
-                                     _ -> do k <- costof k_app
-                                             constrain [Sparse (map exchange (Consume q:Supply qf:qs)) `Geq` k]
-                                             return (ty'', Supply q)
+                                                       (r, sps) <- zip (qf':rs) (shift ps), not $ elem r sps]
+                                            constrain [Sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
+                                                       (q_in, q_out) <- zip (q:q's) (qs ++ [qf])]
+                                            constrain [Sparse (map exchange [Consume qf', Supply q']) `Geq` k2]
+                                     _ -> do k1 <- costof k_ap1
+                                             k2 <- costof k_ap2
+                                             constrain [Sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
+                                                        (q_in, q_out) <- zip (q:q's) (qs ++ [qf])]
+                                             constrain [Sparse (map exchange [Consume qf', Supply q']) `Geq` k2]
+                                return (ty'', (q, q'))
           elabV :: (MonadPlus m, MonadState Anno m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l

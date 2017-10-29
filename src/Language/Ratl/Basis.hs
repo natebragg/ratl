@@ -36,8 +36,8 @@ arity x = maybe 1 (\(Native _ a _) -> a) $ lookup x $ getProg basis
 
 basis :: Prog ()
 basis = Prog [
-    (V "if",   Native (Arrow () [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b"))   3 ifte),
-    (V "+",    Native (Arrow () [NatTy, NatTy] NatTy)                            2 plus),
-    (V "head", Native (Arrow () [ListTy [] (Tyvar "a")] (Tyvar "a"))             1 head),
-    (V "tail", Native (Arrow () [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 1 tail)
+    (V "if",   Native (Arrow ((), ()) [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b"))   3 ifte),
+    (V "+",    Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                            2 plus),
+    (V "head", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))             1 head),
+    (V "tail", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 1 tail)
     ]
