@@ -192,8 +192,13 @@ check deg_max (Prog fs) = programs
                                 q' <- freshAnno
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
-                                case (f, qs, q's, tys', ty'') of
-                                     (V "if", [qip, qit, qif], [qip', qit', qif'], [typ, tyt, tyf], _) ->
+                                case (f, tyOf fun) of
+                                     (V "tail", Arrow (_, qf') [ListTy ps _] (ListTy rs _)) ->
+                                            constrain [Sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
+                                                       (r, sps) <- zip (qf':rs) (shift ps), not $ elem r sps]
+                                     _ -> return ()
+                                case (f, qs, q's, tys') of
+                                     (V "if", [qip, qit, qif], [qip', qit', qif'], [typ, tyt, tyf]) ->
                                          do [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
                                             constrain $ exceed tyt [ty''] ++ exceed tyf [ty'']
                                             constrain [Sparse [exchange $ Consume q,    exchange $ Supply qip] `Geq` kp,
@@ -201,14 +206,6 @@ check deg_max (Prog fs) = programs
                                                        Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qif] `Geq` kf,
                                                        Sparse [exchange $ Consume qf',  exchange $ Consume qit', exchange $ Supply q']  `Geq` kc,
                                                        Sparse [exchange $ Consume qf',  exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
-                                     (V "tail", _, _, [ListTy ps _], ListTy rs _) ->
-                                         do k1 <- costof k_ap1
-                                            k2 <- costof k_ap2
-                                            constrain [Sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
-                                                       (r, sps) <- zip (qf':rs) (shift ps), not $ elem r sps]
-                                            constrain [Sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
-                                                       (q_in, q_out) <- zip (q:q's) (qs ++ [qf])]
-                                            constrain [Sparse (map exchange [Consume qf', Supply q']) `Geq` k2]
                                      _ -> do k1 <- costof k_ap1
                                              k2 <- costof k_ap2
                                              constrain [Sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
