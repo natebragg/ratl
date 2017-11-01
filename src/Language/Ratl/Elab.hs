@@ -163,7 +163,10 @@ check deg_max (Prog fs) = programs
                     constrain $ equate ty' [ty'']
                     constrain [Sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
                     constrain [Sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
-          elabFE (Native _ _ _) = do
+          elabFE (Native (Arrow (qf, qf') tys ty') _ _) = do
+                    constrain [Sparse [exchange $ Consume p] `Eql` 0.0 | ListTy ps _ <- (tys ++ [ty']), p <- ps]
+                    constrain [Sparse [exchange $ Consume qf] `Eql` 1.0]
+                    constrain [Sparse [exchange $ Consume qf'] `Eql` 0.0]
                     return ()
           elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT (TyEnv Anno, Cost) m (Ty Anno, (Anno, Anno))
           elabE (Var x)    = do ty <- hoist =<< gamma x
