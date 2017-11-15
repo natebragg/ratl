@@ -196,7 +196,8 @@ check deg_max (Prog fs) = programs
                                      (V "tail", Arrow (_, qf') [ListTy ps _] (ListTy rs _)) ->
                                             constrain [Sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                                        (r, sps) <- zip (qf':rs) (shift ps), not $ elem r sps]
-                                     _ -> return ()
+                                     (_ , Arrow (qf, qf') _ _)  ->
+                                            constrain [Sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
                                 case (f, qs, q's, tys') of
                                      (V "if", [qip, qit, qif], [qip', qit', qif'], [typ, tyt, tyf]) ->
                                          do [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
