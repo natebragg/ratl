@@ -29,13 +29,14 @@ import Language.Ratl.Ast (
 
 type Anno = Int
 
+reannotate :: (Traversable t, MonadState Anno m) => t Anno -> m (t Anno)
+reannotate = traverse ((const <$> freshAnno <*>) . pure)
+
 class Annotatory a where
     annotate :: MonadState Anno m => Int -> a b -> m (a Anno)
-    reannotate :: MonadState Anno m => a Anno -> m (a Anno)
 
 instance Annotatory Prog where
     annotate deg_max (Prog p) = Prog <$> mapM (mapM (annotate deg_max)) p
-    reannotate (Prog p) = Prog <$> mapM (mapM reannotate) p
 
 instance Annotatory Fun where
     annotate deg_max (Fun ty x e) = do
@@ -44,21 +45,11 @@ instance Annotatory Fun where
     annotate deg_max (Native ty a f) = do
                 ty' <- annotate deg_max ty
                 return $ Native ty' a f
-    reannotate (Fun ty x e) = do
-                ty' <- reannotate ty
-                return $ Fun ty' x e
-    reannotate (Native ty a f) = do
-                ty' <- reannotate ty
-                return $ Native ty' a f
 
 instance Annotatory FunTy where
     annotate deg_max (Arrow _ ts1 t2) = do
         ts1' <- mapM (annotate deg_max) ts1
         t2' <- annotate deg_max t2
-        freshFunTy ts1' t2'
-    reannotate (Arrow _ ts1 t2) = do
-        ts1' <- mapM reannotate ts1
-        t2' <- reannotate t2
         freshFunTy ts1' t2'
 
 instance Annotatory Ty where
@@ -67,11 +58,6 @@ instance Annotatory Ty where
                 freshListTy deg_max ty'
     annotate deg_max NatTy = return NatTy
     annotate deg_max (Tyvar x) = return (Tyvar x)
-    reannotate (ListTy ps ty) = do
-                ty' <- reannotate ty
-                freshListTy (length ps) ty'
-    reannotate NatTy = return NatTy
-    reannotate (Tyvar x) = return (Tyvar x)
 
 freshAnno :: MonadState Anno m => m Anno
 freshAnno = do

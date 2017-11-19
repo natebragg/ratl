@@ -18,6 +18,21 @@ instance Show (Ty a) where
     show (ListTy _ t) = "[" ++ show t ++ "]"
     show (Tyvar x) = "'" ++ x
 
+instance Functor Ty where
+    fmap _        NatTy  = NatTy
+    fmap f (ListTy qs t) = ListTy (fmap f qs) (fmap f t)
+    fmap _     (Tyvar x) = Tyvar x
+
+instance Foldable Ty where
+    foldMap _        NatTy  = mempty
+    foldMap f (ListTy qs t) = foldMap f qs `mappend` foldMap f t
+    foldMap _     (Tyvar x) = mempty
+
+instance Traversable Ty where
+    traverse _        NatTy  = pure NatTy
+    traverse f (ListTy qs t) = ListTy <$> traverse f qs <*> traverse f t
+    traverse _     (Tyvar x) = pure $ Tyvar x
+
 eqTy :: Ty a -> Ty a -> Bool
 eqTy        NatTy         NatTy = True
 eqTy (ListTy _ t) (ListTy _ t') = eqTy t t'
@@ -36,3 +51,12 @@ data FunTy a = Arrow (a, a) [Ty a] (Ty a)
 
 instance Show (FunTy a) where
     show (Arrow _ ts t') = concatMap (\t -> show t ++ " -> ") ts ++ show t'
+
+instance Functor FunTy where
+    fmap f (Arrow (q, q') ts t') = Arrow (f q, f q') (fmap (fmap f) ts) (fmap f t')
+
+instance Foldable FunTy where
+    foldMap f (Arrow (q, q') ts t') = f q `mappend` f q' `mappend` foldMap (foldMap f) ts `mappend` foldMap f t'
+
+instance Traversable FunTy where
+    traverse f (Arrow (q, q') ts t') = Arrow <$> ((,) <$> f q <*> f q') <*> traverse (traverse f) ts <*> traverse f t'
