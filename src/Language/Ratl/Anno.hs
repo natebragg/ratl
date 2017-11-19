@@ -5,8 +5,6 @@ module Language.Ratl.Anno (
     annotate,
     reannotate,
     freshAnno,
-    freshListTy,
-    freshFunTy,
 ) where
 
 import Control.Monad (replicateM)
@@ -50,12 +48,15 @@ instance Annotatory FunTy where
     annotate deg_max (Arrow _ ts1 t2) = do
         ts1' <- mapM (annotate deg_max) ts1
         t2' <- annotate deg_max t2
-        freshFunTy ts1' t2'
+        q  <- freshAnno
+        q' <- freshAnno
+        return $ Arrow (q, q') ts1' t2'
 
 instance Annotatory Ty where
     annotate deg_max (ListTy _ ty) = do
                 ty' <- annotate deg_max ty
-                freshListTy deg_max ty'
+                ps <- replicateM deg_max freshAnno
+                return $ ListTy ps ty'
     annotate deg_max NatTy = return NatTy
     annotate deg_max (Tyvar x) = return (Tyvar x)
 
@@ -64,14 +65,3 @@ freshAnno = do
     q <- get
     put (q + 1)
     return q
-
-freshListTy :: MonadState Anno m => Int -> Ty Anno -> m (Ty Anno)
-freshListTy deg_max tau = do
-    ps <- replicateM deg_max freshAnno
-    return $ ListTy ps tau
-
-freshFunTy :: MonadState Anno m => [Ty Anno] -> Ty Anno -> m (FunTy Anno)
-freshFunTy taus tau' = do
-    q  <- freshAnno
-    q' <- freshAnno
-    return $ Arrow (q, q') taus tau'

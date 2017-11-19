@@ -24,7 +24,6 @@ import Language.Ratl.Anno (
     annotate,
     reannotate,
     freshAnno,
-    freshListTy,
     )
 import Language.Ratl.Ty (
     Ty(..),
@@ -217,7 +216,7 @@ check deg_max (Prog fs) = programs
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l
           elabL :: (MonadPlus m, MonadState Anno m) => List -> m (Ty Anno)
-          elabL Nil        = freshListTy deg_max $ Tyvar "a"
+          elabL Nil        = annotate deg_max $ ListTy [] $ Tyvar "a"
           elabL (Cons v l) = do
                 vty <- elabV v
                 lty <- elabL l
