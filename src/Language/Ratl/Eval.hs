@@ -10,14 +10,15 @@ import Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog(..),
+    Prog,
+    lookupFun,
     )
 
 import Data.Maybe (fromJust)
 import Control.Monad (guard)
 
 run :: Prog a -> Val -> Val
-run (Prog phi) args = eval [] (App (V "main") [(Val args)])
+run phi args = eval [] (App (V "main") [(Val args)])
     where eval rho (Var x) = fromJust $ lookup x rho
           eval rho (Val v) = v
           eval rho (App (V "if") [ep, et, ef]) =
@@ -27,7 +28,7 @@ run (Prog phi) args = eval [] (App (V "main") [(Val args)])
                     _          -> eval rho et
           eval rho (App x es) = fromJust $ do
                 let vs = map (eval rho) es
-                f <- lookup x phi
+                f <- lookupFun phi x
                 case f of
                     Fun    _ x b -> Just $ eval (zip [x] vs) b
                     Native _ a f -> do guard $ a == length vs

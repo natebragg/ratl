@@ -39,7 +39,10 @@ import Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog(..),
+    Prog,
+    lookupFun,
+    mapFun,
+    travFun,
     )
 
 type TyEnv a = [(Var, Ty a)]
@@ -140,14 +143,14 @@ instance Comparable FunTy where
               rOf  (Arrow       _   _ ty') = ty'
 
 check :: (MonadPlus m, MonadState Anno m) => Int -> Prog Anno -> m ProgEnv
-check deg_max (Prog fs) = programs
+check deg_max p = programs
     where tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
           share m = tell (empty, m)
           constrain c = tell (c, empty)
           gamma x = asks (lookup x . fst)
           costof k = asks (k . snd)
-          programs = do (los, cs) <- runWriterT $ zip (map fst fs) <$> mapM (elabF . snd) fs
+          programs = do (los, cs) <- runWriterT $ zip (mapFun fst p) <$> travFun (elabF . snd) p
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
           elabF f = do
@@ -183,7 +186,7 @@ check deg_max (Prog fs) = programs
                                 constrain [Sparse [exchange $ Consume q, exchange $ Supply q'] `Geq` k]
                                 return (ty, (q, q'))
           elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
-                                asc <- hoist (lookup f fs)
+                                asc <- hoist (lookupFun p f)
                                 fun <- annotate deg_max $ instantiatefun tys asc
                                 sig@(Arrow (qf, qf') tys' ty'') <- annotate deg_max $ tyOf fun
                                 constrain $ equate sig [tyOf asc, tyOf fun]

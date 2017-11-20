@@ -11,7 +11,8 @@ import Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog(..)
+    Prog,
+    makeProg,
     )
 import Language.Ratl.Ty (
     Ty(..),
@@ -106,4 +107,4 @@ fun = parens (reserved "fn" >>
                            <*> ex))
 
 prog :: Parser (Prog ())
-prog = whiteSpace >> Prog <$> many1 fun
+prog = whiteSpace >> makeProg <$> many1 fun

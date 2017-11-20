@@ -9,10 +9,19 @@ module Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog(..)
+    Prog,
+    makeProg,
+    lookupFun,
+    mapFun,
+    travFun,
+    travProg,
 ) where
 
 import Language.Ratl.Ty (FunTy)
+import Data.Graph.Inductive.Graph (mkGraph)
+import Data.Graph.Inductive.PatriciaTree (Gr(..))
+import Data.Graph.Inductive.Extra (OverNodes(..))
+import Data.Foldable (find, toList)
 
 class Embeddable a where
     type HostType a :: *
@@ -79,14 +88,30 @@ instance Traversable Fun where
 data Ex = Var Var | Val Val | App Var [Ex]
     deriving (Show, Eq)
 
-newtype Prog a = Prog {getProg :: [(Var, Fun a)]}
+newtype Prog a = Prog {getProg :: Gr (Var, Fun a) ()}
     deriving (Monoid)
 
 instance Functor Prog where
-    fmap f (Prog p) = Prog $ fmap (fmap (fmap f)) p
+    fmap f (Prog fs) = Prog $ getOverNodes $ fmap (fmap (fmap f)) $ OverNodes fs
 
 instance Foldable Prog where
-    foldMap f (Prog p) = foldMap (foldMap (foldMap f)) p
+    foldMap f (Prog fs) = foldMap (foldMap (foldMap f)) $ OverNodes fs
 
 instance Traversable Prog where
-    traverse f (Prog p) = Prog <$> traverse (traverse (traverse f)) p
+    traverse f (Prog fs) = Prog <$> (getOverNodes <$> traverse (traverse (traverse f)) (OverNodes fs))
+
+makeProg :: [(Var, Fun a)] -> Prog a
+makeProg = Prog . flip mkGraph [] . zip [1..]
+
+lookupFun :: Prog a -> Var -> Maybe (Fun a)
+lookupFun = lookup . OverNodes . getProg
+    where lookup t key = fmap snd $ find ((key ==) . fst) t
+
+mapFun :: ((Var, Fun a) -> b) -> Prog a -> [b]
+mapFun f (Prog fs) = foldMap ((:[]) . f) $ OverNodes fs
+
+travFun :: Applicative f => ((Var, Fun a) -> f b) -> Prog a -> f [b]
+travFun f (Prog fs) = toList <$> traverse f (OverNodes fs)
+
+travProg :: Applicative f => ((Var, Fun a) -> f (Var, Fun b)) -> Prog a -> f (Prog b)
+travProg f (Prog fs) = Prog <$> (getOverNodes <$> traverse f (OverNodes fs))

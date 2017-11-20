@@ -14,7 +14,9 @@ import Language.Ratl.Ast (
     Val(..),
     Var(..),
     Fun(..),
-    Prog(..),
+    Prog,
+    makeProg,
+    lookupFun,
     )
 
 import Prelude hiding (head, tail)
@@ -32,10 +34,10 @@ tail :: [Val] -> Val
 tail [List (Cons _ xs)] = List xs
 
 arity :: Var -> Int
-arity x = maybe 1 (\(Native _ a _) -> a) $ lookup x $ getProg basis
+arity = maybe 1 (\(Native _ a _) -> a) . lookupFun basis
 
 basis :: Prog ()
-basis = Prog [
+basis = makeProg [
     (V "if",   Native (Arrow ((), ()) [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b"))   3 ifte),
     (V "+",    Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                            2 plus),
     (V "head", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))             1 head),

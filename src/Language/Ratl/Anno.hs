@@ -22,7 +22,8 @@ import Language.Ratl.Ast (
     Val(..),
     Fun(..),
     Ex(..),
-    Prog(..),
+    Prog,
+    travProg,
     )
 
 type Anno = Int
@@ -34,7 +35,7 @@ class Annotatory a where
     annotate :: MonadState Anno m => Int -> a b -> m (a Anno)
 
 instance Annotatory Prog where
-    annotate deg_max (Prog p) = Prog <$> mapM (mapM (annotate deg_max)) p
+    annotate deg_max p = travProg (traverse (annotate deg_max)) p
 
 instance Annotatory Fun where
     annotate deg_max (Fun ty x e) = do
