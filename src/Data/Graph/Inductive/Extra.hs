@@ -5,7 +5,8 @@ module Data.Graph.Inductive.Extra (
     OverEdges(..),
 ) where
 
-import Control.Arrow (first)
+import Control.Arrow (first, second)
+import Data.Maybe (fromJust)
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Graph.Inductive.Graph (
     DynGraph,
@@ -14,14 +15,18 @@ import Data.Graph.Inductive.Graph (
     ufold,
     gmap,
     (&),
-    nodeRange,
+    newNodes,
+    noNodes,
+    nodes,
     )
 
 instance Monoid (Gr a b) where
     mempty = empty
     mappend g1 g2 = ufold ((&) . inc) g1 g2
-        where (_, offset) = nodeRange g1
-              inc (p, v, l, s) = (p, offset + v, l, s)
+        where inc (p, v, l, s) = (renumberAdj p, renumber v, l, renumberAdj s)
+              renums = zip (nodes g2) $ newNodes (noNodes g2) g1
+              renumber = fromJust . flip lookup renums
+              renumberAdj = map (second renumber)
 
 newtype ByNode b a =
     ByNode { getByNode :: Context a b }
