@@ -43,6 +43,7 @@ import Language.Ratl.Ast (
     lookupFun,
     mapFun,
     travFun,
+    connects,
     )
 
 type TyEnv a = [(Var, Ty a)]
@@ -142,9 +143,18 @@ instance Comparable FunTy where
               psOf (Arrow       _ tys   _) = tys
               rOf  (Arrow       _   _ ty') = ty'
 
+callgraph :: Prog a -> Prog a
+callgraph = connects =<< flatten . mapFun (second calls)
+    where flatten = concatMap $ uncurry (map . (,))
+          calls (Native _ _ _) = []
+          calls (Fun _ _ e) = ecalls e
+              where ecalls (App f es) = f : concatMap ecalls es
+                    ecalls _ = []
+
 check :: (MonadPlus m, MonadState Anno m) => Int -> Prog Anno -> m ProgEnv
-check deg_max p = programs
-    where tyOf (Fun ty _ _) = ty
+check deg_max p_ = programs
+    where p = callgraph p_
+          tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
           share m = tell (empty, m)
           constrain c = tell (c, empty)

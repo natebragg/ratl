@@ -15,12 +15,14 @@ module Language.Ratl.Ast (
     mapFun,
     travFun,
     travProg,
+    connects,
 ) where
 
 import Language.Ratl.Ty (FunTy)
-import Data.Graph.Inductive.Graph (mkGraph)
+import Control.Arrow ((***))
+import Data.Graph.Inductive.Graph (mkGraph, insEdges)
 import Data.Graph.Inductive.PatriciaTree (Gr(..))
-import Data.Graph.Inductive.Extra (OverNodes(..))
+import Data.Graph.Inductive.Extra (makeEdgesWhere, OverNodes(..))
 import Data.Foldable (find, toList)
 
 class Embeddable a where
@@ -115,3 +117,8 @@ travFun f (Prog fs) = toList <$> traverse f (OverNodes fs)
 
 travProg :: Applicative f => ((Var, Fun a) -> f (Var, Fun b)) -> Prog a -> f (Prog b)
 travProg f (Prog fs) = Prog <$> (getOverNodes <$> traverse f (OverNodes fs))
+
+connects :: [(Var, Var)] -> Prog a -> Prog a
+connects vs (Prog fs) = Prog $ insEdges (concatMap firstEdge vs) fs
+    where firstEdge = take 1 . makeEdgesWhere fs () . (named *** named)
+          named = (. fst) . (==)

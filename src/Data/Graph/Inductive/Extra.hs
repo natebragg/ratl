@@ -1,6 +1,8 @@
 {-# LANGUAGE GADTs #-}
 
 module Data.Graph.Inductive.Extra (
+    nodesWhere,
+    makeEdgesWhere,
     OverNodes(..),
     OverEdges(..),
 ) where
@@ -11,6 +13,8 @@ import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Graph.Inductive.Graph (
     DynGraph,
     Context,
+    Node,
+    LEdge,
     empty,
     ufold,
     gmap,
@@ -18,7 +22,14 @@ import Data.Graph.Inductive.Graph (
     newNodes,
     noNodes,
     nodes,
+    labfilter,
     )
+
+nodesWhere :: DynGraph gr => (a -> Bool) -> gr a b -> [Node]
+nodesWhere = (nodes .) . labfilter
+
+makeEdgesWhere :: DynGraph gr => gr a b -> b -> (a -> Bool, a -> Bool) -> [LEdge b]
+makeEdgesWhere g b (f1, f2) = (,,) <$> nodesWhere f1 g <*> nodesWhere f2 g <*> pure b
 
 instance Monoid (Gr a b) where
     mempty = empty
