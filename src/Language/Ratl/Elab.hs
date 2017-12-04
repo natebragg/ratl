@@ -116,7 +116,7 @@ objective fty degree = Sparse $ objF fty
           objTy            _  = []
 
 shift :: [a] -> [[a]]
-shift ps = transpose [p_1] ++ transpose [ps, p_ik]
+shift ps = [p_1] ++ transpose [ps, p_ik]
     where (p_1, p_ik) = splitAt 1 ps
 
 hoist :: MonadPlus m => Maybe a -> m a
@@ -205,9 +205,9 @@ check deg_max p_ = programs
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
                                 case (f, tyOf fun) of
-                                     (V "tail", Arrow (_, qf') [ListTy ps _] (ListTy rs _)) ->
+                                     (V "tail", Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) ->
                                             constrain [Sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
-                                                       (r, sps) <- zip (qf':rs) (shift ps), not $ elem r sps]
+                                                       (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
                                      (_ , Arrow (qf, qf') _ _)  ->
                                             constrain [Sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
                                 case (f, qs, q's, tys') of
