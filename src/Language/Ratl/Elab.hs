@@ -10,7 +10,7 @@ import Control.Applicative (empty)
 import Control.Arrow (second, (&&&))
 import Control.Monad (guard, MonadPlus(..))
 import Control.Monad.State (MonadState)
-import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, ReaderT, ask, asks)
+import Control.Monad.Reader (runReaderT, withReaderT, ReaderT, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, mapWriterT, WriterT, tell)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
@@ -151,6 +151,11 @@ callgraph = connects =<< flatten . mapFun (second calls)
               where ecalls (App f es) = f : concatMap ecalls es
                     ecalls _ = []
 
+data Check = Check {
+        env :: TyEnv Anno,
+        cost :: Cost
+    }
+
 check :: (MonadPlus m, MonadState Anno m) => Int -> Prog Anno -> m ProgEnv
 check deg_max p_ = programs
     where p = callgraph p_
@@ -158,8 +163,8 @@ check deg_max p_ = programs
           tyOf (Native ty _ _) = ty
           share m = tell (empty, m)
           constrain c = tell (c, empty)
-          gamma x = asks (lookup x . fst)
-          costof k = asks (k . snd)
+          gamma x = asks (lookup x . env)
+          costof k = asks (k . cost)
           programs = do (los, cs) <- runWriterT $ zip (mapFun fst p) <$> travFun (elabF . snd) p
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
@@ -169,7 +174,7 @@ check deg_max p_ = programs
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT Cost m ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
-                    (ty, (q, q')) <- withReaderT ((,) $ zip [x] tys) $ elabE e
+                    (ty, (q, q')) <- withReaderT (Check (zip [x] tys)) $ elabE e
                     let ty'' = tysubst (solve [] (ty, ty')) ty
                     guard $ eqTy ty' ty''
                     constrain $ equate ty' [ty'']
@@ -180,7 +185,7 @@ check deg_max p_ = programs
                     constrain [Sparse [exchange $ Consume qf] `Eql` 1.0]
                     constrain [Sparse [exchange $ Consume qf'] `Eql` 0.0]
                     return ()
-          elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT (TyEnv Anno, Cost) m (Ty Anno, (Anno, Anno))
+          elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT Check m (Ty Anno, (Anno, Anno))
           elabE (Var x)    = do ty <- hoist =<< gamma x
                                 ty' <- reannotate ty
                                 share [(ty, [ty'])]
