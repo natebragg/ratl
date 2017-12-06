@@ -101,7 +101,7 @@ main = do
     result <- runMaybeT $ flip evalStateT 0 $ do
         case runParser prog () fn inp of
             (Right p) -> do
-                p' <- annotate deg_max $ basis `mappend` p
+                let p' = basis `mappend` p
                 checked <- check deg_max p'
                 return (checked, p')
             (Left e) -> do

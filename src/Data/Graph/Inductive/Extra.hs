@@ -3,6 +3,7 @@
 module Data.Graph.Inductive.Extra (
     nodesWhere,
     makeEdgesWhere,
+    scSubgraphs,
     OverNodes(..),
     OverEdges(..),
 ) where
@@ -10,6 +11,7 @@ module Data.Graph.Inductive.Extra (
 import Control.Arrow (first, second)
 import Data.Maybe (fromJust)
 import Data.Graph.Inductive.PatriciaTree (Gr)
+import Data.Graph.Inductive.Query.DFS (scc)
 import Data.Graph.Inductive.Graph (
     DynGraph,
     Context,
@@ -23,6 +25,7 @@ import Data.Graph.Inductive.Graph (
     noNodes,
     nodes,
     labfilter,
+    subgraph
     )
 
 nodesWhere :: DynGraph gr => (a -> Bool) -> gr a b -> [Node]
@@ -30,6 +33,9 @@ nodesWhere = (nodes .) . labfilter
 
 makeEdgesWhere :: DynGraph gr => gr a b -> b -> (a -> Bool, a -> Bool) -> [LEdge b]
 makeEdgesWhere g b (f1, f2) = (,,) <$> nodesWhere f1 g <*> nodesWhere f2 g <*> pure b
+
+scSubgraphs :: DynGraph gr => gr a b -> [gr a b]
+scSubgraphs = map . (flip subgraph) <*> scc
 
 instance Monoid (Gr a b) where
     mempty = empty

@@ -12,17 +12,24 @@ module Language.Ratl.Ast (
     Prog,
     makeProg,
     lookupFun,
+    updateFun,
     mapFun,
     travFun,
+    mapProg,
     travProg,
     connects,
+    scSubprograms,
 ) where
 
 import Language.Ratl.Ty (FunTy)
 import Control.Arrow ((***))
 import Data.Graph.Inductive.Graph (mkGraph, insEdges)
 import Data.Graph.Inductive.PatriciaTree (Gr(..))
-import Data.Graph.Inductive.Extra (makeEdgesWhere, OverNodes(..))
+import Data.Graph.Inductive.Extra (
+    makeEdgesWhere,
+    scSubgraphs,
+    OverNodes(..),
+    )
 import Data.Foldable (find, toList)
 
 class Embeddable a where
@@ -109,8 +116,16 @@ lookupFun :: Prog a -> Var -> Maybe (Fun a)
 lookupFun = lookup . OverNodes . getProg
     where lookup t key = fmap snd $ find ((key ==) . fst) t
 
+updateFun :: Prog a -> Var -> Fun a -> Prog a
+updateFun p x f = case lookupFun p x of
+    Just _ -> mapProg (\(y, g) -> (y, if x == y then f else g)) p
+    Nothing -> p `mappend` makeProg [(x, f)]
+
 mapFun :: ((Var, Fun a) -> b) -> Prog a -> [b]
 mapFun f (Prog fs) = foldMap ((:[]) . f) $ OverNodes fs
+
+mapProg :: ((Var, Fun a) -> (Var, Fun b)) -> Prog a -> Prog b
+mapProg f (Prog fs) = Prog $ getOverNodes $ fmap f $ OverNodes fs
 
 travFun :: Applicative f => ((Var, Fun a) -> f b) -> Prog a -> f [b]
 travFun f (Prog fs) = toList <$> traverse f (OverNodes fs)
@@ -122,3 +137,6 @@ connects :: [(Var, Var)] -> Prog a -> Prog a
 connects vs (Prog fs) = Prog $ insEdges (concatMap firstEdge vs) fs
     where firstEdge = take 1 . makeEdgesWhere fs () . (named *** named)
           named = (. fst) . (==)
+
+scSubprograms :: Prog a -> [Prog a]
+scSubprograms = map Prog . scSubgraphs . getProg

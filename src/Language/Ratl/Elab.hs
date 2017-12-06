@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Language.Ratl.Elab (
     check,
@@ -6,12 +7,13 @@ module Language.Ratl.Elab (
 
 import Data.List (intersect, union, nub, foldl', transpose)
 import Data.Map (fromListWith, foldMapWithKey)
+import Data.Maybe (listToMaybe, isJust)
 import Control.Applicative (empty)
 import Control.Arrow (second, (&&&))
-import Control.Monad (guard, MonadPlus(..))
+import Control.Monad (guard, forM, MonadPlus(..), void)
 import Control.Monad.State (MonadState)
 import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, ReaderT, asks)
-import Control.Monad.Writer (MonadWriter, runWriterT, mapWriterT, WriterT, tell)
+import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, mapWriterT, WriterT, tell)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.Program (
@@ -41,9 +43,11 @@ import Language.Ratl.Ast (
     Ex(..),
     Prog,
     lookupFun,
+    updateFun,
     mapFun,
     travFun,
     connects,
+    scSubprograms,
     )
 
 type TyEnv a = [(Var, Ty a)]
@@ -158,12 +162,17 @@ data CheckE = CheckE {
 
 data CheckF = CheckF {
         degree :: Int,
+        comp :: Prog Anno,
         cost :: Cost
     }
 
-check :: (MonadPlus m, MonadState Anno m) => Int -> Prog Anno -> m ProgEnv
+check :: (MonadPlus m, MonadState Anno m) => Int -> Prog () -> m ProgEnv
 check deg_max p_ = programs
     where p = callgraph p_
+          scps = scSubprograms p
+          lookupSCP :: Var -> Maybe (Prog ())
+          lookupSCP x = listToMaybe $ filter (isJust . flip lookupFun x) scps
+          tyOf :: Fun a -> FunTy a
           tyOf (Fun ty _ _) = ty
           tyOf (Native ty _ _) = ty
           share m = tell (empty, m)
@@ -173,12 +182,17 @@ check deg_max p_ = programs
           degreeof :: MonadReader CheckE m => m Int
           degreeof = asks (degree . checkF)
           annoMax a = degreeof >>= flip annotate a
-          programs = do (los, cs) <- runWriterT $ zip (mapFun fst p) <$> travFun (elabF . snd) p
-                        return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
-          elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
-          elabF f = do
+          lookupThisSCP x = asks (flip lookupFun x . comp . checkF)
+          programs = fmap concat $ forM scps $ \scp -> do
+                    scp' <- annotate deg_max scp
+                    (los, cs) <- runWriterT $ elabSCP scp'
+                    return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
+          elabSCP :: (MonadPlus m, MonadState Anno m) => Prog Anno -> WriterT [GeneralConstraint] m [(Var, [LinearFunction])]
+          elabSCP scp = travFun (traverse (elabF scp)) scp
+          elabF :: (MonadPlus m, MonadState Anno m) => Prog Anno -> Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
+          elabF scp f = do
                     mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
-                        runReaderT (elabFE f) $ CheckF deg_max constant
+                        runReaderT (elabFE f) $ CheckF deg_max scp constant
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT CheckF m ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
@@ -188,11 +202,11 @@ check deg_max p_ = programs
                     constrain $ equate ty' [ty'']
                     constrain [Sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
                     constrain [Sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
-          elabFE (Native (Arrow (qf, qf') tys ty') _ _) = do
-                    constrain [Sparse [exchange $ Consume p] `Eql` 0.0 | ListTy ps _ <- (tys ++ [ty']), p <- ps]
-                    constrain [Sparse [exchange $ Consume qf] `Eql` 1.0]
-                    constrain [Sparse [exchange $ Consume qf'] `Eql` 0.0]
-                    return ()
+          elabFE (Native (Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) _ _) = -- hack for tail
+                    constrain [Sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
+                               (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
+          elabFE (Native (Arrow (qf, qf') _ _) _ _) =
+                    constrain [Sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
           elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT CheckE m (Ty Anno, (Anno, Anno))
           elabE (Var x)    = do ty <- hoist =<< gamma x
                                 ty' <- reannotate ty
@@ -209,20 +223,19 @@ check deg_max p_ = programs
                                 constrain [Sparse [exchange $ Consume q, exchange $ Supply q'] `Geq` k]
                                 return (ty, (q, q'))
           elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
-                                asc <- hoist (lookupFun p f)
-                                fun <- annoMax $ instantiatefun tys asc
-                                sig@(Arrow (qf, qf') tys' ty'') <- annoMax $ tyOf fun
-                                constrain $ equate sig [tyOf asc, tyOf fun]
+                                sig@(Arrow (qf, qf') tys' ty'') <- lookupThisSCP f >>= \case
+                                    Just asc -> do
+                                            return $ instantiate tys $ tyOf asc
+                                    Nothing -> do
+                                        scp <- hoist (lookupSCP f)
+                                        fun <- instantiatefun (map void tys) <$> hoist (lookupFun scp f)
+                                        scp' <- annoMax $ updateFun scp f fun
+                                        constrain =<< execWriterT (elabSCP scp')
+                                        tyOf <$> hoist (lookupFun scp' f)
                                 q  <- freshAnno
                                 q' <- freshAnno
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
-                                case (f, tyOf fun) of
-                                     (V "tail", Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) ->
-                                            constrain [Sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
-                                                       (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
-                                     (_ , Arrow (qf, qf') _ _)  ->
-                                            constrain [Sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
                                 case (f, qs, q's, tys') of
                                      (V "if", [qip, qit, qif], [qip', qit', qif'], [typ, tyt, tyf]) ->
                                          do [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
