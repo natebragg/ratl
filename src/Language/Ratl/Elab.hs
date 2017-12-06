@@ -151,8 +151,12 @@ callgraph = connects =<< flatten . mapFun (second calls)
               where ecalls (App f es) = f : concatMap ecalls es
                     ecalls _ = []
 
-data Check = Check {
+data CheckE = CheckE {
         env :: TyEnv Anno,
+        checkF :: CheckF
+    }
+
+data CheckF = CheckF {
         cost :: Cost
     }
 
@@ -164,17 +168,17 @@ check deg_max p_ = programs
           share m = tell (empty, m)
           constrain c = tell (c, empty)
           gamma x = asks (lookup x . env)
-          costof k = asks (k . cost)
+          costof k = asks (k . cost . checkF)
           programs = do (los, cs) <- runWriterT $ zip (mapFun fst p) <$> travFun (elabF . snd) p
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
           elabF f = do
                     mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
-                        runReaderT (elabFE f) constant
+                        runReaderT (elabFE f) $ CheckF constant
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
-          elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT Cost m ()
+          elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT CheckF m ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
-                    (ty, (q, q')) <- withReaderT (Check (zip [x] tys)) $ elabE e
+                    (ty, (q, q')) <- withReaderT (CheckE (zip [x] tys)) $ elabE e
                     let ty'' = tysubst (solve [] (ty, ty')) ty
                     guard $ eqTy ty' ty''
                     constrain $ equate ty' [ty'']
@@ -185,7 +189,7 @@ check deg_max p_ = programs
                     constrain [Sparse [exchange $ Consume qf] `Eql` 1.0]
                     constrain [Sparse [exchange $ Consume qf'] `Eql` 0.0]
                     return ()
-          elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT Check m (Ty Anno, (Anno, Anno))
+          elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT CheckE m (Ty Anno, (Anno, Anno))
           elabE (Var x)    = do ty <- hoist =<< gamma x
                                 ty' <- reannotate ty
                                 share [(ty, [ty'])]
