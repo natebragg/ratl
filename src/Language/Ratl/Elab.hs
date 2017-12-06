@@ -10,7 +10,7 @@ import Control.Applicative (empty)
 import Control.Arrow (second, (&&&))
 import Control.Monad (guard, MonadPlus(..))
 import Control.Monad.State (MonadState)
-import Control.Monad.Reader (runReaderT, withReaderT, ReaderT, asks)
+import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, ReaderT, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, mapWriterT, WriterT, tell)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
@@ -157,6 +157,7 @@ data CheckE = CheckE {
     }
 
 data CheckF = CheckF {
+        degree :: Int,
         cost :: Cost
     }
 
@@ -169,12 +170,15 @@ check deg_max p_ = programs
           constrain c = tell (c, empty)
           gamma x = asks (lookup x . env)
           costof k = asks (k . cost . checkF)
+          degreeof :: MonadReader CheckE m => m Int
+          degreeof = asks (degree . checkF)
+          annoMax a = degreeof >>= flip annotate a
           programs = do (los, cs) <- runWriterT $ zip (mapFun fst p) <$> travFun (elabF . snd) p
                         return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
           elabF f = do
                     mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
-                        runReaderT (elabFE f) $ CheckF constant
+                        runReaderT (elabFE f) $ CheckF deg_max constant
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT CheckF m ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
@@ -206,8 +210,8 @@ check deg_max p_ = programs
                                 return (ty, (q, q'))
           elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
                                 asc <- hoist (lookupFun p f)
-                                fun <- annotate deg_max $ instantiatefun tys asc
-                                sig@(Arrow (qf, qf') tys' ty'') <- annotate deg_max $ tyOf fun
+                                fun <- annoMax $ instantiatefun tys asc
+                                sig@(Arrow (qf, qf') tys' ty'') <- annoMax $ tyOf fun
                                 constrain $ equate sig [tyOf asc, tyOf fun]
                                 q  <- freshAnno
                                 q' <- freshAnno
@@ -234,11 +238,11 @@ check deg_max p_ = programs
                                                         (q_in, q_out) <- zip (q:q's) (qs ++ [qf])]
                                              constrain [Sparse (map exchange [Consume qf', Supply q']) `Geq` k2]
                                 return (ty'', (q, q'))
-          elabV :: (MonadPlus m, MonadState Anno m) => Val -> m (Ty Anno)
+          elabV :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
           elabV (List l) = elabL l
-          elabL :: (MonadPlus m, MonadState Anno m) => List -> m (Ty Anno)
-          elabL Nil        = annotate deg_max $ ListTy [] $ Tyvar "a"
+          elabL :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => List -> m (Ty Anno)
+          elabL Nil        = annoMax $ ListTy [] $ Tyvar "a"
           elabL (Cons v l) = do
                 vty <- elabV v
                 lty <- elabL l
