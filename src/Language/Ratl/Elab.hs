@@ -56,6 +56,7 @@ type TyvarEnv a = [(String, Ty a)]
 type ProgEnv = [(Var, [GeneralForm])]
 
 data Cost = Cost { k_var, k_val, k_ap1, k_ap2, k_ifp, k_ift, k_iff, k_ifc :: Double }
+    deriving Eq
 
 constant = Cost {
         k_var = 1.0,
@@ -66,6 +67,17 @@ constant = Cost {
         k_ift = 1.0,
         k_iff = 1.0,
         k_ifc = 1.0
+    }
+
+zero = Cost {
+        k_var = 0.0,
+        k_val = 0.0,
+        k_ap1 = 0.0,
+        k_ap2 = 0.0,
+        k_ifp = 0.0,
+        k_ift = 0.0,
+        k_iff = 0.0,
+        k_ifc = 0.0
     }
 
 data Resource = Consume Anno | Supply Anno
@@ -192,7 +204,7 @@ check deg_max p_ = programs
           elabF :: (MonadPlus m, MonadState Anno m) => Prog Anno -> Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
           elabF scp f = do
                     mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
-                        runReaderT (elabFE f) $ CheckF deg_max scp constant
+                        runReaderT (elabFE f) $ CheckF {degree = deg_max, comp = scp, cost = constant}
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT CheckF m ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
@@ -225,7 +237,18 @@ check deg_max p_ = programs
           elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
                                 sig@(Arrow (qf, qf') tys' ty'') <- lookupThisSCP f >>= \case
                                     Just asc -> do
+                                        degree <- degreeof
+                                        cost_free <- costof (== zero)
+                                        if degree <= 1 || cost_free then
                                             return $ instantiate tys $ tyOf asc
+                                        else do
+                                            scp <- asks (comp . checkF)
+                                            fun <- annoMax $ instantiatefun tys asc
+                                            cffun <- annotate (degree - 1) asc
+                                            constrain $ equate (tyOf fun) [tyOf asc, tyOf cffun]
+                                            let scp' = updateFun scp f cffun
+                                            runReaderT (elabFE cffun) $ CheckF {degree = degree - 1, comp = scp', cost = zero}
+                                            return $ tyOf fun
                                     Nothing -> do
                                         scp <- hoist (lookupSCP f)
                                         fun <- instantiatefun (map void tys) <$> hoist (lookupFun scp f)
