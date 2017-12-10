@@ -42,6 +42,7 @@ import Language.Ratl.Ast (
     Fun(..),
     Ex(..),
     Prog,
+    tyOf,
     lookupFun,
     updateFun,
     mapFun,
@@ -184,9 +185,6 @@ check deg_max p_ = programs
           scps = scSubprograms p
           lookupSCP :: Var -> Maybe (Prog ())
           lookupSCP x = listToMaybe $ filter (isJust . flip lookupFun x) scps
-          tyOf :: Fun a -> FunTy a
-          tyOf (Fun ty _ _) = ty
-          tyOf (Native ty _ _) = ty
           share m = tell (empty, m)
           constrain c = tell (c, empty)
           gamma x = asks (lookup x . env)

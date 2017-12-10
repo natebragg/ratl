@@ -10,6 +10,7 @@ module Language.Ratl.Ast (
     Fun(..),
     Ex(..),
     Prog,
+    tyOf,
     makeProg,
     lookupFun,
     updateFun,
@@ -78,6 +79,10 @@ instance Show Val where
 
 data Fun a = Fun (FunTy a) Var Ex
            | Native (FunTy a) Int ([Val] -> Val)
+
+tyOf :: Fun a -> FunTy a
+tyOf (Fun ty _ _) = ty
+tyOf (Native ty _ _) = ty
 
 instance Show (Fun a) where
     show _ = "(fn ...)"
