@@ -9,7 +9,7 @@ import Data.List (intersect, union, nub, foldl', transpose)
 import Data.Map (fromListWith, foldMapWithKey)
 import Data.Maybe (listToMaybe, isJust)
 import Control.Applicative (empty)
-import Control.Arrow (second, (&&&))
+import Control.Arrow (first, second, (&&&))
 import Control.Monad (guard, forM, MonadPlus(..), void)
 import Control.Monad.State (MonadState)
 import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, ReaderT, asks)
@@ -179,6 +179,11 @@ data CheckF = CheckF {
         cost :: Cost
     }
 
+zipR :: [a] -> [b] -> ([(a,b)], ([a], [b]))
+zipR     []     bs = ([], ([], bs))
+zipR     as     [] = ([], (as, []))
+zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
+
 check :: (MonadPlus m, MonadState Anno m) => Int -> Prog () -> m ProgEnv
 check deg_max p_ = programs
     where p = callgraph p_
@@ -268,9 +273,12 @@ check deg_max p_ = programs
                                                        Sparse [exchange $ Consume qf',  exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
                                      _ -> do k1 <- costof k_ap1
                                              k2 <- costof k_ap2
+                                             c  <- freshAnno
+                                             let (qs_args, ([q_ap], _)) = zipR (q:q's) qs
                                              constrain [Sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
-                                                        (q_in, q_out) <- zip (q:q's) (qs ++ [qf])]
-                                             constrain [Sparse (map exchange [Consume qf', Supply q']) `Geq` k2]
+                                                        (q_in, q_out) <- qs_args]
+                                             constrain [Sparse (map exchange [Consume q_ap, Supply qf, Supply c]) `Eql` k2]
+                                             constrain [Sparse (map exchange [Supply q', Consume qf', Consume c]) `Eql` k1]
                                 return (ty'', (q, q'))
           elabV :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
