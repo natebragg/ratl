@@ -85,10 +85,11 @@ val = List <$> list <|> Nat <$> nat
 ex :: Parser Ex
 ex = Val <$> val
  <|> Var <$> var
- <|> parens (try $ do v <- V <$> symbol "+" <|> var
-                      es <- count (arity v) ex
-                      return $ App v es
-             <|> ex)
+ <|> parens ((reserved "if" >> If <$> ex <*> ex <*> ex)
+         <|> try (do v <- V <$> symbol "+" <|> var
+                     es <- count (arity v) ex
+                     return $ App v es)
+         <|> ex)
 
 ty :: Parser (Ty ())
 ty = (reserved "Nat" >> return NatTy)

@@ -237,8 +237,26 @@ check deg_max p_ = programs
                                 k <- costof k_val
                                 constrain [Sparse [exchange $ Consume q, exchange $ Supply q'] `Geq` k]
                                 return (ty, (q, q'))
+          elabE (If ep et ef) = do
+                                (tys, [(qip, qip'), (qit, qit'), (qif, qif')]) <- unzip <$> mapM elabE [ep, et, ef]
+                                let ifty = Arrow ((), ()) [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b")
+                                Arrow (qf, qf') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
+                                let [typ, tyt, tyf] = tys'
+                                constrain [Sparse [exchange $ Consume qf, exchange $ Supply qf'] `Geq` 0.0]
+                                q  <- freshAnno
+                                q' <- freshAnno
+                                guard $ all (uncurry eqTy) (zip tys tys')
+                                constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
+                                [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
+                                constrain $ exceed tyt [ty''] ++ exceed tyf [ty'']
+                                constrain [Sparse [exchange $ Consume q,    exchange $ Supply qip] `Geq` kp,
+                                           Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qit] `Geq` kt,
+                                           Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qif] `Geq` kf,
+                                           Sparse [exchange $ Consume qf',  exchange $ Consume qit', exchange $ Supply q']  `Geq` kc,
+                                           Sparse [exchange $ Consume qf',  exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
+                                return (ty'', (q, q'))
           elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
-                                sig@(Arrow (qf, qf') tys' ty'') <- lookupThisSCP f >>= \case
+                                Arrow (qf, qf') tys' ty'' <- lookupThisSCP f >>= \case
                                     Just asc -> do
                                         degree <- degreeof
                                         cost_free <- costof (== zero)
@@ -262,23 +280,14 @@ check deg_max p_ = programs
                                 q' <- freshAnno
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
-                                case (f, qs, q's, tys') of
-                                     (V "if", [qip, qit, qif], [qip', qit', qif'], [typ, tyt, tyf]) ->
-                                         do [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
-                                            constrain $ exceed tyt [ty''] ++ exceed tyf [ty'']
-                                            constrain [Sparse [exchange $ Consume q,    exchange $ Supply qip] `Geq` kp,
-                                                       Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qit] `Geq` kt,
-                                                       Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qif] `Geq` kf,
-                                                       Sparse [exchange $ Consume qf',  exchange $ Consume qit', exchange $ Supply q']  `Geq` kc,
-                                                       Sparse [exchange $ Consume qf',  exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
-                                     _ -> do k1 <- costof k_ap1
-                                             k2 <- costof k_ap2
-                                             c  <- freshAnno
-                                             let (qs_args, ([q_ap], _)) = zipR (q:q's) qs
-                                             constrain [Sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
-                                                        (q_in, q_out) <- qs_args]
-                                             constrain [Sparse (map exchange [Consume q_ap, Supply qf, Supply c]) `Eql` k2]
-                                             constrain [Sparse (map exchange [Supply q', Consume qf', Consume c]) `Eql` k1]
+                                k1 <- costof k_ap1
+                                k2 <- costof k_ap2
+                                c  <- freshAnno
+                                let (qs_args, ([q_ap], _)) = zipR (q:q's) qs
+                                constrain [Sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
+                                           (q_in, q_out) <- qs_args]
+                                constrain [Sparse (map exchange [Consume q_ap, Supply qf, Supply c]) `Eql` k2]
+                                constrain [Sparse (map exchange [Supply q', Consume qf', Consume c]) `Eql` k1]
                                 return (ty'', (q, q'))
           elabV :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
