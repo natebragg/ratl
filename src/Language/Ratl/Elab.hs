@@ -240,20 +240,17 @@ check deg_max p_ = programs
           elabE (If ep et ef) = do
                                 (tys, [(qip, qip'), (qit, qit'), (qif, qif')]) <- unzip <$> mapM elabE [ep, et, ef]
                                 let ifty = Arrow ((), ()) [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b")
-                                Arrow (qf, qf') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
+                                Arrow (q, q') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
                                 let [typ, tyt, tyf] = tys'
-                                constrain [Sparse [exchange $ Consume qf, exchange $ Supply qf'] `Geq` 0.0]
-                                q  <- freshAnno
-                                q' <- freshAnno
                                 guard $ all (uncurry eqTy) (zip tys tys')
                                 constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
                                 [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
                                 constrain $ exceed tyt [ty''] ++ exceed tyf [ty'']
                                 constrain [Sparse [exchange $ Consume q,    exchange $ Supply qip] `Geq` kp,
-                                           Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qit] `Geq` kt,
-                                           Sparse [exchange $ Consume qip', exchange $ Supply qf,    exchange $ Supply qif] `Geq` kf,
-                                           Sparse [exchange $ Consume qf',  exchange $ Consume qit', exchange $ Supply q']  `Geq` kc,
-                                           Sparse [exchange $ Consume qf',  exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
+                                           Sparse [exchange $ Consume qip', exchange $ Supply qit] `Geq` kt,
+                                           Sparse [exchange $ Consume qip', exchange $ Supply qif] `Geq` kf,
+                                           Sparse [exchange $ Consume qit', exchange $ Supply q']  `Geq` kc,
+                                           Sparse [exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
                                 return (ty'', (q, q'))
           elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
                                 Arrow (qf, qf') tys' ty'' <- lookupThisSCP f >>= \case
