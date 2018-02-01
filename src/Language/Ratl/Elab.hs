@@ -6,8 +6,8 @@ module Language.Ratl.Elab (
 ) where
 
 import Data.List (intersect, union, nub, foldl', transpose)
-import Data.Map (foldMapWithKey)
-import Data.Map.Monoidal (MonoidalMap(getMonoidalMap), singleton)
+import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList)
+import Data.Map.Monoidal (MonoidalMap(..), singleton)
 import Data.Maybe (listToMaybe, isJust)
 import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
@@ -209,7 +209,7 @@ check deg_max p_ = programs
           elabF f = do
                     mapReaderT (mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . getMonoidalMap))) $ elabFE f
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
-          elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT CheckF m ()
+          elabFE :: (MonadPlus m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
                     (ty, (q, q')) <- withReaderT (CheckE (zip [x] tys)) $ elabE e
                     let ty'' = tysubst (solve [] (ty, ty')) ty
@@ -222,7 +222,7 @@ check deg_max p_ = programs
                                (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
           elabFE (Native (Arrow (qf, qf') _ _) _ _) =
                     constrain [Sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
-          elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT CheckE m (Ty Anno, (Anno, Anno))
+          elabE :: (MonadPlus m, MonadState Anno m) => Ex -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty Anno, (Anno, Anno))
           elabE (Var x)    = do ty <- hoist =<< gamma x
                                 ty' <- reannotate ty
                                 share $ singleton ty [ty']
@@ -238,7 +238,15 @@ check deg_max p_ = programs
                                 constrain [Sparse [exchange $ Consume q, exchange $ Supply q'] `Geq` k]
                                 return (ty, (q, q'))
           elabE (If ep et ef) = do
-                                (tys, [(qip, qip'), (qit, qit'), (qif, qif')]) <- unzip <$> mapM elabE [ep, et, ef]
+                                (tyep, (qip, qip')) <- elabE ep
+                                let mapThenElseSharing = mapReaderT $ mapWriterT (>>= traverse unshare)
+                                    unshare (cs, ss) = do
+                                        ss' <- traverseWithKey (flip (fmap . flip (,)) . reannotate) $ getMonoidalMap ss
+                                        let cs' = concatMap (uncurry exceed . second (pure . fst)) $ toList ss'
+                                        return (cs ++ cs', MonoidalMap $ fromList $ elems ss')
+                                (tyet, (qit, qit')) <- mapThenElseSharing $ elabE et
+                                (tyef, (qif, qif')) <- mapThenElseSharing $ elabE ef
+                                let tys = [tyep, tyet, tyef]
                                 let ifty = Arrow ((), ()) [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b")
                                 Arrow (q, q') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
                                 let [typ, tyt, tyf] = tys'
@@ -265,7 +273,7 @@ check deg_max p_ = programs
                                             cffun <- annotate (degree - 1) asc
                                             constrain $ equate (tyOf fun) [tyOf asc, tyOf cffun]
                                             let scp' = updateFun scp f cffun
-                                            runReaderT (elabFE cffun) $ CheckF {degree = degree - 1, comp = scp', cost = zero}
+                                            withReaderT (const $ CheckF {degree = degree - 1, comp = scp', cost = zero}) (elabFE cffun)
                                             return $ tyOf fun
                                     Nothing -> do
                                         scp <- hoist (lookupSCP f)
