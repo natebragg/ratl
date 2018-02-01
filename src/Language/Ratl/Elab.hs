@@ -6,7 +6,8 @@ module Language.Ratl.Elab (
 ) where
 
 import Data.List (intersect, union, nub, foldl', transpose)
-import Data.Map (fromListWith, foldMapWithKey)
+import Data.Map (foldMapWithKey)
+import Data.Map.Monoidal (MonoidalMap(getMonoidalMap), singleton)
 import Data.Maybe (listToMaybe, isJust)
 import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
@@ -52,7 +53,7 @@ import Language.Ratl.Ast (
     )
 
 type TyEnv a = [(Var, Ty a)]
-type SharedTys a = [(Ty a, [Ty a])]
+type SharedTys a = MonoidalMap (Ty a) [Ty a]
 type TyvarEnv a = [(String, Ty a)]
 type ProgEnv = [(Var, [GeneralForm])]
 
@@ -190,8 +191,8 @@ check deg_max p_ = programs
           scps = scSubprograms p
           lookupSCP :: Var -> Maybe (Prog ())
           lookupSCP x = listToMaybe $ filter (isJust . flip lookupFun x) scps
-          share m = tell (empty, m)
-          constrain c = tell (c, empty)
+          share m = tell (mempty, m)
+          constrain c = tell (c, mempty)
           gamma x = asks (lookup x . env)
           costof k = asks (k . cost . checkF)
           degreeof :: MonadReader CheckE m => m Int
@@ -206,7 +207,7 @@ check deg_max p_ = programs
           elabSCP = travFun (traverse elabF)
           elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
           elabF f = do
-                    mapReaderT (mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++)))) $ elabFE f
+                    mapReaderT (mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . getMonoidalMap))) $ elabFE f
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT CheckF m ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
@@ -224,7 +225,7 @@ check deg_max p_ = programs
           elabE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Ex -> ReaderT CheckE m (Ty Anno, (Anno, Anno))
           elabE (Var x)    = do ty <- hoist =<< gamma x
                                 ty' <- reannotate ty
-                                share [(ty, [ty'])]
+                                share $ singleton ty [ty']
                                 q  <- freshAnno
                                 q' <- freshAnno
                                 k <- costof k_var
