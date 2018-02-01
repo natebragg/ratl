@@ -12,7 +12,7 @@ import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
 import Control.Monad (guard, forM, MonadPlus(..), void)
 import Control.Monad.State (MonadState)
-import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, ReaderT, asks)
+import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, mapReaderT, ReaderT, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, mapWriterT, WriterT, tell)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
@@ -200,14 +200,13 @@ check deg_max p_ = programs
           lookupThisSCP x = asks (flip lookupFun x . comp . checkF)
           programs = fmap concat $ forM scps $ \scp -> do
                     scp' <- annotate deg_max scp
-                    (los, cs) <- runWriterT $ elabSCP scp'
+                    (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, comp = scp', cost = constant}
                     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
-          elabSCP :: (MonadPlus m, MonadState Anno m) => Prog Anno -> WriterT [GeneralConstraint] m [(Var, [LinearFunction])]
-          elabSCP scp = travFun (traverse (elabF scp)) scp
-          elabF :: (MonadPlus m, MonadState Anno m) => Prog Anno -> Fun Anno -> WriterT [GeneralConstraint] m [LinearFunction]
-          elabF scp f = do
-                    mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++))) $
-                        runReaderT (elabFE f) $ CheckF {degree = deg_max, comp = scp, cost = constant}
+          elabSCP :: (MonadPlus m, MonadState Anno m) => Prog Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
+          elabSCP = travFun (traverse elabF)
+          elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
+          elabF f = do
+                    mapReaderT (mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . fromListWith (++)))) $ elabFE f
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadPlus m, MonadState Anno m, MonadWriter ([GeneralConstraint], SharedTys Anno) m) => Fun Anno -> ReaderT CheckF m ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
@@ -271,7 +270,7 @@ check deg_max p_ = programs
                                         scp <- hoist (lookupSCP f)
                                         fun <- instantiatefun (map void tys) <$> hoist (lookupFun scp f)
                                         scp' <- annoMax $ updateFun scp f fun
-                                        constrain =<< execWriterT (elabSCP scp')
+                                        constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
                                         tyOf <$> hoist (lookupFun scp' f)
                                 q  <- freshAnno
                                 q' <- freshAnno
