@@ -291,8 +291,8 @@ check deg_max p_ = programs
                                 let (qs_args, ([q_ap], _)) = zipR (q:q's) qs
                                 constrain [Sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
                                            (q_in, q_out) <- qs_args]
-                                constrain [Sparse (map exchange [Consume q_ap, Supply qf, Supply c]) `Eql` k2]
-                                constrain [Sparse (map exchange [Supply q', Consume qf', Consume c]) `Eql` k1]
+                                constrain [Sparse (map exchange [Consume q_ap, Supply qf, Supply c]) `Eql` k1]
+                                constrain [Sparse (map exchange [Supply q', Consume qf', Consume c]) `Eql` k2]
                                 return (ty'', (q, q'))
           elabV :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
