@@ -25,8 +25,8 @@ import Language.Ratl.Elab (check)
 import PackageInfo (version, appName, synopsis)
 
 progressive_solve :: [GeneralForm] -> [([Double], Double)]
-progressive_solve gfs = fst $ foldl accum ([], []) gfs
-    where accum (ss, cs') (GeneralForm dir obj cs) = (ss ++ [sol], (obj `Leq` snd sol):cs)
+progressive_solve = fst . foldl accum ([], [])
+    where accum (ss, cs') (GeneralForm dir obj cs) = (ss ++ [sol], (obj `Leq` snd sol):cs')
             where sol = solve $ GeneralForm dir obj (cs' ++ cs)
 
 pretty_bound :: [Double] -> String
