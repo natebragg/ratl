@@ -86,7 +86,7 @@ ex :: Parser Ex
 ex = Val <$> val
  <|> Var <$> var
  <|> parens ((reserved "if" >> If <$> ex <*> ex <*> ex)
-         <|> try (do v <- V <$> symbol "+" <|> var
+         <|> try (do v <- V <$> symbol "+" <|> V <$> symbol "<" <|> var
                      es <- count (arity v) ex
                      return $ App v es)
          <|> ex)
