@@ -113,18 +113,27 @@ tysubst theta = subst
         subst (ListTy ps ty) = ListTy ps $ subst ty
         subst      (Tyvar x) = varsubst theta x
 
-instantiate :: [Ty a] -> FunTy a -> FunTy a
-instantiate tys (Arrow q tys' ty) = Arrow q (map (tysubst varenv) tys') (tysubst varenv ty)
-    where (tys'', ty') = (map (tysubst env) tys', tysubst env ty)
-            where env = zip (map varname $ intersect frees bound) (map (Tyvar . varname) [next_var..])
-                  next_var = 1 + (maximum $ union frees bound)
-                  frees = nub $ map varnum $ concatMap freein tys
-                  bound = nub $ map varnum $ concatMap freein $ ty:tys'
-          varenv = foldl' solve [] $ zip tys'' tys
+class Instantiable f where
+    instantiate :: [Ty a] -> f a -> f a
 
-instantiatefun :: [Ty a] -> Fun a -> Fun a
-instantiatefun tys (Fun ty x e) = Fun (instantiate tys ty) x e
-instantiatefun tys (Native ty a f) = Native (instantiate tys ty) a f
+newtype TyList a = TyList { unTyList :: [Ty a] }
+
+instance Instantiable TyList where
+    instantiate tys (TyList tys') = TyList $ map (tysubst varenv) tys''
+        where varenv = foldl' solve [] $ zip tys'' tys
+              tys'' = map (tysubst env) tys'
+                where env = zip (map varname $ intersect frees bound) (map (Tyvar . varname) [next_var..])
+                      next_var = 1 + (maximum $ union frees bound)
+                      frees = nub $ map varnum $ concatMap freein tys
+                      bound = nub $ map varnum $ concatMap freein tys'
+
+instance Instantiable FunTy where
+    instantiate tys (Arrow q tys' ty') = Arrow q (init tys''ty'') (last tys''ty'')
+        where tys''ty'' = unTyList $ instantiate tys (TyList $ tys' ++ [ty'])
+
+instance Instantiable Fun where
+    instantiate tys (Fun ty x e) = Fun (instantiate tys ty) x e
+    instantiate tys (Native ty a f) = Native (instantiate tys ty) a f
 
 objective :: FunTy Anno -> Int -> LinearFunction
 objective fty degree = Sparse $ objF fty
@@ -249,9 +258,10 @@ check deg_max p_ = programs
                                 let tys = [tyep, tyet, tyef]
                                 let ifty = Arrow ((), ()) [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b")
                                 Arrow (q, q') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
+                                let tys'' = unTyList $ instantiate tys' $ TyList tys
                                 let [typ, tyt, tyf] = tys'
-                                guard $ all (uncurry eqTy) (zip tys tys')
-                                constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
+                                guard $ all (uncurry eqTy) (zip tys'' tys')
+                                constrain $ concatMap (uncurry equate) $ zip tys'' $ map (:[]) tys'
                                 [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
                                 constrain $ exceed tyt [ty''] ++ exceed tyf [ty'']
                                 constrain [Sparse [exchange $ Consume q,    exchange $ Supply qip] `Geq` kp,
@@ -269,7 +279,7 @@ check deg_max p_ = programs
                                             return $ instantiate tys $ tyOf asc
                                         else do
                                             scp <- asks (comp . checkF)
-                                            fun <- annoMax $ instantiatefun tys asc
+                                            fun <- annoMax $ instantiate tys asc
                                             cffun <- annotate (degree - 1) asc
                                             constrain $ equate (tyOf fun) [tyOf asc, tyOf cffun]
                                             let scp' = updateFun scp f cffun
@@ -277,14 +287,15 @@ check deg_max p_ = programs
                                             return $ tyOf fun
                                     Nothing -> do
                                         scp <- hoist (lookupSCP f)
-                                        fun <- instantiatefun (map void tys) <$> hoist (lookupFun scp f)
+                                        fun <- instantiate (map void tys) <$> hoist (lookupFun scp f)
                                         scp' <- annoMax $ updateFun scp f fun
                                         constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
                                         tyOf <$> hoist (lookupFun scp' f)
                                 q  <- freshAnno
                                 q' <- freshAnno
-                                guard $ all (uncurry eqTy) (zip tys tys')
-                                constrain $ concatMap (uncurry equate) $ zip tys $ map (:[]) tys'
+                                let tys'' = unTyList $ instantiate tys' $ TyList tys
+                                guard $ all (uncurry eqTy) (zip tys'' tys')
+                                constrain $ concatMap (uncurry equate) $ zip tys'' $ map (:[]) tys'
                                 k1 <- costof k_ap1
                                 k2 <- costof k_ap2
                                 c  <- freshAnno
