@@ -6,9 +6,9 @@ module Language.Ratl.Elab (
 ) where
 
 import Data.List (intersect, union, nub, foldl', transpose)
-import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList)
-import Data.Map.Monoidal (MonoidalMap(..), singleton)
-import Data.Maybe (listToMaybe, isJust)
+import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
+import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
+import Data.Maybe (listToMaybe, isJust, fromJust)
 import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
 import Control.Monad (guard, forM, MonadPlus(..), void)
@@ -248,14 +248,20 @@ check deg_max p_ = programs
                                 return (ty, (q, q'))
           elabE (If ep et ef) = do
                                 (tyep, (qip, qip')) <- elabE ep
-                                let mapThenElseSharing = mapReaderT $ mapWriterT (>>= traverse unshare)
-                                    unshare (cs, ss) = do
-                                        ss' <- traverseWithKey (flip (fmap . flip (,)) . reannotate) $ getMonoidalMap ss
-                                        let cs' = concatMap (uncurry exceed . second (pure . fst)) $ toList ss'
-                                        return (cs ++ cs', MonoidalMap $ fromList $ elems ss')
-                                (tyet, (qit, qit')) <- mapThenElseSharing $ elabE et
-                                (tyef, (qif, qif')) <- mapThenElseSharing $ elabE ef
+                                ((tyet, (qit, qit')), (tcs, tss)) <- mapReaderT runWriterT $ elabE et
+                                ((tyef, (qif, qif')), (fcs, fss)) <- mapReaderT runWriterT $ elabE ef
                                 let tys = [tyep, tyet, tyef]
+                                constrain tcs
+                                constrain fcs
+                                sharemap <- traverse (fmap <$> (,) <*> reannotate) $ union (keys tss) (keys fss)
+                                share $ MonoidalMap $ fromList $ map (second pure) sharemap
+                                let reannotateShares ss = do
+                                        ss' <- traverseWithKey (flip (fmap . flip (,)) . reannotate) $
+                                                mapKeys (fromJust . flip lookup sharemap) $ getMonoidalMap ss
+                                        constrain $ concatMap (uncurry exceed . second (pure . fst)) $ toList ss'
+                                        return $ MonoidalMap $ fromList $ elems ss'
+                                share =<< reannotateShares tss
+                                share =<< reannotateShares fss
                                 let ifty = Arrow ((), ()) [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b")
                                 Arrow (q, q') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
                                 let tys'' = unTyList $ instantiate tys' $ TyList tys
