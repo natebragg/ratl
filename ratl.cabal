@@ -26,6 +26,7 @@ library
                        Language.Ratl.Ty
   other-modules:       Bindings.Clp.Clp
                        Data.Clp.Managed
+                       Data.Clp.LinearFunction
                        Data.Graph.Inductive.Extra
   build-depends:       base >= 4.7 && < 5
                      , fgl

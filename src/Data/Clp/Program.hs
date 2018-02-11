@@ -1,6 +1,5 @@
 module Data.Clp.Program (
     LinearProgram(..),
-    LinearFunction(..),
     Objective,
     GeneralConstraint(..),
     GeneralForm(..),
@@ -9,21 +8,15 @@ module Data.Clp.Program (
 ) where
 
 import qualified Data.Clp.Clp as Clp
+import Data.Clp.LinearFunction (LinearFunction)
 
+import Data.Foldable (toList)
 import System.IO.Unsafe (unsafePerformIO)
 
 inf = read "Infinity"
 
 class LinearProgram a where
     solve :: a -> ([Double], Double)
-
-data LinearFunction = Dense [Double]
-                    | Sparse [(Int, Double)]
-    deriving Show
-
-compact :: LinearFunction -> [Double]
-compact (Dense  d) = d
-compact (Sparse s) = Clp.unpack s
 
 type Objective = LinearFunction
 
@@ -47,9 +40,9 @@ data GeneralForm = GeneralForm Clp.OptimizationDirection Objective [GeneralConst
 
 instance LinearProgram GeneralForm where
     solve (GeneralForm direction objective constraints) =
-        let elements = map (compact . lf) constraints
+        let elements = map lf constraints
             row_length = maximum $ map length elements
-            obj_dec = compact objective
+            obj_dec = toList objective
             columnBounds = [(0.0, inf, obj) | obj <- obj_dec] ++
                            replicate (row_length - length obj_dec) (0.0, inf, 0.0)
             rowBounds = map bound constraints

@@ -17,7 +17,6 @@ module Data.Clp.Clp (
     setOptimizationDirection,
     rowBounds,
     columnBounds,
-    unpack,
     getElements,
     objectiveValue,
     LogLevel(..),
@@ -53,8 +52,12 @@ import Data.Clp.Managed (
     isIterationLimitReached,
     )
 import qualified Data.Clp.Managed as Clp
+import Data.Clp.LinearFunction (
+    LinearFunction,
+    unpack,
+    coefficients,
+    )
 
-import Data.List (sort)
 import Foreign.Ptr (nullPtr)
 import Foreign.ForeignPtr (ForeignPtr)
 import Foreign.C.String (peekCString, withCString)
@@ -77,7 +80,12 @@ readMps :: SimplexHandle -> String -> Bool -> Bool -> IO Int
 readMps model fn keepNames ignoreErrors =
     withCString fn $ \fn -> fromIntegral <$> Clp.readMps model fn keepNames ignoreErrors
 
-addRows :: SimplexHandle -> [(Double, Double)] -> [[Double]] -> IO ()
+startsIndicesElements :: [LinearFunction] -> ([Int], [Int], [Double])
+startsIndicesElements elematrix = (starts, concat indices, concat elements)
+    where starts = scanl (+) 0 $ map length indices
+          (indices, elements) = unzip $ map coefficients elematrix
+
+addRows :: SimplexHandle -> [(Double, Double)] -> [LinearFunction] -> IO ()
 addRows model bounds elematrix =
     let (rowLower, rowUpper) = unzip bounds
     in  withArrayLen (map realToFrac rowLower) $ \num_rows rowLower ->
@@ -85,14 +93,12 @@ addRows model bounds elematrix =
             let addElements = Clp.addRows model (fromIntegral num_rows) rowLower rowUpper
             in  case elematrix of
                 [] -> addElements nullPtr nullPtr nullPtr
-                _ -> let rowStarts = scanl (+) 0 $ map length elematrix
-                         columns = concat $ map (map fst . zip [0..]) elematrix
-                         elements = concat elematrix
+                _ -> let (rowStarts, columns, elements) = startsIndicesElements elematrix
                      in  withArray (map fromIntegral rowStarts) $
                             withArray (map fromIntegral columns) .
                                 (withArray (map realToFrac elements) .) . addElements
 
-addColumns :: SimplexHandle -> [(Double, Double, Double)] -> [[Double]] -> IO ()
+addColumns :: SimplexHandle -> [(Double, Double, Double)] -> [LinearFunction] -> IO ()
 addColumns model bounds elematrix =
     let (columnLower, columnUpper, objective) = unzip3 bounds
     in  withArrayLen (map realToFrac columnLower) $ \num_cols columnLower ->
@@ -101,9 +107,7 @@ addColumns model bounds elematrix =
             let addElements = Clp.addColumns model (fromIntegral num_cols) columnLower columnUpper objective
             in case elematrix of
                 [] -> addElements nullPtr nullPtr nullPtr
-                _ -> let columnStarts = scanl (+) 0 $ map length elematrix
-                         rows = concat $ map (map fst . zip [0..]) elematrix
-                         elements = concat elematrix
+                _ -> let (columnStarts, rows, elements) = startsIndicesElements elematrix
                      in  withArray (map fromIntegral columnStarts) $
                             withArray (map fromIntegral rows) .
                                 (withArray (map realToFrac elements) .) . addElements
@@ -131,12 +135,6 @@ columnBounds model = do
     cu <- map realToFrac <$> (peekArray nc =<< Clp.columnUpper model)
     ob <- map realToFrac <$> (peekArray nc =<< Clp.objective model)
     return $ zip3 cl cu ob
-
-unpack :: [(Int, Double)] -> [Double]
-unpack s = decode 0 $ sort s
-    where decode _ [] = []
-          decode c cvs = sum (map snd eqc):decode (c + 1) gtc
-                where (eqc, gtc) = span ((c ==) . fst) cvs
 
 segment :: [Int] -> [a] -> [[a]]
 segment [] [] = []
