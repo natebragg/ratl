@@ -176,6 +176,7 @@ callgraph = connects =<< flatten . mapFun (second calls)
           calls (Native _ _ _) = []
           calls (Fun _ _ e) = ecalls e
               where ecalls (App f es) = f : concatMap ecalls es
+                    ecalls (If ep et ef) = concatMap ecalls [ep, et, ef]
                     ecalls _ = []
 
 data CheckE = CheckE {
