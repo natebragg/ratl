@@ -287,10 +287,11 @@ check deg_max p_ = programs
                                         else do
                                             scp <- asks (comp . checkF)
                                             fun <- annoMax $ instantiate tys asc
-                                            cffun <- annotate (degree - 1) asc
+                                            -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
+                                            cfscp <- annotate (degree - 1) $ updateFun scp f fun
+                                            let Just cffun = lookupFun cfscp f
                                             constrain $ equate (tyOf fun) [tyOf asc, tyOf cffun]
-                                            let scp' = updateFun scp f cffun
-                                            withReaderT (const $ CheckF {degree = degree - 1, comp = scp', cost = zero}) (elabFE cffun)
+                                            constrain =<< withReaderT (const $ CheckF {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (elabSCP cfscp))
                                             return $ tyOf fun
                                     Nothing -> do
                                         scp <- hoist (lookupSCP f)
