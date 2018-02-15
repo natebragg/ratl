@@ -1,0 +1,9 @@
+(fn filtzero ([Nat] -> [Nat]) (xs)
+    (if xs
+        (if (head xs)
+            (cons (head xs) (filtzero (tail xs)))
+            (filtzero (tail xs)))
+        []))
+
+(fn main ([Nat] -> [Nat]) (xs)
+    (filtzero xs))

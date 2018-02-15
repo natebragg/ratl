@@ -230,6 +230,10 @@ check deg_max p_ = programs
           elabFE (Native (Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) _ _) = -- hack for tail
                     constrain [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
+          elabFE (Native (Arrow (qf, qf') [tyh, ListTy rs tyt] (ListTy ps tyc)) _ _) = do -- hack for cons
+                    constrain [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
+                               (r, sps) <- zip (qf:rs) (tail $ shift (qf':ps)), not $ elem r sps]
+                    constrain $ tyh `exceed` [tyc] ++ tyt `exceed` [tyc]
           elabFE (Native (Arrow (qf, qf') _ _) _ _) =
                     constrain [sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
           elabE :: (MonadPlus m, MonadState Anno m) => Ex -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty Anno, (Anno, Anno))

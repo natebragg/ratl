@@ -33,13 +33,17 @@ head [List (Cons x _)] = x
 tail :: [Val] -> Val
 tail [List (Cons _ xs)] = List xs
 
+cons :: [Val] -> Val
+cons [x, List xs] = List (Cons x xs)
+
 arity :: Var -> Int
 arity = maybe 1 (\(Native _ a _) -> a) . lookupFun basis
 
 basis :: Prog ()
 basis = makeProg [
-    (V "+",    Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                            2 plus),
-    (V "<",    Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                            2 less),
-    (V "head", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))             1 head),
-    (V "tail", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 1 tail)
+    (V "+",    Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 plus),
+    (V "<",    Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 less),
+    (V "head", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))                        1 head),
+    (V "tail", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a")))            1 tail),
+    (V "cons", Native (Arrow ((), ()) [Tyvar "a", ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 2 cons)
     ]
