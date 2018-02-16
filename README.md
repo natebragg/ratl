@@ -87,13 +87,13 @@ function definitions, denoted by the keyword `define`.  Functions are typed
 using arrow syntax, and must have a single argument, whose name is given in
 parentheses.  The body is an expression.
 
-Expressions include recalling a variable by name, literal values, and function
-application.
+Expressions include recalling a variable by name, literal values, function
+application, and testing truthiness with `if`.
 
 Functions called in prefix position, wrapped in parentheses.
 
-Builtin functions include addition with `+`, fetching the `head` and `tail` of
-a list, and testing truthiness with `if`.
+Builtin functions include addition with `+`, less-than with `<`, fetching the
+`head` and `tail` of a list, and prepending to a list with `cons`.
 
 Literal values include the natural numbers starting at zero, and lists.  Lists
 can be over the naturals, or over lists of naturals, etc.  Naturals are
@@ -115,9 +115,8 @@ For more examples, take a look under the `examples/ratl` directory.
 
 ## Semantics
 
-Ratl is almost useless.  It is a language that can only increase numbers and
-decrease lists.  There are no conjunctions or disjunctions.  It can't even
-compare values, so predecessor can't be defined.
+Ratl is almost useful.  It is a language that can only increase numbers and
+create and consume lists.
 
 All expressions return a value.  Function bodies evaluate to the function's
 return value.  Looping is achieved via recursion.  The interpreter starts
@@ -144,14 +143,14 @@ through some user-supplied annotation metric.
 
 Consider a few example Ratl type rules.  First, accessing a variable:
 
-![vareq](http://latex.codecogs.com/gif.latex?%5Cfrac%7Bq%5Cgeq%20k_%7Bvar%7D%7D%7B%5CSigma%3B%5CGamma%2Cx%3AB%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D%20x%3AB%20%7D)
+![vareq](http://latex.codecogs.com/gif.latex?%5Cfrac%7Bq%5Cgeq%20q%27%20&plus;%20K_%7Bvar%7D%7D%7B%5CSigma%3B%5CGamma%2Cx%3AB%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27%7D%20x%3AB%7D)
 
 Here there is nothing to consider but the cost of accessing the variable, since
 it is a leaf term.
 
 Next, applying a function:
 
-![appeq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_e%7D%20e%3AA%5C%20%5C%20%5C%20%5C%20%5CSigma%28f%29%20%3D%20A%20%5Crightarrow%5E%7B%5Cmkern-24mu%5Cscriptscriptstyle%5Crule%5B-1.2ex%5D%7B0pt%7D%7B0pt%7Dq_f%7DB%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_f%20&plus;%20q_e%20&plus;%20k_%7Bapp%7D%20%7D%20%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D%20%28f%5C%20e%29%3AB%20%7D)
+![appeq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_e%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27_e%7D%20e%3AA%5C%20%5C%20%5C%20%5C%20%5CSigma%28f%29%20%3D%20A%5Cxrightarrow%7Bq_f/q%27_f%7DB%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_e%20&plus;%20K_%7Barg%7D%5C%20%5C%20%5C%20%5C%20q%27_e%3Dq_f&plus;c&plus;K_%7Bapp1%7D%5C%20%5C%20%5C%20%5C%20q%27%3Dq_f%27&plus;c-K_%7Bapp2%7D%7D%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27%7D%20%28f%5C%20e%29%3AB%7D)
 
 Applying a function requires considering the cost of that function as well as
 the cost of the argument; in total the expression must be more expensive than
@@ -159,7 +158,7 @@ evaluating the argument and executing the function.
 
 Finally, the if expression:
 
-![ifeq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_p%7D%20e_p%20%3A%20B%5C%20%5C%20%5C%20%5C%20%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_t%7D%20e_t%20%3A%20B%5C%20%5C%20%5C%20%5C%20%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_f%7D%20e_f%20%3A%20B%5C%20%5C%20%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_p%20&plus;%20q_t%20&plus;%20k_%7Bift%7D%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_p%20&plus;%20q_f%20&plus;%20k_%7Biff%7D%20%7D%20%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D%20%28%5Ctextrm%7Bif%20%7De_p%5Ctextrm%7B%20then%20%7De_t%5Ctextrm%7B%20else%20%7De_f%29%3AB%20%7D)
+![ifeq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_p%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27_p%7D%20e_p%3AA%5C%20%5C%20%5C%20%5C%20%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_t%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27_t%7D%20e_t%3AB%5C%20%5C%20%5C%20%5C%20%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_f%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27_f%7D%20e_f%3AB%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_p%20&plus;%20K_%7Bifp%7D%5C%20%5C%20%5C%20%5C%20q%27_p%5Cgeq%20q_t%20&plus;%20K_%7Bift%7D%5C%20%5C%20%5C%20%5C%20q%27_p%5Cgeq%20q_f&plus;K_%7Biff%7D%5C%20%5C%20%5C%20%5C%20q%27_t%5Cgeq%20q%27&plus;K_%7Bifc%7D%5C%20%5C%20%5C%20%5C%20q%27_f%5Cgeq%20q%27&plus;K_%7Bifc%7D%7D%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27%7D%20%28%5Ctextrm%7Bif%20%7D%20e_p%5C%20e_t%5C%20e_f%29%3AB%7D)
 
 Here, the variables for the predicate and both branches are considered, and
 constraints are added such that the `if` expression is guaranteed to be more
@@ -177,38 +176,33 @@ As mentioned above, Ratl uses LP by constructing linear inequalities out of
 resource annotations and costs.  Let's look at an example.  Consider the Ratl
 program found in `./examples/ratl/sum.ratl`, reproduced below:
 
-    (define sum ([Nat] -> Nat) (vals)
-        (if vals
-            (+ (head vals)
-               (sum (tail vals)))
+    (define sum ([Nat] -> Nat) (xs)
+        (if xs
+            (+ (head xs)
+               (sum (tail xs)))
             0))
-
-    (define main ([Nat] -> Nat) (args)
-        (sum args))
 
 Everything is given a resource annotation.  An annotation is made of one or
 more resource variables, zero or more relationships between resource variables,
-and a cost.  For this example, let's start with `main` (Ratl itself actually
-starts by annotating `sum`).  First, during parsing the type, `[Nat]`, is given
-a variable because it's a list type, and `main` itself is given a variable
-because it's a function declaration.  Then during type checking, the abstract
-syntax tree of the function body is traversed, and every node in the tree is
-annotated in post-order.  In the case of `main`, that means the expression
-`args` is annotated, followed by `(sum args)`.  During each annotation step,
-leaf expressions like `args` receive a variable *q* and a cost *k*, but no
-resource relationships.  The linear equation that results is simply *q*≥*k*.
-Interior nodes in the syntax tree like `(sum args)` are aware of their
-children's variables, and build inequalities that force them to be related.
-The linear equation that results is *q*≥*p*+*k*, where *q* is the parent node's
-resource variable, and *p* is the child node's resource variable.  The more
-complex the relationship between nodes, the more variables and equations are
-required.  For example, `if` expressions have two constraints: one that
+and a cost.  For this example, let's start with the definition for `sum`.
+First, during parsing the type, `[Nat]`, is given a variable because it's a
+list type, and `sum` itself is given variables for cost before and after
+evaluation because it's a function declaration.  Then during type checking, the
+abstract syntax tree of the function body is traversed, and every node in the
+tree is annotated in post-order.  In the case of `sum`, that means the
+expression `xs` is annotated, followed by `xs`, followed by `(head xs)`.
+During each annotation step, leaf expressions like `xs` receive variables *q*
+and *q'* and a cost *k*.  The linear equation that results is simply
+*q*≥*q'*+*k*.  Interior nodes in the syntax tree like `(head xs)` are aware of
+their children's variables, and build inequalities that force them to be
+related.  The more complex the relationship between nodes, the more variables
+and equations are required.  For example, `if` expressions have multiple
+constraints, including one that requires the `if` expression to be more
+expensive than the predicate and the cost of the false branch, and another that
 requires the `if` expression to be more expensive than the predicate and the
-cost of the false branch, and another that requires the `if` expression to be
-more expensive than the predicate and the cost of the true branch.  Finally,
-after annotating the body, the resulting expression and type are given
-equivalence relations to the function declarations (these are not strictly
-necessary, but are helpful in decoupling typing and solving).
+cost of the true branch.  Finally, after annotating the body, the resulting
+expression and type are given equivalence relations to the function
+declarations.
 
 After annotating the entire program, the objective function is then created,
 with a weight for each of the list type variables and the function variables.
@@ -216,59 +210,72 @@ To calculate a runtime upper bound, this objective should be minimized.
 
 The end result of the annotation for this example is presented in the table
 below.  The variables are by column, and the header row gives the syntax node
-that corresponds to that variable ("app" refers to function application - calls
-to the `sum` function: the first recursive, the second from inside `main`).
-The first row is the objective function, and the remaining rows are the
-inequalities collected during type checking.  The right-most column gives the
-cost for that constraint.  Empty cells are variables with zero coefficients for
-that constraint.
+that corresponds to that variable.  The first row is the objective function,
+and the remaining rows are the inequalities collected during type checking.
+The right-most column gives the cost for that constraint.  Empty cells are
+variables with zero coefficients for that constraint.
 
-| `[Nat]` |  `sum`  | `[Nat]` | `main`  |`vals`|`vals`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |   |         |
-| ------- | ------- | ------- | ------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| ------- |
-| **1.0** | **1.0** | **1.0** | **1.0** |      |      |      |      |      |      |      |      |      |      |      |      |   |         |
-|         |   1.0   |         |         |      |      |      |      |      |      |      |      |      | -1.0 |      |      | = | **0.0** |
-|         |         |         |         | -1.0 |      |      |      |      |      |      | -1.0 |      |  1.0 |      |      | ≥ | **2.0** |
-|         |         |         |         | -1.0 |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      | ≥ | **2.0** |
-|         |         |         |         |  1.0 |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      | -1.0 |      |      |      | -1.0 |  1.0 |      |      |      |      | ≥ | **2.0** |
-|         |         |         |         |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |      | ≥ | **2.0** |
-|         |         |         |         |      |  1.0 |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |  -1.0   |         |         |      |      |      |      | -1.0 |  1.0 |  1.0 |      |      |      |      |      | ≥ | **2.0** |
-|   1.0   |         |         |         |      |      |      | -1.0 |  1.0 | -1.0 |      |      |      |      |      |      | ≥ | **2.0** |
-|         |         |         |         |      |      |      |  1.0 |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |      |      |      |      |      |      |  1.0 |      |      |      | ≥ | **1.0** |
-|         |         |         |   1.0   |      |      |      |      |      |      |      |      |      |      |      | -1.0 | = | **0.0** |
-|         |  -1.0   |         |         |      |      |      |      |      |      |      |      |      |      | -1.0 |  1.0 | ≥ | **2.0** |
-|  -1.0   |         |   1.0   |         |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
-|         |         |         |         |      |      |      |      |      |      |      |      |      |      |  1.0 |      | ≥ | **1.0** |
+| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` |`[Nat]`| `xs` | `xs` |`['a]`|`head`|`head`|`head`|`head`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`|`tail`|`tail`|`tail`|`tail`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |  `0` |  `0` |`['a]`|`['a]`|`['a]`| `if` | `if` |   |         |
+| ------- | ------- | ------- | ------- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| ------- |
+| **1.0** | **1.0** |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |   |         |
+|         |         |         |         |  1.0 | -1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |  1.0 | -1.0 |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |  1.0 | -1.0 |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **0.0** |
+|         |         |         |         |      |      |  1.0  |      |      | -1.0 |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       | -1.0 |      |      |      |      |  1.0 |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |  1.0 |      | -1.0 |      |      |      | -1.0 |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |  1.0 |      | -1.0 |  1.0 |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |  1.0 |      |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |  1.0  |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       | -1.0 |      |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |  1.0 |      |      | -1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |  1.0 |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|  -1.0   |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      | -1.0 |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |  -1.0   |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |  1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |   1.0   |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      | ≥ | **0.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      | -1.0 |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |  1.0 |      |       |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |  1.0 |      | -1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | -1.0 |  1.0 |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      |      | ≥ | **0.0** |
+|         |         |         |   1.0   |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      | = | **0.0** |
+|         |         |         |         | -1.0 |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | ≥ | **1.0** |
+|         |         |         |         |      |  1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |  1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      |      |      |      |      | -1.0 | ≥ | **1.0** |
+|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      |      | -1.0 | ≥ | **1.0** |
+|         |   1.0   |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      | = | **0.0** |
+|         |         |  -1.0   |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | = | **0.0** |
+|   1.0   |         |         |  -1.0   |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      | -1.0  |      |      |      |      |      |      |      |      | -1.0  |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      | = | **0.0** |
 
-To consider the last row, this corresponds to the term `args` discussed
-previously.  It has a presumed cost of 1.0, and a coefficient of 1.0 (as it
-occurs once in the equation).  This in turn corresponds to the equation
-*q*≥*k*, or more specifically, 1.0\**q*≥1.0.
+To consider the second row, this corresponds to one instance of the term `xs`
+discussed previously.  It has a presumed cost of 1.0, and coefficients of 1.0
+(as they occurs once in the equation).  This in turn corresponds to the
+equation *q*≥*q'*+*k*, or more specifically, 1.0\**q*≥1.0\**q'*+1.0.
 
 The optmimum determined by Ratl is given in the next table:
 
-|   `[Nat]`  |  `sum`   |   `[Nat]`  |  `main`  |`vals`|`vals`|`head`|`vals`|`tail`|`tail`| app  |  `+` |  `0` | `if` |`args`| app  |
-| ---------- | -------- | ---------- | -------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
-|    13.0    |    8.0   |    13.0    |   11.0   |  1.0 |  1.0 |  3.0 |  1.0 |  0.0 | 10.0 |  0.0 |  5.0 |  1.0 |  8.0 |  1.0 | 11.0 |
+| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` |`[Nat]`| `xs` | `xs` |`['a]`|`head`|`head`|`head`|`head`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`|`tail`|`tail`|`tail`|`tail`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |  `0` |  `0` |`['a]`|`['a]`|`['a]`| `if` | `if` |
+| ------- | ------- | ------- | ------- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+|  19.0   |  13.0   |   0.0   |   0.0   | 12.0 | 11.0 |  0.0  |  8.0 |  7.0 |  0.0 |  6.0 |  6.0 |  9.0 |  5.0 |  0.0 | 19.0  |  2.0 |  1.0 | 19.0 | 19.0 |  0.0 | 19.0 |  3.0 | 18.0 |  0.0 |  4.0 |  3.0 |  4.0 |  2.0 |  2.0 | 10.0 |  1.0 |  0.0 | 10.0 |  9.0 | 19.0 | 19.0 |  0.0 | 13.0 |  0.0 |
 
 
 The optimum values for the list type variables are the linear upper bounds,
 while the optimum values for the function types are the constant factors.  This
 corresponds to the reported bounds for the two functions:
 
-    sum: 13.0*n + 8.0
-    main: 13.0*n + 11.0
+    sum: 19.0*n + 13.0
 
 For the actual implementation, this formulation is actually how the problem is
 fed to the solver.  It is kept in this form in order to minimize the number of
 transformations, because in Ratl's case, the problem is a minimization problem,
-there are equalities, all inequalities are greater-than-or-equal, and some
-variables don't have non-negativity constraints.  The only transformation
-required is for this last one: non-negativity constraints are added by
-splitting variables that can range negatively in two in every constraint.
-This can be seen in the table above in the case of `tail`.
+there are equalities, and all inequalities are greater-than-or-equal.
 
 ## Analysis
 
@@ -276,37 +283,46 @@ When run on the sample programs in `examples/ratl`, here are the resulting
 bounds predicted:
 
     examples/ratl/all.ratl
-    all: 13.0*n + 9.0
-    main: 13.0*n + 12.0
+    main: 18.0*n + 16.0
+    all: 18.0*n + 13.0
 
     examples/ratl/any.ratl
-    any: 13.0*n + 9.0
-    main: 13.0*n + 12.0
+    main: 18.0*n + 16.0
+    any: 18.0*n + 13.0
+
+    examples/ratl/filtzero.ratl
+    main: 26.0*n + 22.0
+    filtzero: 26.0*n + 19.0
 
     examples/ratl/id.ratl
-    id_list: 1.0
+    main: 12.0
     id_nat: 1.0
-    main: 9.0
+    id_list: 1.0
 
     examples/ratl/last.ratl
-    last: 5.0*n + 3.0
-    main: 5.0*n + 6.0
+    main: 14.0*n + 15.0
+    last: 14.0*n + 11.0
 
     examples/ratl/length.ratl
-    length: 11.0*n + 6.0
-    main: 11.0*n + 9.0
+    main: 16.0*n + 13.0
+    length: 16.0*n + 10.0
 
     examples/ratl/loop.ratl
-    loop: Analysis was infeasible
     main: Analysis was infeasible
+    loop: Analysis was infeasible
+
+    examples/ratl/mono.ratl
+    main: 72.0*n + 71.0
+    mono_dec: 36.0*n + 30.0
+    mono_inc: 36.0*n + 30.0
 
     examples/ratl/nil.ratl
+    main: 5.0
     nil: 1.0
-    main: 4.0
 
     examples/ratl/sum.ratl
-    sum: 13.0*n + 8.0
-    main: 13.0*n + 11.0
+    main: 19.0*n + 16.0
+    sum: 19.0*n + 13.0
 
     examples/ratl/zero.ratl
     main: 1.0
@@ -413,11 +429,8 @@ Ratl is not appropriate, suitable, or fit for (practically) any purpose.
 
 Ratl is also not defect-free. There are a few bugs in it.  For example, if a
 function unconditionally recurses on the tail of its input, it loops instead of
-halting.  If you feed it super-linear programs, Ratl may give confusing and
-incorrect answers rather than deciding that the analysis is infeasible.  It
-also derives incorrect resource usage for literals.  If you name two functions
-the same, the analysis of their callers will probably be wrong.  If you use a
-variable twice, the analysis can sometimes be incorrect.
+halting.  It also derives incorrect resource usage for literals.  If you name
+two functions the same, the analysis of their callers will probably be wrong.
 
 Ratl analysis gets quadratically larger with the size of the abstract syntax
 tree of the program it's told to analyze.  Much more than 500 modestly-sized
