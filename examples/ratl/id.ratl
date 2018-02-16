@@ -1,8 +1,8 @@
-(fn id_list ([Nat] -> [Nat]) (args)
+(define id_list ([Nat] -> [Nat]) (args)
     args)
 
-(fn id_nat (Nat -> Nat) (args)
+(define id_nat (Nat -> Nat) (args)
     args)
 
-(fn main ([Nat] -> Nat) (args)
+(define main ([Nat] -> Nat) (args)
     (id_nat (head (id_list args))))

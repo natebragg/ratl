@@ -101,7 +101,7 @@ funty = do t1 <- ty
            return $ Arrow ((), ()) [t1] t2
 
 fun :: Parser (Var, Fun ())
-fun = parens (reserved "fn" >>
+fun = parens (reserved "define" >>
               (,) <$> var
                   <*> (Fun <$> parens funty
                            <*> parens var

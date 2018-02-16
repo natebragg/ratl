@@ -1,9 +1,9 @@
-(fn all ([Nat] -> Nat) (args)
+(define all ([Nat] -> Nat) (args)
     (if args
         (if (head args)
             (all (tail args))
             0)
         1))
 
-(fn main ([Nat] -> Nat) (args)
+(define main ([Nat] -> Nat) (args)
     (all args))

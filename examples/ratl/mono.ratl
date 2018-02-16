@@ -1,4 +1,4 @@
-(fn mono_inc ([Nat] -> Nat) (xs)
+(define mono_inc ([Nat] -> Nat) (xs)
     (if xs
         (if (tail xs)
             (if (< (head (tail xs)) (head xs))
@@ -7,7 +7,7 @@
             1)
         1))
 
-(fn mono_dec ([Nat] -> Nat) (xs)
+(define mono_dec ([Nat] -> Nat) (xs)
     (if xs
         (if (tail xs)
             (if (< (head xs) (head (tail xs)))
@@ -16,7 +16,7 @@
             1)
         1))
 
-(fn main ([Nat] -> Nat) (xs)
+(define main ([Nat] -> Nat) (xs)
     (if (mono_inc xs)
         1
         (mono_dec xs)))

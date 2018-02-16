@@ -49,7 +49,7 @@ Ratl executes on a `.ratl` file, and outputs the bounds of the functions and
 the result returned by `main`.  In the directory where Ratl was downloaded,
 run the following commands:
 
-    $ echo "(fn main ([Nat] -> [Nat]) (args) args)" > id.ratl
+    $ echo "(define main ([Nat] -> [Nat]) (args) args)" > id.ratl
     $ ./ratl id.ratl [1,2,3]
     main: 1.0
     [1,2,3]
@@ -59,7 +59,7 @@ and decided that it would execute in constant time: 1.0!  Sounds fast.
 
 Now, a more complex example:
 
-    $ echo "(fn main ([Nat] -> Nat) (args) (head args))" > head.ratl
+    $ echo "(define main ([Nat] -> Nat) (args) (head args))" > head.ratl
     $ ./ratl head.ratl [3,2,1]
     main: 3.0
     3
@@ -70,7 +70,7 @@ which seems appropriately less fast.
 
 Let's analyze a more interesting program, shall we?
 
-    $ echo "(fn main ([Nat] -> Nat) (args)
+    $ echo "(define main ([Nat] -> Nat) (args)
                 (if args (+ 1 (main (tail args))) 0))" > length.ratl
     $ ./ratl length.ratl [9,8,7,6,5,4,3,2,1]
     main: 11.0*n + 6.0
@@ -83,8 +83,8 @@ of the input!
 ## Syntax
 
 The syntax of Ratl is somewhat scheme-like.  The top level is exclusively
-function definitions, denoted by the keyword `fn`.  Functions are typed using
-arrow syntax, and must have a single argument, whose name is given in
+function definitions, denoted by the keyword `define`.  Functions are typed
+using arrow syntax, and must have a single argument, whose name is given in
 parentheses.  The body is an expression.
 
 Expressions include recalling a variable by name, literal values, and function
@@ -103,12 +103,12 @@ Identifiers are made of lower-case letters and underscores.
 
 E.g., if you wanted to find the length of a list:
 
-    (fn length ([Nat] -> Nat) (xs)
+    (define length ([Nat] -> Nat) (xs)
         (if xs
             (+ 1 (length (tail xs)))
             0))
 
-    (fn main (Nat -> Nat) (n)
+    (define main (Nat -> Nat) (n)
         (length [1, 2, 3, 4, 5, 6, 7, 8, 9]))
 
 For more examples, take a look under the `examples/ratl` directory.
@@ -177,13 +177,13 @@ As mentioned above, Ratl uses LP by constructing linear inequalities out of
 resource annotations and costs.  Let's look at an example.  Consider the Ratl
 program found in `./examples/ratl/sum.ratl`, reproduced below:
 
-    (fn sum ([Nat] -> Nat) (vals)
+    (define sum ([Nat] -> Nat) (vals)
         (if vals
             (+ (head vals)
                (sum (tail vals)))
             0))
 
-    (fn main ([Nat] -> Nat) (args)
+    (define main ([Nat] -> Nat) (args)
         (sum args))
 
 Everything is given a resource annotation.  An annotation is made of one or
@@ -398,7 +398,7 @@ Megiddo's algorithm with Simplex.  Not so.  The implementation of MegiddoLP
 is two-dimensional, and is limited to programs with one function of type
 `Nat -> Nat` that either return their input or a natural literal, i.e.,
 
-    (fn main (Nat -> Nat) (args)
+    (define main (Nat -> Nat) (args)
         args)
 
 Computing literally anything immediately makes the program larger dimensional.

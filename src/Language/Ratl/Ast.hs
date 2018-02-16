@@ -85,7 +85,7 @@ tyOf (Fun ty _ _) = ty
 tyOf (Native ty _ _) = ty
 
 instance Show (Fun a) where
-    show _ = "(fn ...)"
+    show _ = "(define ...)"
 
 instance Functor Fun where
     fmap f (Fun ty x e) = Fun (fmap f ty) x e

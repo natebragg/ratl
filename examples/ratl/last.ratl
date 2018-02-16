@@ -1,7 +1,7 @@
-(fn last ([Nat] -> Nat) (vals)
+(define last ([Nat] -> Nat) (vals)
     (if (tail vals)
         (last (tail vals))
         (head vals)))
 
-(fn main ([Nat] -> Nat) (args)
+(define main ([Nat] -> Nat) (args)
     (last args))

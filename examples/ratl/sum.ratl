@@ -1,8 +1,8 @@
-(fn sum ([Nat] -> Nat) (vals)
+(define sum ([Nat] -> Nat) (vals)
     (if vals
         (+ (head vals)
            (sum (tail vals)))
         0))
 
-(fn main ([Nat] -> Nat) (args)
+(define main ([Nat] -> Nat) (args)
     (sum args))

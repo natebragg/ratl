@@ -1,2 +1,2 @@
-(fn main (Nat -> Nat) (args)
+(define main (Nat -> Nat) (args)
     0)

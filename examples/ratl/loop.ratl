@@ -1,5 +1,5 @@
-(fn loop (Nat -> Nat) (_)
+(define loop (Nat -> Nat) (_)
     (loop 0))
 
-(fn main (Nat -> Nat) (arg)
+(define main (Nat -> Nat) (arg)
     (loop arg))
