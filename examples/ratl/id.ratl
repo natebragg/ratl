@@ -5,4 +5,4 @@
     args)
 
 (define main ([Nat] -> Nat) (args)
-    (id_nat (head (id_list args))))
+    (id_nat (car (id_list args))))

@@ -1,18 +1,18 @@
 (define mono_inc ([Nat] -> Nat) (xs)
     (if xs
-        (if (tail xs)
-            (if (< (head (tail xs)) (head xs))
+        (if (cdr xs)
+            (if (< (car (cdr xs)) (car xs))
                 0
-                (mono_inc (tail xs)))
+                (mono_inc (cdr xs)))
             1)
         1))
 
 (define mono_dec ([Nat] -> Nat) (xs)
     (if xs
-        (if (tail xs)
-            (if (< (head xs) (head (tail xs)))
+        (if (cdr xs)
+            (if (< (car xs) (car (cdr xs)))
                 0
-                (mono_dec (tail xs)))
+                (mono_dec (cdr xs)))
             1)
         1))
 

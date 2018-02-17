@@ -59,19 +59,19 @@ and decided that it would execute in constant time: 1.0!  Sounds fast.
 
 Now, a more complex example:
 
-    $ echo "(define main ([Nat] -> Nat) (args) (head args))" > head.ratl
-    $ ./ratl head.ratl [3,2,1]
+    $ echo "(define main ([Nat] -> Nat) (args) (car args))" > car.ratl
+    $ ./ratl car.ratl [3,2,1]
     main: 3.0
     3
 
-With the addition of the call to `head`, the program outputs the first element
+With the addition of the call to `car`, the program outputs the first element
 of its input, and Ratl tells us that `main` now runs in constant time of 2.0,
 which seems appropriately less fast.
 
 Let's analyze a more interesting program, shall we?
 
     $ echo "(define main ([Nat] -> Nat) (args)
-                (if args (+ 1 (main (tail args))) 0))" > length.ratl
+                (if args (+ 1 (main (cdr args))) 0))" > length.ratl
     $ ./ratl length.ratl [9,8,7,6,5,4,3,2,1]
     main: 11.0*n + 6.0
     9
@@ -93,7 +93,7 @@ application, and testing truthiness with `if`.
 Functions called in prefix position, wrapped in parentheses.
 
 Builtin functions include addition with `+`, less-than with `<`, fetching the
-`head` and `tail` of a list, and prepending to a list with `cons`.
+ `car` and `cdr` of a list, and prepending to a list with `cons`.
 
 Literal values include the natural numbers starting at zero, booleans, and
 lists.  Lists can be over naturals or booleans, or over lists, lists of lists,
@@ -107,7 +107,7 @@ E.g., if you wanted to find the length of a list:
 
     (define length ([Nat] -> Nat) (xs)
         (if xs
-            (+ 1 (length (tail xs)))
+            (+ 1 (length (cdr xs)))
             0))
 
     (define main (Nat -> Nat) (n)
@@ -125,7 +125,7 @@ return value.  Looping is achieved via recursion.  The interpreter starts
 executing a program by calling the function `main` with the argument passed
 in on the command line.
 
-If `head` or `tail` is used on `[]`, the program will halt, so it is a good
+If `car` or `cdr` is used on `[]`, the program will halt, so it is a good
 idea to check the truthiness of a list with `if` before using it.
 
 ## Resource-Aware Type Theory
@@ -180,8 +180,8 @@ program found in `./examples/ratl/sum.ratl`, reproduced below:
 
     (define sum ([Nat] -> Nat) (xs)
         (if xs
-            (+ (head xs)
-               (sum (tail xs)))
+            (+ (car xs)
+               (sum (cdr xs)))
             0))
 
 Everything is given a resource annotation.  An annotation is made of one or
@@ -192,10 +192,10 @@ list type, and `sum` itself is given variables for cost before and after
 evaluation because it's a function declaration.  Then during type checking, the
 abstract syntax tree of the function body is traversed, and every node in the
 tree is annotated in post-order.  In the case of `sum`, that means the
-expression `xs` is annotated, followed by `xs`, followed by `(head xs)`.
+expression `xs` is annotated, followed by `xs`, followed by `(car xs)`.
 During each annotation step, leaf expressions like `xs` receive variables *q*
 and *q'* and a cost *k*.  The linear equation that results is simply
-*q*≥*q'*+*k*.  Interior nodes in the syntax tree like `(head xs)` are aware of
+*q*≥*q'*+*k*.  Interior nodes in the syntax tree like `(car xs)` are aware of
 their children's variables, and build inequalities that force them to be
 related.  The more complex the relationship between nodes, the more variables
 and equations are required.  For example, `if` expressions have multiple
@@ -217,7 +217,7 @@ and the remaining rows are the inequalities collected during type checking.
 The right-most column gives the cost for that constraint.  Empty cells are
 variables with zero coefficients for that constraint.
 
-| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` |`[Nat]`| `xs` | `xs` |`['a]`|`head`|`head`|`head`|`head`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`|`tail`|`tail`|`tail`|`tail`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |  `0` |  `0` |`['a]`|`['a]`|`['a]`| `if` | `if` |   |         |
+| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` |`[Nat]`| `xs` | `xs` |`['a]`| `car`| `car`| `car`| `car`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`| `cdr`| `cdr`| `cdr`| `cdr`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |  `0` |  `0` |`['a]`|`['a]`|`['a]`| `if` | `if` |   |         |
 | ------- | ------- | ------- | ------- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| ------- |
 | **1.0** | **1.0** |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |   |         |
 |         |         |         |         |  1.0 | -1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
@@ -263,7 +263,7 @@ equation *q*≥*q'*+*k*, or more specifically, 1.0\**q*≥1.0\**q'*+1.0.
 
 The optmimum determined by Ratl is given in the next table:
 
-| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` |`[Nat]`| `xs` | `xs` |`['a]`|`head`|`head`|`head`|`head`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`|`tail`|`tail`|`tail`|`tail`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |  `0` |  `0` |`['a]`|`['a]`|`['a]`| `if` | `if` |
+| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` |`[Nat]`| `xs` | `xs` |`['a]`| `car`| `car`| `car`| `car`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`| `cdr`| `cdr`| `cdr`| `cdr`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |  `0` |  `0` |`['a]`|`['a]`|`['a]`| `if` | `if` |
 | ------- | ------- | ------- | ------- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
 |  19.0   |  13.0   |   0.0   |   0.0   | 12.0 | 11.0 |  0.0  |  8.0 |  7.0 |  0.0 |  6.0 |  6.0 |  9.0 |  5.0 |  0.0 | 19.0  |  2.0 |  1.0 | 19.0 | 19.0 |  0.0 | 19.0 |  3.0 | 18.0 |  0.0 |  4.0 |  3.0 |  4.0 |  2.0 |  2.0 | 10.0 |  1.0 |  0.0 | 10.0 |  9.0 | 19.0 | 19.0 |  0.0 | 13.0 |  0.0 |
 
@@ -430,7 +430,7 @@ as Simplex, which is what Coin-Or Clp uses.
 Ratl is not appropriate, suitable, or fit for (practically) any purpose.
 
 Ratl is also not defect-free. There are a few bugs in it.  For example, if a
-function unconditionally recurses on the tail of its input, it loops instead of
+function unconditionally recurses on the cdr of its input, it loops instead of
 halting.  It also derives incorrect resource usage for literals.  If you name
 two functions the same, the analysis of their callers will probably be wrong.
 

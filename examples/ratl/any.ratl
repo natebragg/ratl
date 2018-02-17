@@ -1,8 +1,8 @@
 (define any ([Boolean] -> Boolean) (args)
     (if args
-        (if (head args)
+        (if (car args)
             #t
-            (any (tail args)))
+            (any (cdr args)))
         #f))
 
 (define main ([Boolean] -> Boolean) (args)

@@ -1,6 +1,6 @@
 (define length ([Nat] -> Nat) (xs)
     (if xs
-        (+ 1 (length (tail xs)))
+        (+ 1 (length (cdr xs)))
         0))
 
 (define main ([Nat] -> Nat) (args)

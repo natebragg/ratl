@@ -1,7 +1,7 @@
 (define sum ([Nat] -> Nat) (xs)
     (if xs
-        (+ (head xs)
-           (sum (tail xs)))
+        (+ (car xs)
+           (sum (cdr xs)))
         0))
 
 (define main ([Nat] -> Nat) (xs)

@@ -229,7 +229,7 @@ check deg_max p_ = programs
                     constrain $ equate ty' [ty'']
                     constrain [sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
                     constrain [sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
-          elabFE (Native (Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) _ _) = -- hack for tail
+          elabFE (Native (Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) _ _) = -- hack for cdr
                     constrain [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
           elabFE (Native (Arrow (qf, qf') [tyh, ListTy rs tyt] (ListTy ps tyc)) _ _) = do -- hack for cons

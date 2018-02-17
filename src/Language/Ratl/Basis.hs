@@ -19,19 +19,17 @@ import Language.Ratl.Ast (
     lookupFun,
     )
 
-import Prelude hiding (head, tail)
-
 plus :: [Val] -> Val
 plus [Nat n, Nat m] = Nat $ embed (project n + project m)
 
 less :: [Val] -> Val
 less [Nat n, Nat m] = Boolean $ embed $ project n < project m
 
-head :: [Val] -> Val
-head [List (Cons x _)] = x
+car :: [Val] -> Val
+car [List (Cons x _)] = x
 
-tail :: [Val] -> Val
-tail [List (Cons _ xs)] = List xs
+cdr :: [Val] -> Val
+cdr [List (Cons _ xs)] = List xs
 
 cons :: [Val] -> Val
 cons [x, List xs] = List (Cons x xs)
@@ -48,9 +46,9 @@ prims = makeProg [
     (V "<",    Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 less),
 
     -- list functions
-    (V "head", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))                        1 head),
-    (V "tail", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a")))            1 tail),
-    (V "cons", Native (Arrow ((), ()) [Tyvar "a", ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 2 cons)
+    (V "cons", Native (Arrow ((), ()) [Tyvar "a", ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 2 cons),
+    (V "car",  Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))                        1 car),
+    (V "cdr",  Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a")))            1 cdr)
     ]
 
 basis :: Prog ()
