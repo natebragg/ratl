@@ -91,6 +91,7 @@ exchange (Supply  q) = (q, -1.0)
 freein :: Ty a -> [String]
 freein         NatTy = []
 freein (ListTy _ ty) = freein ty
+freein     BooleanTy = []
 freein     (Tyvar y) = [y]
 
 solve :: TyvarEnv a -> (Ty a, Ty a) -> TyvarEnv a
@@ -111,6 +112,7 @@ tysubst :: TyvarEnv a -> Ty a -> Ty a
 tysubst theta = subst
   where subst          NatTy = NatTy
         subst (ListTy ps ty) = ListTy ps $ subst ty
+        subst      BooleanTy = BooleanTy
         subst      (Tyvar x) = varsubst theta x
 
 class Instantiable f where
@@ -319,6 +321,7 @@ check deg_max p_ = programs
                                 return (ty'', (q, q'))
           elabV :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
+          elabV (Boolean _)  = return BooleanTy
           elabV (List l) = elabL l
           elabL :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => List -> m (Ty Anno)
           elabL Nil        = annoMax $ ListTy [] $ Tyvar "a"

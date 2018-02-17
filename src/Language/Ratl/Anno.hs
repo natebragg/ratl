@@ -54,6 +54,7 @@ instance Annotatory Ty where
                 ps <- replicateM deg_max freshAnno
                 return $ ListTy ps ty'
     annotate deg_max NatTy = return NatTy
+    annotate deg_max BooleanTy = return BooleanTy
     annotate deg_max (Tyvar x) = return (Tyvar x)
 
 freshAnno :: MonadState Anno m => m Anno

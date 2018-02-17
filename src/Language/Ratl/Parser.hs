@@ -7,6 +7,7 @@ import Language.Ratl.Ast (
     Embeddable(..),
     Nat(..),
     List(..),
+    Boolean(..),
     Var(..),
     Val(..),
     Fun(..),
@@ -76,11 +77,17 @@ nat = embed <$> fromInteger <$> num
 list :: Parser List
 list = embed <$> brackets (sepEndBy val comma)
 
+boolean :: Parser Boolean
+boolean = embed <$> ((reserved "#t" >> return True)
+                 <|> (reserved "#f" >> return False))
+
 var :: Parser Var
 var = V <$> identifier
 
 val :: Parser Val
-val = List <$> list <|> Nat <$> nat
+val = List <$> list
+  <|> Boolean <$> boolean
+  <|> Nat <$> nat
 
 ex :: Parser Ex
 ex = Val <$> val
@@ -93,6 +100,7 @@ ex = Val <$> val
 
 ty :: Parser (Ty ())
 ty = (reserved "Nat" >> return NatTy)
+  <|> (reserved "Boolean" >> return BooleanTy)
   <|> ListTy [] <$> brackets ty
 
 funty :: Parser (FunTy ())

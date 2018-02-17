@@ -10,32 +10,38 @@ import Data.Char (chr, ord)
 
 data Ty a = NatTy
           | ListTy [a] (Ty a)
+          | BooleanTy
           | Tyvar String
     deriving (Eq, Ord)
 
 instance Show (Ty a) where
     show NatTy = "Nat"
     show (ListTy _ t) = "[" ++ show t ++ "]"
+    show BooleanTy = "Boolean"
     show (Tyvar x) = "'" ++ x
 
 instance Functor Ty where
     fmap _        NatTy  = NatTy
     fmap f (ListTy qs t) = ListTy (fmap f qs) (fmap f t)
+    fmap _    BooleanTy  = BooleanTy
     fmap _     (Tyvar x) = Tyvar x
 
 instance Foldable Ty where
     foldMap _        NatTy  = mempty
     foldMap f (ListTy qs t) = foldMap f qs `mappend` foldMap f t
+    foldMap _    BooleanTy  = mempty
     foldMap _     (Tyvar x) = mempty
 
 instance Traversable Ty where
     traverse _        NatTy  = pure NatTy
     traverse f (ListTy qs t) = ListTy <$> traverse f qs <*> traverse f t
+    traverse _    BooleanTy  = pure BooleanTy
     traverse _     (Tyvar x) = pure $ Tyvar x
 
 eqTy :: Ty a -> Ty a -> Bool
 eqTy        NatTy         NatTy = True
 eqTy (ListTy _ t) (ListTy _ t') = eqTy t t'
+eqTy    BooleanTy     BooleanTy = True
 eqTy    (Tyvar x)     (Tyvar y) = x == y
 eqTy            _             _ = False
 

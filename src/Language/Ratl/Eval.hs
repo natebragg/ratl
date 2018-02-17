@@ -6,6 +6,7 @@ import Language.Ratl.Ast (
     Embeddable(..),
     Nat(..),
     List(..),
+    Boolean(..),
     Var(..),
     Val(..),
     Fun(..),
@@ -25,6 +26,7 @@ run phi args = eval [] (App (V "main") [(Val args)])
                 case eval rho ep of
                     (List Nil) -> eval rho ef
                     (Nat (N 0))-> eval rho ef
+                    (Boolean (B False)) -> eval rho ef
                     _          -> eval rho et
           eval rho (App x es) = fromJust $ do
                 let vs = map (eval rho) es

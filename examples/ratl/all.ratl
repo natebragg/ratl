@@ -1,9 +1,9 @@
-(define all ([Nat] -> Nat) (args)
+(define all ([Boolean] -> Boolean) (args)
     (if args
         (if (head args)
             (all (tail args))
-            0)
-        1))
+            #f)
+        #t))
 
-(define main ([Nat] -> Nat) (args)
+(define main ([Boolean] -> Boolean) (args)
     (all args))

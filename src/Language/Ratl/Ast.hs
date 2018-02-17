@@ -5,6 +5,7 @@ module Language.Ratl.Ast (
     Embeddable(..),
     Nat(..),
     List(..),
+    Boolean(..),
     Var(..),
     Val(..),
     Fun(..),
@@ -64,18 +65,33 @@ instance Embeddable List where
 instance Show List where
     show l = show $ project l
 
+newtype Boolean = B Bool
+    deriving (Eq)
+
+instance Embeddable Boolean where
+    type HostType Boolean = Bool
+    embed = B
+    project (B b) = b
+
+instance Show Boolean where
+    show (B True) = "#t"
+    show (B False) = "#f"
+
 data Var = V String
     deriving (Eq)
 
 instance Show Var where
     show (V x) = x
 
-data Val = List List | Nat Nat
+data Val = List List
+         | Nat Nat
+         | Boolean Boolean
     deriving (Eq)
 
 instance Show Val where
     show (List xs) = show xs
     show (Nat n) = show n
+    show (Boolean b) = show b
 
 data Fun a = Fun (FunTy a) Var Ex
            | Native (FunTy a) Int ([Val] -> Val)

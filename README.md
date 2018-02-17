@@ -95,9 +95,11 @@ Functions called in prefix position, wrapped in parentheses.
 Builtin functions include addition with `+`, less-than with `<`, fetching the
 `head` and `tail` of a list, and prepending to a list with `cons`.
 
-Literal values include the natural numbers starting at zero, and lists.  Lists
-can be over the naturals, or over lists of naturals, etc.  Naturals are
-depicted in the usual way.  Lists are comma-delimited, in square brackets.
+Literal values include the natural numbers starting at zero, booleans, and
+lists.  Lists can be over naturals or booleans, or over lists, lists of lists,
+etc.  Naturals are depicted in the usual way.  Lists are comma-delimited, in
+square brackets.  Booleans are represented by the symbols `#t` for true and
+`#f` for false.
 
 Identifiers are made of lower-case letters and underscores.
 
