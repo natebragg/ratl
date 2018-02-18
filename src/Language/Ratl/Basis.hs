@@ -1,5 +1,8 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Language.Ratl.Basis (
     arity,
+    prims,
     basis,
 ) where
 
@@ -19,6 +22,9 @@ import Language.Ratl.Ast (
     lookupFun,
     )
 
+import Data.ByteString.Char8 (unpack)
+import Data.FileEmbed (embedFile)
+
 plus :: [Val] -> Val
 plus [Nat n, Nat m] = Nat $ embed (project n + project m)
 
@@ -35,21 +41,21 @@ cons :: [Val] -> Val
 cons [x, List xs] = List (Cons x xs)
 
 arity :: Var -> Int
-arity = maybe 1 (\(Native _ a _) -> a) . lookupFun basis
+arity = maybe 1 (\(Native _ a _) -> a) . lookupFun prims
 
 prims :: Prog ()
 prims = makeProg [
     -- arithmetic operations
-    (V "+",    Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 plus),
+    (V "+",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 plus),
 
     -- comparison operations
-    (V "<",    Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 less),
+    (V "<",     Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 less),
 
     -- list functions
-    (V "cons", Native (Arrow ((), ()) [Tyvar "a", ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 2 cons),
-    (V "car",  Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))                        1 car),
-    (V "cdr",  Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a")))            1 cdr)
+    (V "cons",  Native (Arrow ((), ()) [Tyvar "a", ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 2 cons),
+    (V "car",   Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))                        1 car),
+    (V "cdr",   Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a")))            1 cdr)
     ]
 
-basis :: Prog ()
-basis = prims
+basis :: String
+basis = unpack $(embedFile "lib/basis.ratl")

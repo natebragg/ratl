@@ -18,7 +18,7 @@ import qualified Data.Clp.Clp as Clp (version)
 import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralForm(..))
 import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Anno (annotate)
-import Language.Ratl.Basis (basis)
+import Language.Ratl.Basis (prims, basis)
 import Language.Ratl.Ast (Var(V), lookupFun)
 import Language.Ratl.Eval (run)
 import Language.Ratl.Elab (check)
@@ -98,10 +98,13 @@ main = do
         putStrLn "Maximum degree greater than 1 not supported"
         exitFailure
     inp <- readFile fn
+    prims_basis <- case runParser prog () "initial basis" basis of
+        (Right p) -> return $ prims `mappend` p
+        (Left e) -> liftIO $ print e >> exitFailure
     result <- runMaybeT $ flip evalStateT 0 $ do
         case runParser prog () fn inp of
             (Right p) -> do
-                let p' = basis `mappend` p
+                let p' = prims_basis `mappend` p
                 checked <- check deg_max p'
                 return (checked, p')
             (Left e) -> do
@@ -110,7 +113,7 @@ main = do
         Nothing ->
             putStrLn "Typechecking failed"
         Just (programs, p) -> do
-            let module_programs = filter (isNothing . lookupFun basis . fst) programs
+            let module_programs = filter (isNothing . lookupFun prims_basis . fst) programs
             feasible <- forM module_programs $ \(f, program) ->  do
                let (optimums, magnitudes) = unzip $ progressive_solve program
                let infeasible = any null optimums

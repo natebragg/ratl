@@ -29,7 +29,9 @@ library
                        Data.Clp.LinearFunction
                        Data.Graph.Inductive.Extra
   build-depends:       base >= 4.7 && < 5
+                     , bytestring
                      , fgl
+                     , file-embed
                      , mtl
                      , transformers
                      , containers
