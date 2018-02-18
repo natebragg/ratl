@@ -92,9 +92,9 @@ application, and branching with `if`.
 
 Functions called in prefix position, wrapped in parentheses.
 
-Builtin functions include addition with `+`, comparison with `<`, `>` and `=`,
-fetching the `car` and `cdr` of a list, prepending to a list with `cons`,
-testing a list with `null?`, and negating booleans with `not`.
+Builtin functions include arithmetic with `+` and `*`, comparison with `<`, `>`
+and `=`, fetching the `car` and `cdr` of a list, prepending to a list with
+`cons`, testing a list with `null?`, and negating booleans with `not`.
 
 Literal values include the natural numbers starting at zero, booleans, and
 lists.  Lists can be over naturals or booleans, or over lists, lists of lists,
@@ -118,8 +118,8 @@ For more examples, take a look under the `examples/ratl` directory.
 
 ## Semantics
 
-Ratl is almost useful.  It is a language that can only increase numbers and
-create and consume lists.
+Ratl is almost useful.  It is a language that can only increase and compare
+numbers, and create and consume lists.
 
 All expressions return a value.  Function bodies evaluate to the function's
 return value.  Looping is achieved via recursion.  The interpreter starts
@@ -329,6 +329,10 @@ bounds predicted:
     main: 5.0
     nil: 1.0
 
+    examples/ratl/product.ratl
+    main: 22.0*n + 19.0
+    product: 22.0*n + 16.0
+
     examples/ratl/sum.ratl
     main: 22.0*n + 19.0
     sum: 22.0*n + 16.0
@@ -337,9 +341,9 @@ bounds predicted:
     main: 1.0
 
 Most of these seem plausible.  `all` and `any` are virtually the same program,
-and their bounds are identical.  As expected, `id` is constant time.  The
-program `loop` does not terminate, so Ratl is unsurprisingly unable to produce
-an upper bound.
+and their bounds are identical.  The same is true of `sum` and `product`.  As
+expected, `id` is constant time.  The program `loop` does not terminate, so
+Ratl is unsurprisingly unable to produce an upper bound.
 
 Performance-wise, Ratl is bound quadratically by the program size.  This makes
 sense, as Simplex runs in linear time for most problems, and the problem size
