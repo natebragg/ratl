@@ -1,6 +1,6 @@
 (define filtzero ([Nat] -> [Nat]) (xs)
     (if (not (null? xs))
-        (if (car xs)
+        (if (not (= 0 (car xs)))
             (cons (car xs) (filtzero (cdr xs)))
             (filtzero (cdr xs)))
         []))
