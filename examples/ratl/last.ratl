@@ -1,5 +1,5 @@
 (define last ([Nat] -> Nat) (vals)
-    (if (cdr vals)
+    (if (not (null? (cdr vals)))
         (last (cdr vals))
         (car vals)))
 

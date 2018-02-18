@@ -1,22 +1,22 @@
-(define mono_inc ([Nat] -> Nat) (xs)
-    (if xs
-        (if (cdr xs)
+(define mono_inc ([Nat] -> Boolean) (xs)
+    (if (not (null? xs))
+        (if (not (null? (cdr xs)))
             (if (< (car (cdr xs)) (car xs))
-                0
+                #f
                 (mono_inc (cdr xs)))
-            1)
-        1))
+            #t)
+        #t))
 
-(define mono_dec ([Nat] -> Nat) (xs)
-    (if xs
-        (if (cdr xs)
+(define mono_dec ([Nat] -> Boolean) (xs)
+    (if (not (null? xs))
+        (if (not (null? (cdr xs)))
             (if (< (car xs) (car (cdr xs)))
-                0
+                #f
                 (mono_dec (cdr xs)))
-            1)
-        1))
+            #t)
+        #t))
 
-(define main ([Nat] -> Nat) (xs)
+(define main ([Nat] -> Boolean) (xs)
     (if (mono_inc xs)
-        1
+        #t
         (mono_dec xs)))

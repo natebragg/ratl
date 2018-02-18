@@ -1,5 +1,5 @@
 (define sum ([Nat] -> Nat) (xs)
-    (if xs
+    (if (not (null? xs))
         (+ (car xs)
            (sum (cdr xs)))
         0))

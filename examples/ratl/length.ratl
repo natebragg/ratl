@@ -1,5 +1,5 @@
 (define length ([Nat] -> Nat) (xs)
-    (if xs
+    (if (not (null? xs))
         (+ 1 (length (cdr xs)))
         0))
 

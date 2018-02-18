@@ -1,5 +1,5 @@
 (define all ([Boolean] -> Boolean) (args)
-    (if args
+    (if (not (null? args))
         (if (car args)
             (all (cdr args))
             #f)

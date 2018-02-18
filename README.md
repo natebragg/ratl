@@ -88,12 +88,13 @@ using arrow syntax, and must have a single argument, whose name is given in
 parentheses.  The body is an expression.
 
 Expressions include recalling a variable by name, literal values, function
-application, and testing truthiness with `if`.
+application, and branching with `if`.
 
 Functions called in prefix position, wrapped in parentheses.
 
 Builtin functions include addition with `+`, less-than with `<`, fetching the
- `car` and `cdr` of a list, and prepending to a list with `cons`.
+ `car` and `cdr` of a list, prepending to a list with `cons`, testing a list
+with `null?`, and negating booleans with `not`.
 
 Literal values include the natural numbers starting at zero, booleans, and
 lists.  Lists can be over naturals or booleans, or over lists, lists of lists,
@@ -126,7 +127,7 @@ executing a program by calling the function `main` with the argument passed
 in on the command line.
 
 If `car` or `cdr` is used on `[]`, the program will halt, so it is a good
-idea to check the truthiness of a list with `if` before using it.
+idea to check a list with `null?` before using it.
 
 ## Resource-Aware Type Theory
 

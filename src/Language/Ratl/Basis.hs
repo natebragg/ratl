@@ -31,6 +31,9 @@ plus [Nat n, Nat m] = Nat $ embed (project n + project m)
 less :: [Val] -> Val
 less [Nat n, Nat m] = Boolean $ embed $ project n < project m
 
+null' :: [Val] -> Val
+null' [List xs] = Boolean $ embed $ xs == Nil
+
 car :: [Val] -> Val
 car [List (Cons x _)] = x
 
@@ -52,6 +55,7 @@ prims = makeProg [
     (V "<",     Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 less),
 
     -- list functions
+    (V "null?", Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] BooleanTy)                          1 null'),
     (V "cons",  Native (Arrow ((), ()) [Tyvar "a", ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a"))) 2 cons),
     (V "car",   Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (Tyvar "a"))                        1 car),
     (V "cdr",   Native (Arrow ((), ()) [ListTy [] (Tyvar "a")] (ListTy [] (Tyvar "a")))            1 cdr)
