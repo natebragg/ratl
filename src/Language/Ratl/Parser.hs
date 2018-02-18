@@ -21,20 +21,23 @@ import Language.Ratl.Ty (
     )
 import Language.Ratl.Basis (arity)
 
+import Data.Char (isSpace)
 import Text.Parsec (try, many1, count, sepEndBy, (<|>))
-import Text.Parsec.Char (char, lower)
+import Text.Parsec.Char (noneOf)
 import Text.Parsec.String (Parser)
 import Text.Parsec.Language (LanguageDef, emptyDef)
 import Text.Parsec.Token (GenLanguageDef(..))
 import qualified Text.Parsec.Token as P
-import Control.Monad (mzero)
+import Control.Monad (mzero, mfilter)
+
+
 
 lispStyle :: LanguageDef st
 lispStyle = emptyDef {
                 commentLine    = ";",
                 nestedComments = True,
                 identStart     = identLetter lispStyle,
-                identLetter    = char '_' <|> lower,
+                identLetter    = try $ mfilter (not . isSpace) $ noneOf "()[];,",
                 opStart        = opLetter lispStyle,
                 opLetter       = mzero,
                 reservedOpNames= [],
@@ -93,7 +96,7 @@ ex :: Parser Ex
 ex = Val <$> val
  <|> Var <$> var
  <|> parens ((reserved "if" >> If <$> ex <*> ex <*> ex)
-         <|> try (do v <- V <$> symbol "+" <|> V <$> symbol "<" <|> var
+         <|> try (do v <- var
                      es <- count (arity v) ex
                      return $ App v es)
          <|> ex)
