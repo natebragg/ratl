@@ -25,14 +25,8 @@ import Language.Ratl.Ast (
 import Data.ByteString.Char8 (unpack)
 import Data.FileEmbed (embedFile)
 
-arith :: (Int -> Int -> Int) -> Nat -> Nat -> Nat
-arith op n m = embed $ project n `op` project m
-
-plus :: [Val] -> Val
-plus [Nat n, Nat m] = Nat $ arith (+) n m
-
-times :: [Val] -> Val
-times [Nat n, Nat m] = Nat $ arith (*) n m
+arith :: (Int -> Int -> Int) -> [Val] -> Val
+arith op [Nat n, Nat m] = Nat $ embed $ project n `op` project m
 
 less :: [Val] -> Val
 less [Nat n, Nat m] = Boolean $ embed $ project n < project m
@@ -61,8 +55,8 @@ arity = maybe 1 (\(Native _ a _) -> a) . lookupFun prims
 prims :: Prog ()
 prims = makeProg [
     -- arithmetic operations
-    (V "+",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 plus),
-    (V "*",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 times),
+    (V "+",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 (arith (+))),
+    (V "*",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 (arith (*))),
 
     -- comparison operations
     (V "<",     Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 less),
