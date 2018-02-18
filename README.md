@@ -34,7 +34,7 @@ Ratl can then be run:
 To run ratl, supply the ratl file to analyze, the arguments to main (only
 needed when `mode` is `Run`), and optionally, a maximum degree:
 
-    $ ./ratl -h
+    $ stack exec ratl -- -h
     Usage: ratl [-d <n>] [-m <m>] filename <args>
     Resource-Aware Toy Language
 
@@ -49,8 +49,8 @@ Ratl executes on a `.ratl` file, and outputs the bounds of the functions and
 the result returned by `main`.  In the directory where Ratl was downloaded,
 run the following commands:
 
-    $ echo "(define main ([Nat] -> [Nat]) (args) args)" > id.ratl
-    $ ./ratl id.ratl [1,2,3]
+    $ echo "(define main ([Nat] -> [Nat]) (xs) xs)" > id.ratl
+    $ stack exec ratl id.ratl [1,2,3]
     main: 1.0
     [1,2,3]
 
@@ -59,21 +59,21 @@ and decided that it would execute in constant time: 1.0!  Sounds fast.
 
 Now, a more complex example:
 
-    $ echo "(define main ([Nat] -> Nat) (args) (car args))" > car.ratl
-    $ ./ratl car.ratl [3,2,1]
-    main: 3.0
+    $ echo "(define main ([Nat] -> Nat) (xs) (car xs))" > car.ratl
+    $ stack exec ratl car.ratl [3,2,1]
+    main: 4.0
     3
 
 With the addition of the call to `car`, the program outputs the first element
-of its input, and Ratl tells us that `main` now runs in constant time of 2.0,
+of its input, and Ratl tells us that `main` now runs in constant time of 4.0,
 which seems appropriately less fast.
 
 Let's analyze a more interesting program, shall we?
 
-    $ echo "(define main ([Nat] -> Nat) (args)
-                (if args (+ 1 (main (cdr args))) 0))" > length.ratl
-    $ ./ratl length.ratl [9,8,7,6,5,4,3,2,1]
-    main: 11.0*n + 6.0
+    $ echo "(define main ([Nat] -> Nat) (xs)
+            (if (not (null? xs)) (+ 1 (main (cdr xs))) 0))" > length.ratl
+    $ stack exec ratl length.ratl [9,8,7,6,5,4,3,2,1]
+    main: 27.0*n + 21.0
     9
 
 The program outputs the length of the list, but more importantly Ratl outputs
@@ -92,9 +92,9 @@ application, and branching with `if`.
 
 Functions called in prefix position, wrapped in parentheses.
 
-Builtin functions include addition with `+`, less-than with `<`, fetching the
- `car` and `cdr` of a list, prepending to a list with `cons`, testing a list
-with `null?`, and negating booleans with `not`.
+Builtin functions include addition with `+`, comparison with `<`, `>` and `=`,
+fetching the `car` and `cdr` of a list, prepending to a list with `cons`,
+testing a list with `null?`, and negating booleans with `not`.
 
 Literal values include the natural numbers starting at zero, booleans, and
 lists.  Lists can be over naturals or booleans, or over lists, lists of lists,
@@ -107,7 +107,7 @@ Identifiers are made of lower-case letters and underscores.
 E.g., if you wanted to find the length of a list:
 
     (define length ([Nat] -> Nat) (xs)
-        (if xs
+        (if (not (null? xs))
             (+ 1 (length (cdr xs)))
             0))
 
@@ -180,10 +180,10 @@ resource annotations and costs.  Let's look at an example.  Consider the Ratl
 program found in `./examples/ratl/sum.ratl`, reproduced below:
 
     (define sum ([Nat] -> Nat) (xs)
-        (if xs
+        (if (null? xs)
+            0
             (+ (car xs)
-               (sum (cdr xs)))
-            0))
+               (sum (cdr xs)))))
 
 Everything is given a resource annotation.  An annotation is made of one or
 more resource variables, zero or more relationships between resource variables,
@@ -193,7 +193,9 @@ list type, and `sum` itself is given variables for cost before and after
 evaluation because it's a function declaration.  Then during type checking, the
 abstract syntax tree of the function body is traversed, and every node in the
 tree is annotated in post-order.  In the case of `sum`, that means the
-expression `xs` is annotated, followed by `xs`, followed by `(car xs)`.
+expression `xs` is annotated, followed by `(null? xs)`, `0`, `xs`, `(car xs)`,
+`xs`, `(cdr xs)`, `(sum ...)`, `(+ ...)`, and finally `(if ...)`.
+
 During each annotation step, leaf expressions like `xs` receive variables *q*
 and *q'* and a cost *k*.  The linear equation that results is simply
 *q*≥*q'*+*k*.  Interior nodes in the syntax tree like `(car xs)` are aware of
@@ -218,44 +220,48 @@ and the remaining rows are the inequalities collected during type checking.
 The right-most column gives the cost for that constraint.  Empty cells are
 variables with zero coefficients for that constraint.
 
-| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` |`[Nat]`| `xs` | `xs` |`['a]`| `car`| `car`| `car`| `car`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`| `cdr`| `cdr`| `cdr`| `cdr`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |  `0` |  `0` |`['a]`|`['a]`|`['a]`| `if` | `if` |   |         |
-| ------- | ------- | ------- | ------- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| ------- |
-| **1.0** | **1.0** |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |   |         |
-|         |         |         |         |  1.0 | -1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |  1.0 | -1.0 |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |  1.0 | -1.0 |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **0.0** |
-|         |         |         |         |      |      |  1.0  |      |      | -1.0 |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
-|         |         |         |         |      |      |       | -1.0 |      |      |      |      |  1.0 |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |  1.0 |      | -1.0 |      |      |      | -1.0 |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |  1.0 |      | -1.0 |  1.0 |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |  1.0 |      |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |  1.0  |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       | -1.0 |      |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |  1.0 |      |      | -1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |  1.0 |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
-|  -1.0   |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      | -1.0 |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |  -1.0   |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |  1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
-|         |         |   1.0   |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      | ≥ | **0.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      | -1.0 |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |  1.0 |      |       |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |  1.0 |      | -1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      | = | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | -1.0 |  1.0 |      |      |      |      |      |      |      | = | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      |      | ≥ | **0.0** |
-|         |         |         |   1.0   |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      | = | **0.0** |
-|         |         |         |         | -1.0 |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | ≥ | **1.0** |
-|         |         |         |         |      |  1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |  1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      |      |      | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      |      |      |      |      | -1.0 | ≥ | **1.0** |
-|         |         |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      |      | -1.0 | ≥ | **1.0** |
-|         |   1.0   |         |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      | = | **0.0** |
-|         |         |  -1.0   |         |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | = | **0.0** |
-|   1.0   |         |         |  -1.0   |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      | = | **0.0** |
-|         |         |         |         |      |      | -1.0  |      |      |      |      |      |      |      |      | -1.0  |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      | = | **0.0** |
+| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` | `['a]`|`null?`|`null?`|`null?`|`null?`| `#c` |  `0` |  `0` |`[Nat]`| `xs` | `xs` |`['a]`| `car`| `car`| `car`| `car`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`| `cdr`| `cdr`| `cdr`| `cdr`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |`['a]`|`['a]`| `if` | `if` |   |         |
+| ------- | ------- | ------- | ------- | ---- | ---- | ----- | ----- | ----- | ----- | ----- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |---| ------- |
+| **1.0** | **1.0** |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |   |         |
+|         |         |         |         |  1.0 | -1.0 |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |  1.0  | -1.0  |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **0.0** |
+|         |         |         |   1.0   |      |      | -1.0  |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         | -1.0 |      |       |       |       |  1.0  |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |  1.0 |       | -1.0  |       |       |       | -1.0 |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |       |  1.0  |       | -1.0  |  1.0 |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |  1.0 | -1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |  1.0 | -1.0 |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |  1.0 | -1.0 |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **0.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |  1.0  |      |      | -1.0 |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       | -1.0 |      |      |      |      |  1.0 |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |  1.0 |      | -1.0 |      |      |      | -1.0 |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |  1.0 |      | -1.0 |  1.0 |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |  1.0 |      |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |  1.0  |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       | -1.0 |      |      |      |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |  1.0 |      |      | -1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |  1.0 |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|  -1.0   |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      | -1.0 |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |  -1.0   |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |  1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |   1.0   |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      |      |      |      |      |      | ≥ | **0.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      | -1.0 |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |  1.0 |      |       |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |  1.0 |      | -1.0 |      |      |      | -1.0 |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | -1.0 |  1.0 |      |      |      |      | = | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      | ≥ | **0.0** |
+|         |         |         |         |      |      |       |       |       | -1.0  |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |  1.0  |      | -1.0 |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |  1.0  |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      |      |      |      | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |  1.0 |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 | ≥ | **1.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |      |      | -1.0 | ≥ | **1.0** |
+|         |   1.0   |         |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      | = | **0.0** |
+|         |         |  -1.0   |         |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 | = | **0.0** |
+|   1.0   |         |         |  -1.0   |      |      |       |       |       |       |       |      |      |      |       |      |      |      |      |      |      |      |      |       |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |      | = | **0.0** |
+|         |         |         |         |      |      |       |       |       |       |       |      |      |      | -1.0  |      |      |      |      |      |      |      |      | -1.0  |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      | = | **0.0** |
 
 To consider the second row, this corresponds to one instance of the term `xs`
 discussed previously.  It has a presumed cost of 1.0, and coefficients of 1.0
@@ -264,16 +270,16 @@ equation *q*≥*q'*+*k*, or more specifically, 1.0\**q*≥1.0\**q'*+1.0.
 
 The optmimum determined by Ratl is given in the next table:
 
-| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` |`[Nat]`| `xs` | `xs` |`['a]`| `car`| `car`| `car`| `car`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`| `cdr`| `cdr`| `cdr`| `cdr`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |  `0` |  `0` |`['a]`|`['a]`|`['a]`| `if` | `if` |
-| ------- | ------- | ------- | ------- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
-|  19.0   |  13.0   |   0.0   |   0.0   | 12.0 | 11.0 |  0.0  |  8.0 |  7.0 |  0.0 |  6.0 |  6.0 |  9.0 |  5.0 |  0.0 | 19.0  |  2.0 |  1.0 | 19.0 | 19.0 |  0.0 | 19.0 |  3.0 | 18.0 |  0.0 |  4.0 |  3.0 |  4.0 |  2.0 |  2.0 | 10.0 |  1.0 |  0.0 | 10.0 |  9.0 | 19.0 | 19.0 |  0.0 | 13.0 |  0.0 |
+| `[Nat]` |  `sum`  |  `sum`  | `[Nat]` | `xs` | `xs` | `['a]`|`null?`|`null?`|`null?`|`null?`| `#c` |  `0` |  `0` |`[Nat]`| `xs` | `xs` |`['a]`| `car`| `car`| `car`| `car`| `#c` |`[Nat]`| `xs` | `xs` |`['a]`|`['a]`| `cdr`| `cdr`| `cdr`| `cdr`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |`['a]`|`['a]`| `if` | `if` |
+| ------- | ------- | ------- | ------- | ---- | ---- | ----- | ----- | ----- | ----- | ----- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ----- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+|  22.0   |  16.0   |   0.0   |   0.0   | 14.0 | 13.0 |  0.0  | 12.0  | 12.0  | 15.0  | 11.0  |  0.0 | 10.0 |  9.0 |  0.0  |  8.0 |  7.0 |  0.0 |  6.0 |  6.0 |  9.0 |  5.0 |  0.0 | 22.0  |  2.0 |  1.0 | 22.0 | 22.0 |  0.0 | 22.0 |  3.0 | 21.0 |  0.0 |  4.0 |  3.0 |  4.0 |  2.0 |  2.0 | 10.0 |  1.0 |  0.0 | 22.0 | 22.0 | 16.0 |  0.0 |
 
 
 The optimum values for the list type variables are the linear upper bounds,
 while the optimum values for the function types are the constant factors.  This
 corresponds to the reported bounds for the two functions:
 
-    sum: 19.0*n + 13.0
+    sum: 22.0*n + 16.0
 
 For the actual implementation, this formulation is actually how the problem is
 fed to the solver.  It is kept in this form in order to minimize the number of
@@ -286,16 +292,16 @@ When run on the sample programs in `examples/ratl`, here are the resulting
 bounds predicted:
 
     examples/ratl/all.ratl
-    main: 18.0*n + 16.0
-    all: 18.0*n + 13.0
+    main: 29.0*n + 27.0
+    all: 29.0*n + 24.0
 
     examples/ratl/any.ratl
-    main: 18.0*n + 16.0
-    any: 18.0*n + 13.0
+    main: 29.0*n + 27.0
+    any: 29.0*n + 24.0
 
     examples/ratl/filtzero.ratl
-    main: 26.0*n + 22.0
-    filtzero: 26.0*n + 19.0
+    main: 50.0*n + 46.0
+    filtzero: 50.0*n + 43.0
 
     examples/ratl/id.ratl
     main: 12.0
@@ -303,29 +309,29 @@ bounds predicted:
     id_list: 1.0
 
     examples/ratl/last.ratl
-    main: 14.0*n + 15.0
-    last: 14.0*n + 11.0
+    main: 25.0*n + 26.0
+    last: 25.0*n + 22.0
 
     examples/ratl/length.ratl
-    main: 16.0*n + 13.0
-    length: 16.0*n + 10.0
+    main: 27.0*n + 24.0
+    length: 27.0*n + 21.0
 
     examples/ratl/loop.ratl
     main: Analysis was infeasible
     loop: Analysis was infeasible
 
     examples/ratl/mono.ratl
-    main: 72.0*n + 71.0
-    mono_dec: 36.0*n + 30.0
-    mono_inc: 36.0*n + 30.0
+    main: 116.0*n + 115.0
+    mono_dec: 58.0*n + 52.0
+    mono_inc: 58.0*n + 52.0
 
     examples/ratl/nil.ratl
     main: 5.0
     nil: 1.0
 
     examples/ratl/sum.ratl
-    main: 19.0*n + 16.0
-    sum: 19.0*n + 13.0
+    main: 22.0*n + 19.0
+    sum: 22.0*n + 16.0
 
     examples/ratl/zero.ratl
     main: 1.0

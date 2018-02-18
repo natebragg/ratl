@@ -1,8 +1,8 @@
 (define sum ([Nat] -> Nat) (xs)
-    (if (not (null? xs))
+    (if (null? xs)
+        0
         (+ (car xs)
-           (sum (cdr xs)))
-        0))
+           (sum (cdr xs)))))
 
 (define main ([Nat] -> Nat) (xs)
     (sum xs))
