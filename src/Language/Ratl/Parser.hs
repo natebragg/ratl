@@ -22,7 +22,7 @@ import Language.Ratl.Ty (
 import Language.Ratl.Basis (arity)
 
 import Data.Char (isSpace)
-import Text.Parsec (try, many1, count, sepEndBy, (<|>))
+import Text.Parsec (try, many, count, sepEndBy, (<|>))
 import Text.Parsec.Char (noneOf)
 import Text.Parsec.String (Parser)
 import Text.Parsec.Language (LanguageDef, emptyDef)
@@ -119,4 +119,4 @@ fun = parens (reserved "define" >>
                            <*> ex))
 
 prog :: Parser (Prog ())
-prog = whiteSpace >> makeProg <$> many1 fun
+prog = whiteSpace >> makeProg <$> many fun
