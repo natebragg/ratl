@@ -269,7 +269,7 @@ check deg_max p_ = programs
                                         return $ MonoidalMap $ fromList $ elems ss'
                                 share =<< reannotateShares tss
                                 share =<< reannotateShares fss
-                                let ifty = Arrow ((), ()) [Tyvar "a", Tyvar "b", Tyvar "b"] (Tyvar "b")
+                                let ifty = Arrow ((), ()) [BooleanTy, Tyvar "a", Tyvar "a"] (Tyvar "a")
                                 Arrow (q, q') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
                                 let tys'' = unTyList $ instantiate tys' $ TyList tys
                                 let [typ, tyt, tyf] = tys'

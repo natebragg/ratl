@@ -24,10 +24,8 @@ run phi args = eval [] (App (V "main") [(Val args)])
           eval rho (Val v) = v
           eval rho (If ep et ef) =
                 case eval rho ep of
-                    (List Nil) -> eval rho ef
-                    (Nat (N 0))-> eval rho ef
+                    (Boolean (B  True)) -> eval rho et
                     (Boolean (B False)) -> eval rho ef
-                    _          -> eval rho et
           eval rho (App x es) = fromJust $ do
                 let vs = map (eval rho) es
                 f <- lookupFun phi x
