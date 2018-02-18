@@ -90,7 +90,7 @@ parentheses.  The body is an expression.
 Expressions include recalling a variable by name, literal values, function
 application, and branching with `if`.
 
-Functions called in prefix position, wrapped in parentheses.
+Functions are called in prefix position, wrapped in parentheses.
 
 Builtin functions include arithmetic with `+` and `*`, comparison with `<`, `>`
 and `=`, fetching the `car` and `cdr` of a list, prepending to a list with
@@ -102,7 +102,7 @@ etc.  Naturals are depicted in the usual way.  Lists are comma-delimited, in
 square brackets.  Booleans are represented by the symbols `#t` for true and
 `#f` for false.
 
-Identifiers are made of lower-case letters and underscores.
+Identifiers are made of any characters besides whitespace and `()[];,`.
 
 E.g., if you wanted to find the length of a list:
 
