@@ -57,7 +57,11 @@ type SharedTys a = MonoidalMap (Ty a) [Ty a]
 type TyvarEnv a = [(String, Ty a)]
 type ProgEnv = [(Var, [GeneralForm])]
 
-data Cost = Cost { k_var, k_val, k_ap1, k_ap2, k_ifp, k_ift, k_iff, k_ifc :: Double }
+data Cost = Cost { k_var,
+                   k_val,
+                   k_ap1, k_ap2,
+                   k_ifp, k_ift, k_iff, k_ifc,
+                   k_lt1, k_lt2 :: Double }
     deriving Eq
 
 constant = Cost {
@@ -68,7 +72,9 @@ constant = Cost {
         k_ifp = 1.0,
         k_ift = 1.0,
         k_iff = 1.0,
-        k_ifc = 1.0
+        k_ifc = 1.0,
+        k_lt1 = 1.0,
+        k_lt2 = 1.0
     }
 
 zero = Cost {
@@ -79,7 +85,9 @@ zero = Cost {
         k_ifp = 0.0,
         k_ift = 0.0,
         k_iff = 0.0,
-        k_ifc = 0.0
+        k_ifc = 0.0,
+        k_lt1 = 0.0,
+        k_lt2 = 0.0
     }
 
 data Resource = Consume Anno | Supply Anno
@@ -179,6 +187,7 @@ callgraph = connects =<< flatten . mapFun (second calls)
           calls (Fun _ _ e) = ecalls e
               where ecalls (App f es) = f : concatMap ecalls es
                     ecalls (If ep et ef) = concatMap ecalls [ep, et, ef]
+                    ecalls (Let ds e) = concatMap ecalls $ map snd ds ++ [e]
                     ecalls _ = []
 
 data CheckE = CheckE {
@@ -211,6 +220,7 @@ check deg_max p_ = programs
           degreeof = asks (degree . checkF)
           annoMax a = degreeof >>= flip annotate a
           lookupThisSCP x = asks (flip lookupFun x . comp . checkF)
+          assoc (a, (b, c)) = ((a, b), c)
           programs = fmap concat $ forM scps $ \scp -> do
                     scp' <- annotate deg_max scp
                     (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, comp = scp', cost = constant}
@@ -319,6 +329,16 @@ check deg_max p_ = programs
                                 constrain [sparse (map exchange [Consume q_ap, Supply qf, Supply c]) `Eql` k1]
                                 constrain [sparse (map exchange [Supply q', Consume qf', Consume c]) `Eql` k2]
                                 return (ty'', (q, q'))
+          elabE (Let ds e) = do (tyds, (qs, q's)) <- second unzip <$> unzip <$> mapM (fmap assoc . traverse elabE) ds
+                                (ty, (qe, qe')) <- withReaderT (\ce -> ce {env = (reverse tyds) ++ env ce}) $ elabE e
+                                q  <- freshAnno
+                                q' <- freshAnno
+                                k1 <- costof k_lt1
+                                k2 <- costof k_lt2
+                                constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
+                                           (q_in, q_out) <- zip (q:q's) (qs ++ [qe])]
+                                constrain [sparse (map exchange [Supply q', Consume qe']) `Geq` k2]
+                                return (ty, (q, q'))
           elabV :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
           elabV (Boolean _)  = return BooleanTy

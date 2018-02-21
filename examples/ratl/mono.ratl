@@ -1,19 +1,21 @@
 (define mono_inc ([Nat] -> Boolean) (xs)
     (if (not (null? xs))
-        (if (not (null? (cdr xs)))
-            (if (> (car xs) (car (cdr xs)))
-                #f
-                (mono_inc (cdr xs)))
-            #t)
+        (let ((ys (cdr xs)))
+             (if (not (null? ys))
+                 (if (> (car xs) (car ys))
+                     #f
+                     (mono_inc ys))
+                 #t))
         #t))
 
 (define mono_dec ([Nat] -> Boolean) (xs)
     (if (not (null? xs))
-        (if (not (null? (cdr xs)))
-            (if (< (car xs) (car (cdr xs)))
-                #f
-                (mono_dec (cdr xs)))
-            #t)
+        (let ((ys (cdr xs)))
+             (if (not (null? ys))
+                 (if (< (car xs) (car ys))
+                     #f
+                     (mono_dec ys))
+                 #t))
         #t))
 
 (define main ([Nat] -> Boolean) (xs)

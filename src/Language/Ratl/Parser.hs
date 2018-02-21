@@ -96,6 +96,7 @@ ex :: Parser Ex
 ex = Val <$> val
  <|> Var <$> var
  <|> parens ((reserved "if" >> If <$> ex <*> ex <*> ex)
+         <|> (reserved "let" >> Let <$> parens (many $ parens $ (,) <$> var <*> ex) <*> ex)
          <|> try (do v <- var
                      es <- count (arity v) ex
                      return $ App v es)

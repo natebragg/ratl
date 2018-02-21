@@ -33,3 +33,7 @@ run phi args = eval [] (App (V "main") [(Val args)])
                     Fun    _ x b -> Just $ eval (zip [x] vs) b
                     Native _ a f -> do guard $ a == length vs
                                        return $ f vs
+          eval rho (Let ds e) =
+                let evalds rho'          [] = rho'
+                    evalds rho' ((x, e):ds) = evalds ((x, eval rho e):rho') ds
+                in eval (evalds rho ds) e

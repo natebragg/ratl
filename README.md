@@ -321,9 +321,9 @@ bounds predicted:
     loop: Analysis was infeasible
 
     examples/ratl/mono.ratl
-    main: 116.0*n + 115.0
-    mono_dec: 58.0*n + 52.0
-    mono_inc: 58.0*n + 52.0
+    main: 112.0*n + 43.0
+    mono_dec: 56.0*n + 18.0
+    mono_inc: 56.0*n + 18.0
 
     examples/ratl/nil.ratl
     main: 5.0

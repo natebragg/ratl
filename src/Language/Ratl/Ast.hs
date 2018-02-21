@@ -115,7 +115,11 @@ instance Traversable Fun where
     traverse f (Fun ty x e) = Fun <$> traverse f ty <*> pure x <*> pure e
     traverse f (Native ty a g) = Native <$> traverse f ty <*> pure a <*> pure g
 
-data Ex = Var Var | Val Val | App Var [Ex] | If Ex Ex Ex
+data Ex = Var Var
+        | Val Val
+        | App Var [Ex]
+        | If Ex Ex Ex
+        | Let [(Var, Ex)] Ex
     deriving (Show, Eq)
 
 newtype Prog a = Prog {getProg :: Gr (Var, Fun a) ()}
