@@ -1,0 +1,17 @@
+(define swapback ([Nat] -> [Nat]) (xs)
+    (if (null? (cdr xs))
+        xs
+        (let ((x (car xs))
+              (rest (swapback (cdr xs))))
+             (if (< (car rest) x)
+                 (cons (car rest) (cons x (cdr rest)))
+                 (cons x rest)))))
+
+(define bubble ([Nat] -> [Nat]) (xs)
+    (if (null? xs)
+        xs
+        (let ((bubbled (swapback xs)))
+             (cons (car bubbled) (bubble (cdr bubbled))))))
+
+(define main ([Nat] -> [Nat]) (xs)
+    (bubble xs))

@@ -94,9 +94,6 @@ main = do
     when (deg_max < 0) $ do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
-    when (deg_max > 1) $ do
-        putStrLn "Maximum degree greater than 1 not supported"
-        exitFailure
     inp <- readFile fn
     prims_basis <- case runParser prog () "initial basis" basis of
         (Right p) -> return $ prims `mappend` p

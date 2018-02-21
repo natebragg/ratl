@@ -1,0 +1,22 @@
+(define minimum ([Nat] -> Nat) (xs)
+    (let ((x (car xs)))
+         (if (null? (cdr xs))
+             x
+             (let ((m (minimum (cdr xs))))
+                  (if (< m x) m x)))))
+
+(define delnextofcar ([Nat] -> [Nat]) (xs)
+    (let ((n (car xs))
+          (xs (cdr xs)))
+         (if (= n (car xs))
+             (cdr xs)
+             (cons (car xs) (delnextofcar (cons n (cdr xs)))))))
+
+(define selection ([Nat] -> [Nat]) (xs)
+    (if (null? xs)
+        xs
+        (let ((m (minimum xs)))
+             (cons m (selection (delnextofcar (cons m xs)))))))
+
+(define main ([Nat] -> [Nat]) (xs)
+    (selection xs))

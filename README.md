@@ -4,8 +4,8 @@ Ratl is a toy: a baby language that can infer small upper bounds.
 
 More precisely, it is a strongly-typed, monomorphic, functional language based
 on lists and naturals with a resource-aware type system capable of reporting
-upper bounds for functions and expressions that are linear in their inputs,
-along with an accompanying interpreter.
+upper bounds for functions and expressions that are uni-variate polynomials of
+their inputs, along with an accompanying interpreter.
 
 This is based off of work done by Jan Hoffmann and others.
 
@@ -299,6 +299,11 @@ bounds predicted:
     main: 29.0*n + 27.0
     any: 29.0*n + 24.0
 
+    examples/ratl/bubble.ratl
+    main: 54.0*n^2 + 94.0*n + 36.0
+    bubble: 54.0*n^2 + 94.0*n + 33.0
+    swapback: 54.0*n + 19.0
+
     examples/ratl/filtzero.ratl
     main: 50.0*n + 46.0
     filtzero: 50.0*n + 43.0
@@ -307,6 +312,11 @@ bounds predicted:
     main: 12.0
     id_nat: 1.0
     id_list: 1.0
+
+    examples/ratl/insertion.ratl
+    main: 54.0*n^2 + 111.0*n + 20.0
+    insertion: 54.0*n^2 + 111.0*n + 17.0
+    insert: 54.0*n + 42.0
 
     examples/ratl/last.ratl
     main: 25.0*n + 26.0
@@ -332,6 +342,12 @@ bounds predicted:
     examples/ratl/product.ratl
     main: 22.0*n + 19.0
     product: 22.0*n + 16.0
+
+    examples/ratl/selection.ratl
+    main: 81.0*n^2 + 157.0*n + 93.0
+    selection: 81.0*n^2 + 157.0*n + 90.0
+    delnextofcar: 44.0*n + 9.0
+    minimum: 37.0*n + 20.0
 
     examples/ratl/sum.ratl
     main: 22.0*n + 19.0
@@ -391,9 +407,9 @@ would scale for Ratl, since MegiddoLP doesn't scale.
 
 Ratl is based on the ideas behind the Raml project from Jan Hoffmann, et. all.
 Raml is much more powerful than Ratl.  Aside from being a language capable of
-feats such as subtraction, Raml's analysis can decide polynomial upper bounds,
-not just linear.  It can also decide multi-variate bounds, for example, taking
-the outer product of two vectors of potentially different lengths.
+feats such as subtraction, Raml's analysis can decide multi-variate polynomial
+upper bounds, not just univariate, for example, taking the outer product of two
+vectors of potentially different lengths.
 
 Hoffmann covers these topics systematically and rigorously from the ground up
 in his Ph.D. thesis<sup id="thesismention">[1](#thesisfootnote)</sup>, where he
@@ -464,8 +480,8 @@ That doesn't mean that Ratl is finished, though.  It will continue to be a
 sandbox for me to mature these concepts.  At a minimum, there are a couple bugs
 that need to be fixed before I can be confident in targeting Haskell.  At a
 maximum, I may choose to go the distance and allow for analyses of returnable
-resources like memory, as well as fully implement polynomial and multivariate
-analyses in Ratl, in which case the baby will be all grown up.
+resources like memory, as well as fully implement multivariate analyses in
+Ratl, in which case the baby will be all grown up.
 
 ## References
 
