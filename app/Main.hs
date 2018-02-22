@@ -1,9 +1,10 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Main where
 
 import Control.Monad (when, forM)
 import Control.Monad.State (evalStateT)
-import Control.Monad.Trans.Maybe (runMaybeT)
-import Control.Monad.Trans (liftIO)
+import Control.Monad.Except (runExceptT)
 import Data.Either (lefts, rights)
 import Data.List (intercalate)
 import Data.Maybe (isNothing, fromJust)
@@ -96,22 +97,16 @@ main = do
         exitFailure
     inp <- readFile fn
     prims_basis <- case parse (prog <* eof) "initial basis" basis of
-        (Right p) -> return $ prims `mappend` p
-        (Left e) -> liftIO $ print e >> exitFailure
-    result <- runMaybeT $ flip evalStateT 0 $ do
-        case parse (prog <* eof) fn inp of
-            (Right p) -> do
-                let p' = prims_basis `mappend` p
-                checked <- check deg_max p'
-                return (checked, p')
-            (Left e) -> do
-                liftIO $ print e >> exitFailure
-    case result of
-        Nothing ->
-            putStrLn "Typechecking failed"
-        Just (programs, p) -> do
+        Left e -> print e >> exitFailure
+        Right p -> return $ prims `mappend` p
+    p <- case parse (prog <* eof) fn inp of
+        Left e -> print e >> exitFailure
+        Right p -> return $ prims_basis `mappend` p
+    runExceptT (evalStateT (check deg_max p) 0) >>= \case
+        Left e -> print e >> exitFailure
+        Right programs -> do
             let module_programs = filter (isNothing . lookupFun prims_basis . fst) programs
-            feasible <- forM module_programs $ \(f, program) ->  do
+            forM module_programs $ \(f, program) -> do
                let (optimums, magnitudes) = unzip $ progressive_solve program
                let infeasible = any null optimums
                let bound = if infeasible
@@ -119,9 +114,6 @@ main = do
                            else ": " ++ pretty_bound magnitudes
                putStrLn $ show f ++ bound
                return $ (f, not infeasible)
-            when (mode == Run) $ do
-                case parse (val <* eof) "" cmdline of
-                    (Right a) -> do
-                        print $ run p a
-                    (Left e) -> do
-                        print e >> exitFailure
+    when (mode == Run) $ case parse (val <* eof) "command line" cmdline of
+        Left e -> print e >> exitFailure
+        Right a -> print $ run p a

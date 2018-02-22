@@ -5,13 +5,14 @@ module Language.Ratl.Elab (
     check,
 ) where
 
-import Data.List (intersect, union, nub, foldl', transpose)
+import Data.List (intersect, intercalate, union, nub, foldl', transpose)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
 import Data.Maybe (listToMaybe, isJust, fromJust)
 import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
-import Control.Monad (guard, forM, MonadPlus(..), void)
+import Control.Monad (when, forM, void)
+import Control.Monad.Except (MonadError(..))
 import Control.Monad.State (MonadState)
 import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, mapReaderT, ReaderT, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, mapWriterT, WriterT, tell)
@@ -157,8 +158,8 @@ shift :: [a] -> [[a]]
 shift ps = [p_1] ++ transpose [ps, p_ik]
     where (p_1, p_ik) = splitAt 1 ps
 
-hoist :: MonadPlus m => Maybe a -> m a
-hoist = maybe mzero return
+unlessMaybe :: Applicative f => Maybe a -> f a -> f a
+unlessMaybe = flip (flip maybe pure)
 
 class Comparable a where
     relate :: (LinearFunction -> Double -> GeneralConstraint) -> a Anno -> [a Anno] -> [GeneralConstraint]
@@ -202,12 +203,21 @@ data CheckF = CheckF {
         cost :: Cost
     }
 
+data TypeError = TypeError [(Ty Anno, Ty Anno)]
+               | ArityError Int Int
+               | NameError Var
+
+instance Show TypeError where
+    show (TypeError ts) = "Cannot unify unlike types: " ++ intercalate ", " (map (\(t, t') -> show t ++ " and " ++ show t') ts)
+    show (ArityError f a) = "Expected " ++ show f ++ " arguments, but got " ++ show a ++ "."
+    show (NameError x) = "Name " ++ show x ++ " is not defined."
+
 zipR :: [a] -> [b] -> ([(a,b)], ([a], [b]))
 zipR     []     bs = ([], ([], bs))
 zipR     as     [] = ([], (as, []))
 zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 
-check :: (MonadPlus m, MonadState Anno m) => Int -> Prog () -> m ProgEnv
+check :: (MonadError TypeError m, MonadState Anno m) => Int -> Prog () -> m ProgEnv
 check deg_max p_ = programs
     where p = callgraph p_
           scps = scSubprograms p
@@ -226,17 +236,18 @@ check deg_max p_ = programs
                     scp' <- annotate deg_max scp
                     (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, comp = scp', cost = constant}
                     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
-          elabSCP :: (MonadPlus m, MonadState Anno m) => Prog Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
+          elabSCP :: (MonadError TypeError m, MonadState Anno m) => Prog Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
           elabSCP = travFun (traverse elabF)
-          elabF :: (MonadPlus m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
+          elabF :: (MonadError TypeError m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
           elabF f = do
                     mapReaderT (mapWriterT (fmap $ second $ uncurry (++) . second (foldMapWithKey equate . getMonoidalMap))) $ elabFE f
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
-          elabFE :: (MonadPlus m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
+          elabFE :: (MonadError TypeError m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
                     (ty, (q, q')) <- withReaderT (CheckE (zip [x] tys)) $ elabE e
                     let ty'' = tysubst (solve [] (ty, ty')) ty
-                    guard $ eqTy ty' ty''
+                    when (not $ eqTy ty' ty'') $
+                        throwError $ TypeError $ [(ty', ty'')]
                     constrain $ equate ty' [ty'']
                     constrain [sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
                     constrain [sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
@@ -249,8 +260,9 @@ check deg_max p_ = programs
                     constrain $ tyh `exceed` [tyc] ++ tyt `exceed` [tyc]
           elabFE (Native (Arrow (qf, qf') _ _) _ _) =
                     constrain [sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
-          elabE :: (MonadPlus m, MonadState Anno m) => Ex -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty Anno, (Anno, Anno))
-          elabE (Var x)    = do ty <- hoist =<< gamma x
+          elabE :: (MonadError TypeError m, MonadState Anno m) => Ex -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty Anno, (Anno, Anno))
+          elabE (Var x)    = do ty <- unlessMaybe <$> gamma x >>= ($
+                                      throwError $ NameError x)
                                 ty' <- reannotate ty
                                 share $ singleton ty [ty']
                                 q  <- freshAnno
@@ -284,7 +296,9 @@ check deg_max p_ = programs
                                 Arrow (q, q') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
                                 let tys'' = unTyList $ instantiate tys' $ TyList tys
                                 let [typ, tyt, tyf] = tys'
-                                guard $ all (uncurry eqTy) (zip tys'' tys')
+                                let ineqs = filter (not . uncurry eqTy) (zip tys'' tys')
+                                when (not $ null ineqs) $
+                                    throwError $ TypeError $ ineqs
                                 constrain $ concatMap (uncurry equate) $ zip tys'' $ map (:[]) tys'
                                 [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
                                 constrain $ exceed tyt [ty''] ++ exceed tyf [ty'']
@@ -295,7 +309,8 @@ check deg_max p_ = programs
                                            sparse [exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
                                 return (ty'', (q, q'))
           elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
-                                guard $ arity f == length es
+                                when (arity f /= length es) $
+                                    throwError $ ArityError (arity f) (length es)
                                 Arrow (qf, qf') tys' ty'' <- lookupThisSCP f >>= \case
                                     Just asc -> do
                                         degree <- degreeof
@@ -312,15 +327,18 @@ check deg_max p_ = programs
                                             constrain =<< withReaderT (const $ CheckF {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (elabSCP cfscp))
                                             return $ tyOf fun
                                     Nothing -> do
-                                        scp <- hoist (lookupSCP f)
-                                        fun <- instantiate (map void tys) <$> hoist (lookupFun scp f)
+                                        scp <- unlessMaybe (lookupSCP f) $
+                                               throwError $ NameError f
+                                        let fun = instantiate (map void tys) $ fromJust $ lookupFun scp f
                                         scp' <- annoMax $ updateFun scp f fun
                                         constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
-                                        tyOf <$> hoist (lookupFun scp' f)
+                                        return $ tyOf $ fromJust $ lookupFun scp' f
                                 q  <- freshAnno
                                 q' <- freshAnno
                                 let tys'' = unTyList $ instantiate tys' $ TyList tys
-                                guard $ all (uncurry eqTy) (zip tys'' tys')
+                                let ineqs = filter (not . uncurry eqTy) (zip tys'' tys')
+                                when (not $ null ineqs) $
+                                    throwError $ TypeError $ ineqs
                                 constrain $ concatMap (uncurry equate) $ zip tys'' $ map (:[]) tys'
                                 k1 <- costof k_ap1
                                 k2 <- costof k_ap2
@@ -341,11 +359,11 @@ check deg_max p_ = programs
                                            (q_in, q_out) <- zip (q:q's) (qs ++ [qe])]
                                 constrain [sparse (map exchange [Supply q', Consume qe']) `Geq` k2]
                                 return (ty, (q, q'))
-          elabV :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => Val -> m (Ty Anno)
+          elabV :: (MonadError TypeError m, MonadState Anno m, MonadReader CheckE m) => Val -> m (Ty Anno)
           elabV (Nat _)  = return NatTy
           elabV (Boolean _)  = return BooleanTy
           elabV (List l) = elabL l
-          elabL :: (MonadPlus m, MonadState Anno m, MonadReader CheckE m) => List -> m (Ty Anno)
+          elabL :: (MonadError TypeError m, MonadState Anno m, MonadReader CheckE m) => List -> m (Ty Anno)
           elabL Nil        = annoMax $ ListTy [] $ Tyvar "a"
           elabL (Cons v l) = do
                 vty <- elabV v
@@ -353,4 +371,5 @@ check deg_max p_ = programs
                 case lty of
                     ListTy ps (Tyvar _)     -> return $ ListTy ps vty
                     ListTy _ l | eqTy l vty -> return lty
-                    _                       -> empty
+                    ListTy _ l              -> throwError $ TypeError [(vty, l)]
+                    t                       -> throwError $ TypeError [(ListTy [] vty, t)]
