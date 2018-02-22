@@ -7,7 +7,7 @@ import Control.Monad.Trans (liftIO)
 import Data.Either (lefts, rights)
 import Data.List (intercalate)
 import Data.Maybe (isNothing, fromJust)
-import Text.Parsec (runParser)
+import Text.Parsec (parse, eof)
 import Text.Read (readEither)
 import System.Exit (exitSuccess, exitFailure)
 import System.IO (readFile)
@@ -95,11 +95,11 @@ main = do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
     inp <- readFile fn
-    prims_basis <- case runParser prog () "initial basis" basis of
+    prims_basis <- case parse (prog <* eof) "initial basis" basis of
         (Right p) -> return $ prims `mappend` p
         (Left e) -> liftIO $ print e >> exitFailure
     result <- runMaybeT $ flip evalStateT 0 $ do
-        case runParser prog () fn inp of
+        case parse (prog <* eof) fn inp of
             (Right p) -> do
                 let p' = prims_basis `mappend` p
                 checked <- check deg_max p'
@@ -120,7 +120,7 @@ main = do
                putStrLn $ show f ++ bound
                return $ (f, not infeasible)
             when (mode == Run) $ do
-                case runParser val () "" cmdline of
+                case parse (val <* eof) "" cmdline of
                     (Right a) -> do
                         print $ run p a
                     (Left e) -> do

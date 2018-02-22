@@ -21,8 +21,8 @@ import Language.Ratl.Ty (
     )
 import Language.Ratl.Basis (arity)
 
-import Data.Char (isSpace)
-import Text.Parsec (try, many, count, sepEndBy, (<|>))
+import Data.Char (isSpace, isDigit)
+import Text.Parsec (try, many, count, sepEndBy, (<|>), (<?>))
 import Text.Parsec.Char (noneOf)
 import Text.Parsec.String (Parser)
 import Text.Parsec.Language (LanguageDef, emptyDef)
@@ -36,12 +36,14 @@ lispStyle :: LanguageDef st
 lispStyle = emptyDef {
                 commentLine    = ";",
                 nestedComments = True,
-                identStart     = identLetter lispStyle,
+                identStart     = try $ mfilter (not . isDigit) $ identLetter lispStyle,
                 identLetter    = try $ mfilter (not . isSpace) $ noneOf "()[];,",
                 opStart        = opLetter lispStyle,
                 opLetter       = mzero,
-                reservedOpNames= [],
-                reservedNames  = [],
+                reservedOpNames= ["->"],
+                reservedNames  = ["define", "if", "let",
+                                  "#t", "#f",
+                                  "Nat", "Boolean"],
                 caseSensitive  = True
             }
 
@@ -79,6 +81,7 @@ nat = embed <$> fromInteger <$> num
 
 list :: Parser List
 list = embed <$> brackets (sepEndBy val comma)
+   <?> "list"
 
 boolean :: Parser Boolean
 boolean = embed <$> ((reserved "#t" >> return True)
@@ -91,6 +94,7 @@ val :: Parser Val
 val = List <$> list
   <|> Boolean <$> boolean
   <|> Nat <$> nat
+  <?> "value"
 
 ex :: Parser Ex
 ex = Val <$> val
@@ -106,6 +110,7 @@ ty :: Parser (Ty ())
 ty = (reserved "Nat" >> return NatTy)
   <|> (reserved "Boolean" >> return BooleanTy)
   <|> ListTy [] <$> brackets ty
+  <?> "type"
 
 funty :: Parser (FunTy ())
 funty = do t1 <- ty
@@ -118,6 +123,7 @@ fun = parens (reserved "define" >>
                   <*> (Fun <$> parens funty
                            <*> parens var
                            <*> ex))
+  <?> "function definition"
 
 prog :: Parser (Prog ())
 prog = whiteSpace >> makeProg <$> many fun
