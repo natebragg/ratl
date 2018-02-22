@@ -19,7 +19,6 @@ import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
     )
-import Language.Ratl.Basis (arity)
 
 import Data.Char (isSpace, isDigit)
 import Text.Parsec (try, many, count, sepEndBy, (<|>), (<?>))
@@ -101,10 +100,7 @@ ex = Val <$> val
  <|> Var <$> var
  <|> parens ((reserved "if" >> If <$> ex <*> ex <*> ex)
          <|> (reserved "let" >> Let <$> parens (many $ parens $ (,) <$> var <*> ex) <*> ex)
-         <|> try (do v <- var
-                     es <- count (arity v) ex
-                     return $ App v es)
-         <|> ex)
+         <|> try (App <$> var <*> many ex))
 
 ty :: Parser (Ty ())
 ty = (reserved "Nat" >> return NatTy)

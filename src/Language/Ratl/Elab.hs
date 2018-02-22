@@ -51,6 +51,7 @@ import Language.Ratl.Ast (
     connects,
     scSubprograms,
     )
+import Language.Ratl.Basis (arity)
 
 type TyEnv a = [(Var, Ty a)]
 type SharedTys a = MonoidalMap (Ty a) [Ty a]
@@ -294,6 +295,7 @@ check deg_max p_ = programs
                                            sparse [exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
                                 return (ty'', (q, q'))
           elabE (App f es) = do (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elabE es
+                                guard $ arity f == length es
                                 Arrow (qf, qf') tys' ty'' <- lookupThisSCP f >>= \case
                                     Just asc -> do
                                         degree <- degreeof
