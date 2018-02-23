@@ -21,8 +21,8 @@ import Control.Monad (guard)
 lookupFunBySCP :: [Prog a] -> Var -> Maybe (Fun a)
 lookupFunBySCP p x = listToMaybe $ catMaybes $ map (flip lookupFun x) p
 
-run :: [Prog a] -> Val -> Val
-run phi args = eval [] (App (V "main") [(Val args)])
+run :: [Prog a] -> Ex -> Val
+run phi = eval []
     where eval rho (Var x) = fromJust $ lookup x rho
           eval rho (Val v) = v
           eval rho (If ep et ef) =

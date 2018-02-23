@@ -32,7 +32,7 @@ import Language.Ratl.Ast (
     scSubprograms,
     )
 import Language.Ratl.Eval (run)
-import Language.Ratl.Elab (check)
+import Language.Ratl.Elab (check, checkEx)
 import PackageInfo (version, appName, synopsis)
 
 progressive_solve :: [GeneralForm] -> [([Double], Double)]
@@ -135,5 +135,16 @@ main = do
                putStrLn $ show f ++ bound
                return $ (f, not infeasible)
     when (mode == Run) $ case parse (val <* eof) "command line" cmdline of
-        Left e -> print e >> exitFailure
-        Right a -> print $ run p a
+     Left e -> print e >> exitFailure
+     Right a -> do
+      let main = (App (V "main") [(Val a)])
+      runExceptT (evalStateT (checkEx deg_max p main) 0) >>= \case
+       Left e -> print e >> exitFailure
+       Right program -> do
+        let (optimum, magnitude) = solve program
+        let infeasible = null optimum
+        let bound = if infeasible
+                    then ": Analysis was infeasible"
+                    else ": " ++ pretty_bound [magnitude]
+        putStrLn $ show fn ++ bound
+        print $ run p main
