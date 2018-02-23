@@ -25,7 +25,7 @@ import Data.Clp.Program (
     )
 import Language.Ratl.Anno (
     Anno,
-    annotate,
+    Annotatory(..),
     reannotate,
     freshAnno,
     )
@@ -158,8 +158,8 @@ shift :: [a] -> [[a]]
 shift ps = [p_1] ++ transpose [ps, p_ik]
     where (p_1, p_ik) = splitAt 1 ps
 
-unlessMaybe :: Applicative f => Maybe a -> f a -> f a
-unlessMaybe = flip (flip maybe pure)
+unlessMaybe :: Monad m => m (Maybe a) -> m a -> m a
+unlessMaybe p f = p >>= maybe f pure
 
 class Comparable a where
     relate :: (LinearFunction -> Double -> GeneralConstraint) -> a Anno -> [a Anno] -> [GeneralConstraint]
@@ -199,9 +199,37 @@ data CheckE = CheckE {
 
 data CheckF = CheckF {
         degree :: Int,
+        scps :: [Prog ()],
         comp :: Prog Anno,
         cost :: Cost
     }
+
+lookupSCP :: MonadReader CheckE m => Var -> m (Maybe (Prog ()))
+lookupSCP x = asks (listToMaybe . filter (isJust . flip lookupFun x) . scps . checkF)
+
+share :: (Monoid a, MonadWriter (a, SharedTys b) m) => SharedTys b -> m ()
+share m = tell (mempty, m)
+
+constrain :: (Monoid b, MonadWriter ([GeneralConstraint], b) m) => [GeneralConstraint] -> m ()
+constrain c = tell (c, mempty)
+
+gamma :: MonadReader CheckE m => Var -> m (Maybe (Ty Anno))
+gamma x = asks (lookup x . env)
+
+costof :: MonadReader CheckE m => (Cost -> a) -> m a
+costof k = asks (k . cost . checkF)
+
+degreeof :: MonadReader CheckE m => m Int
+degreeof = asks (degree . checkF)
+
+annoMax :: (Annotatory a, MonadState Anno m, MonadReader CheckE m) => a b -> m (a Anno)
+annoMax a = degreeof >>= flip annotate a
+
+lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (Fun Anno))
+lookupThisSCP x = asks (flip lookupFun x . comp . checkF)
+
+assoc :: (a, (b, c)) -> ((a, b), c)
+assoc (a, (b, c)) = ((a, b), c)
 
 data TypeError = TypeError [(Ty Anno, Ty Anno)]
                | ArityError Int Int
@@ -218,23 +246,11 @@ zipR     as     [] = ([], (as, []))
 zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 
 check :: (MonadError TypeError m, MonadState Anno m) => Int -> Prog () -> m ProgEnv
-check deg_max p_ = programs
-    where p = callgraph p_
-          scps = scSubprograms p
-          lookupSCP :: Var -> Maybe (Prog ())
-          lookupSCP x = listToMaybe $ filter (isJust . flip lookupFun x) scps
-          share m = tell (mempty, m)
-          constrain c = tell (c, mempty)
-          gamma x = asks (lookup x . env)
-          costof k = asks (k . cost . checkF)
-          degreeof :: MonadReader CheckE m => m Int
-          degreeof = asks (degree . checkF)
-          annoMax a = degreeof >>= flip annotate a
-          lookupThisSCP x = asks (flip lookupFun x . comp . checkF)
-          assoc (a, (b, c)) = ((a, b), c)
-          programs = fmap concat $ forM scps $ \scp -> do
+check deg_max p = programs
+    where scsps = scSubprograms $ callgraph p
+          programs = fmap concat $ forM scsps $ \scp -> do
                     scp' <- annotate deg_max scp
-                    (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, comp = scp', cost = constant}
+                    (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = scsps, comp = scp', cost = constant}
                     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
           elabSCP :: (MonadError TypeError m, MonadState Anno m) => Prog Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
           elabSCP = travFun (traverse elabF)
@@ -261,8 +277,8 @@ check deg_max p_ = programs
           elabFE (Native (Arrow (qf, qf') _ _) _ _) =
                     constrain [sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
           elabE :: (MonadError TypeError m, MonadState Anno m) => Ex -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty Anno, (Anno, Anno))
-          elabE (Var x)    = do ty <- unlessMaybe <$> gamma x >>= ($
-                                      throwError $ NameError x)
+          elabE (Var x)    = do ty <- unlessMaybe (gamma x) $
+                                      throwError $ NameError x
                                 ty' <- reannotate ty
                                 share $ singleton ty [ty']
                                 q  <- freshAnno
@@ -324,7 +340,7 @@ check deg_max p_ = programs
                                             cfscp <- annotate (degree - 1) $ updateFun scp f fun
                                             let Just cffun = lookupFun cfscp f
                                             constrain $ equate (tyOf fun) [tyOf asc, tyOf cffun]
-                                            constrain =<< withReaderT (const $ CheckF {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (elabSCP cfscp))
+                                            constrain =<< withReaderT (\ce -> (checkF ce) {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (elabSCP cfscp))
                                             return $ tyOf fun
                                     Nothing -> do
                                         scp <- unlessMaybe (lookupSCP f) $

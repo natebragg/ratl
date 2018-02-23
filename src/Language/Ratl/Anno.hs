@@ -2,7 +2,7 @@
 
 module Language.Ratl.Anno (
     Anno,
-    annotate,
+    Annotatory(..),
     reannotate,
     freshAnno,
 ) where
