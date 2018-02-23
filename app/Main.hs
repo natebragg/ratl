@@ -2,6 +2,7 @@
 
 module Main where
 
+import Control.Arrow (second)
 import Control.Monad (when, forM)
 import Control.Monad.State (evalStateT)
 import Control.Monad.Except (runExceptT)
@@ -20,7 +21,16 @@ import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralFo
 import Language.Ratl.Parser (prog, val)
 import Language.Ratl.Anno (annotate)
 import Language.Ratl.Basis (prims, basis)
-import Language.Ratl.Ast (Var(V), lookupFun)
+import Language.Ratl.Ast (
+    Ex(..),
+    Var(V),
+    Fun(..),
+    Prog,
+    lookupFun,
+    mapFun,
+    connects,
+    scSubprograms,
+    )
 import Language.Ratl.Eval (run)
 import Language.Ratl.Elab (check)
 import PackageInfo (version, appName, synopsis)
@@ -37,6 +47,16 @@ pretty_bound cs = if null bounds then show 0.0 else intercalate " + " bounds
           coeff (0,   c) = [show c]
           coeff (1,   c) = [show c ++ "*n"]
           coeff (n,   c) = [show c ++ "*n^" ++ show n]
+
+callgraph :: Prog a -> [Prog a]
+callgraph = scSubprograms . (connects =<< flatten . mapFun (second calls))
+    where flatten = concatMap $ uncurry (map . (,))
+          calls (Native _ _ _) = []
+          calls (Fun _ _ e) = ecalls e
+          ecalls (App f es) = f : concatMap ecalls es
+          ecalls (If ep et ef) = concatMap ecalls [ep, et, ef]
+          ecalls (Let ds e) = concatMap ecalls $ map snd ds ++ [e]
+          ecalls _ = []
 
 data Flag = Version
           | Help
@@ -101,7 +121,7 @@ main = do
         Right p -> return $ prims `mappend` p
     p <- case parse (prog <* eof) fn inp of
         Left e -> print e >> exitFailure
-        Right p -> return $ prims_basis `mappend` p
+        Right m -> return $ callgraph $ prims_basis `mappend` m
     runExceptT (evalStateT (check deg_max p) 0) >>= \case
         Left e -> print e >> exitFailure
         Right programs -> do

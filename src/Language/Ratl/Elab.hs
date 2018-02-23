@@ -47,10 +47,7 @@ import Language.Ratl.Ast (
     tyOf,
     lookupFun,
     updateFun,
-    mapFun,
     travFun,
-    connects,
-    scSubprograms,
     )
 import Language.Ratl.Basis (arity)
 
@@ -182,16 +179,6 @@ instance Comparable FunTy where
               psOf (Arrow       _ tys   _) = tys
               rOf  (Arrow       _   _ ty') = ty'
 
-callgraph :: Prog a -> Prog a
-callgraph = connects =<< flatten . mapFun (second calls)
-    where flatten = concatMap $ uncurry (map . (,))
-          calls (Native _ _ _) = []
-          calls (Fun _ _ e) = ecalls e
-              where ecalls (App f es) = f : concatMap ecalls es
-                    ecalls (If ep et ef) = concatMap ecalls [ep, et, ef]
-                    ecalls (Let ds e) = concatMap ecalls $ map snd ds ++ [e]
-                    ecalls _ = []
-
 data CheckE = CheckE {
         env :: TyEnv Anno,
         checkF :: CheckF
@@ -245,14 +232,12 @@ zipR     []     bs = ([], ([], bs))
 zipR     as     [] = ([], (as, []))
 zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 
-check :: (MonadError TypeError m, MonadState Anno m) => Int -> Prog () -> m ProgEnv
-check deg_max p = programs
-    where scsps = scSubprograms $ callgraph p
-          programs = fmap concat $ forM scsps $ \scp -> do
+check :: (MonadError TypeError m, MonadState Anno m) => Int -> [Prog ()] -> m ProgEnv
+check deg_max p = fmap concat $ forM p $ \scp -> do
                     scp' <- annotate deg_max scp
-                    (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = scsps, comp = scp', cost = constant}
+                    (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
                     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
-          elabSCP :: (MonadError TypeError m, MonadState Anno m) => Prog Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
+    where elabSCP :: (MonadError TypeError m, MonadState Anno m) => Prog Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
           elabSCP = travFun (traverse elabF)
           elabF :: (MonadError TypeError m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
           elabF f = do

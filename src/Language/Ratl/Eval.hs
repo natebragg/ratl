@@ -15,10 +15,13 @@ import Language.Ratl.Ast (
     lookupFun,
     )
 
-import Data.Maybe (fromJust)
+import Data.Maybe (listToMaybe, catMaybes, fromJust)
 import Control.Monad (guard)
 
-run :: Prog a -> Val -> Val
+lookupFunBySCP :: [Prog a] -> Var -> Maybe (Fun a)
+lookupFunBySCP p x = listToMaybe $ catMaybes $ map (flip lookupFun x) p
+
+run :: [Prog a] -> Val -> Val
 run phi args = eval [] (App (V "main") [(Val args)])
     where eval rho (Var x) = fromJust $ lookup x rho
           eval rho (Val v) = v
@@ -28,7 +31,7 @@ run phi args = eval [] (App (V "main") [(Val args)])
                     (Boolean (B False)) -> eval rho ef
           eval rho (App x es) = fromJust $ do
                 let vs = map (eval rho) es
-                f <- lookupFun phi x
+                f <- lookupFunBySCP phi x
                 case f of
                     Fun    _ x b -> Just $ eval (zip [x] vs) b
                     Native _ a f -> do guard $ a == length vs
