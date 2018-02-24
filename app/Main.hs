@@ -108,6 +108,11 @@ handleArgs = do
                                      putStrLn $ "Option mode requires one of: " ++ modelist
                                 printUsage >> exitFailure
 
+handleE (Left e) = print e >> exitFailure
+handleE (Right a) = return a
+
+handleEx m = runExceptT m >>= handleE
+
 main :: IO ()
 main = do
     (deg_max, mode, fn, cmdline) <- handleArgs
@@ -115,31 +120,24 @@ main = do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
     inp <- readFile fn
-    prims_basis <- case parse (prog <* eof) "initial basis" basis of
-        Left e -> print e >> exitFailure
-        Right p -> return $ prims `mappend` p
-    p <- case parse (prog <* eof) fn inp of
-        Left e -> print e >> exitFailure
-        Right m -> return $ callgraph $ prims_basis `mappend` m
-    runExceptT (check deg_max p) >>= \case
-        Left e -> print e >> exitFailure
-        Right programs -> do
-            let module_programs = filter (isNothing . lookupFun prims_basis . fst) programs
-            forM module_programs $ \(f, program) -> do
-               let (optimums, magnitudes) = unzip $ progressive_solve program
-               let infeasible = any null optimums
-               let bound = if infeasible
-                           then ": Analysis was infeasible"
-                           else ": " ++ pretty_bound magnitudes
-               putStrLn $ show f ++ bound
-               return $ (f, not infeasible)
-    when (mode == Run) $ case parse (val <* eof) "command line" cmdline of
-     Left e -> print e >> exitFailure
-     Right a -> do
-      let main = (App (V "main") [(Val a)])
-      runExceptT (checkEx deg_max p main) >>= \case
-       Left e -> print e >> exitFailure
-       Right program -> do
+    b <- handleE $ parse (prog <* eof) "initial basis" basis
+    let prims_basis = prims `mappend` b
+    m <- handleE $ parse (prog <* eof) fn inp
+    let p = callgraph $ prims_basis `mappend` m
+    programs <- handleEx $ check deg_max p
+    let module_programs = filter (isNothing . lookupFun prims_basis . fst) programs
+    forM module_programs $ \(f, program) -> do
+        let (optimums, magnitudes) = unzip $ progressive_solve program
+        let infeasible = any null optimums
+        let bound = if infeasible
+                    then ": Analysis was infeasible"
+                    else ": " ++ pretty_bound magnitudes
+        putStrLn $ show f ++ bound
+        return $ (f, not infeasible)
+    when (mode == Run) $ do
+        a <- handleE $ parse (val <* eof) "command line" cmdline
+        let main = (App (V "main") [(Val a)])
+        program <- handleEx $ checkEx deg_max p main
         let (optimum, magnitude) = solve program
         let infeasible = null optimum
         let bound = if infeasible
