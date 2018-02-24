@@ -14,7 +14,7 @@ import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
 import Control.Monad (when, forM, void)
 import Control.Monad.Except (MonadError(..))
-import Control.Monad.State (MonadState)
+import Control.Monad.State (MonadState, evalStateT)
 import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, mapReaderT, ReaderT, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, mapWriterT, WriterT, tell)
 
@@ -236,14 +236,14 @@ zipR     []     bs = ([], ([], bs))
 zipR     as     [] = ([], (as, []))
 zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 
-check :: (MonadError TypeError m, MonadState Anno m) => Int -> [Prog ()] -> m ProgEnv
-check deg_max p = fmap concat $ forM p $ \scp -> do
+check :: (MonadError TypeError m) => Int -> [Prog ()] -> m ProgEnv
+check deg_max p = flip evalStateT 0 $ fmap concat $ forM p $ \scp -> do
     scp' <- annotate deg_max scp
     (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
 
-checkEx :: (MonadError TypeError m, MonadState Anno m) => Int -> [Prog ()] -> Ex -> m GeneralForm
-checkEx deg_max p e = do
+checkEx :: (MonadError TypeError m) => Int -> [Prog ()] -> Ex -> m GeneralForm
+checkEx deg_max p e = flip evalStateT 0 $ do
     ((ty, (q, q')), css) <- runWriterT $ runReaderT (elab e) $ CheckE [] $ CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
     return $ GeneralForm Minimize (sparse [(q, 1.0)]) (constrainShares css)
 

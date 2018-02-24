@@ -4,7 +4,6 @@ module Main where
 
 import Control.Arrow (second)
 import Control.Monad (when, forM)
-import Control.Monad.State (evalStateT)
 import Control.Monad.Except (runExceptT)
 import Data.Either (lefts, rights)
 import Data.List (intercalate)
@@ -122,7 +121,7 @@ main = do
     p <- case parse (prog <* eof) fn inp of
         Left e -> print e >> exitFailure
         Right m -> return $ callgraph $ prims_basis `mappend` m
-    runExceptT (evalStateT (check deg_max p) 0) >>= \case
+    runExceptT (check deg_max p) >>= \case
         Left e -> print e >> exitFailure
         Right programs -> do
             let module_programs = filter (isNothing . lookupFun prims_basis . fst) programs
@@ -138,7 +137,7 @@ main = do
      Left e -> print e >> exitFailure
      Right a -> do
       let main = (App (V "main") [(Val a)])
-      runExceptT (evalStateT (checkEx deg_max p main) 0) >>= \case
+      runExceptT (checkEx deg_max p main) >>= \case
        Left e -> print e >> exitFailure
        Right program -> do
         let (optimum, magnitude) = solve program
