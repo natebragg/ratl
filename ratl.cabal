@@ -25,6 +25,7 @@ library
                        Language.Ratl.Parser
                        Language.Ratl.Ty
   other-modules:       Bindings.Clp.Clp
+                       Control.Monad.Except.Extra
                        Data.Clp.Managed
                        Data.Clp.LinearFunction
                        Data.Graph.Inductive.Extra

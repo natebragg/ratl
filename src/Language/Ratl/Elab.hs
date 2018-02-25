@@ -14,6 +14,7 @@ import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
 import Control.Monad (when, forM, void)
 import Control.Monad.Except (MonadError(..))
+import Control.Monad.Except.Extra (unlessJustM)
 import Control.Monad.State (MonadState, evalStateT)
 import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, mapReaderT, ReaderT, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, mapWriterT, WriterT, tell)
@@ -155,9 +156,6 @@ shift :: [a] -> [[a]]
 shift ps = [p_1] ++ transpose [ps, p_ik]
     where (p_1, p_ik) = splitAt 1 ps
 
-unlessMaybe :: Monad m => m (Maybe a) -> m a -> m a
-unlessMaybe p f = p >>= maybe f pure
-
 class Comparable a where
     relate :: (LinearFunction -> Double -> GeneralConstraint) -> a Anno -> [a Anno] -> [GeneralConstraint]
     equate :: a Anno -> [a Anno] -> [GeneralConstraint]
@@ -277,8 +275,8 @@ class Elab a where
 
 instance Elab Ex where
     elab (Var x) = do
-        ty <- unlessMaybe (gamma x) $
-                       throwError $ NameError x
+        ty <- unlessJustM (gamma x) $
+                throwError $ NameError x
         ty' <- reannotate ty
         share $ singleton ty [ty']
         q  <- freshAnno
@@ -343,7 +341,7 @@ instance Elab Ex where
                     constrain =<< withReaderT (\ce -> (checkF ce) {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (elabSCP cfscp))
                     return $ tyOf fun
             Nothing -> do
-                scp <- unlessMaybe (lookupSCP f) $
+                scp <- unlessJustM (lookupSCP f) $
                        throwError $ NameError f
                 let fun = instantiate (map void tys) $ fromJust $ lookupFun scp f
                 scp' <- annoMax $ updateFun scp f fun
