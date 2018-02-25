@@ -141,5 +141,6 @@ main = do
                     else ": " ++ pretty_bound magnitudes
         putStrLn $ show f ++ bound
         return $ (f, not infeasible)
-    when (mode == Run) $
-        print $ run p $ mainapp a
+    when (mode == Run) $ do
+        v <- handleEx $ run p $ mainapp a
+        print v
