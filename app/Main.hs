@@ -25,6 +25,7 @@ import Language.Ratl.Ast (
     Var(V),
     Fun(..),
     Prog,
+    embed,
     lookupFun,
     mapFun,
     connects,
@@ -124,8 +125,14 @@ main = do
     let prims_basis = prims `mappend` b
     m <- handleE $ parse (prog <* eof) fn inp
     let p = callgraph $ prims_basis `mappend` m
+    a <- if mode /= Run then return $ embed (0 :: Int) else
+        handleE $ parse (val <* eof) "command line" cmdline
     programs <- handleEx $ check deg_max p
-    let module_programs = filter (isNothing . lookupFun prims_basis . fst) programs
+    let mainapp a = (App (V "main") [(Val a)])
+    cl_prog <- if mode /= Run then return [] else do
+        program <- handleEx $ checkEx deg_max p $ mainapp a
+        return [(V fn, [program])]
+    let module_programs = cl_prog ++ filter (isNothing . lookupFun prims_basis . fst) programs
     forM module_programs $ \(f, program) -> do
         let (optimums, magnitudes) = unzip $ progressive_solve program
         let infeasible = any null optimums
@@ -134,14 +141,5 @@ main = do
                     else ": " ++ pretty_bound magnitudes
         putStrLn $ show f ++ bound
         return $ (f, not infeasible)
-    when (mode == Run) $ do
-        a <- handleE $ parse (val <* eof) "command line" cmdline
-        let main = (App (V "main") [(Val a)])
-        program <- handleEx $ checkEx deg_max p main
-        let (optimum, magnitude) = solve program
-        let infeasible = null optimum
-        let bound = if infeasible
-                    then ": Analysis was infeasible"
-                    else ": " ++ pretty_bound [magnitude]
-        putStrLn $ show fn ++ bound
-        print $ run p main
+    when (mode == Run) $
+        print $ run p $ mainapp a
