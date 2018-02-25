@@ -3,9 +3,7 @@
 
 module Language.Ratl.Ast (
     Embeddable(..),
-    Nat(..),
     List(..),
-    Boolean(..),
     Var(..),
     Val(..),
     Fun(..),
@@ -34,44 +32,49 @@ import Data.Graph.Inductive.Extra (
     )
 import Data.Foldable (find, toList)
 
+projectionBug v = error $ "Tried to project to wrong type, which should be impossible: " ++ show v
+
 class Embeddable a where
-    type HostType a :: *
-    embed :: HostType a -> a
-    project :: a -> HostType a
+    embed :: a -> Val
+    project :: Val -> a
 
 data Nat = N Int
     deriving (Eq)
 
-instance Embeddable Nat where
-    type HostType Nat = Int
-    embed = N . max 0
-
-    project (N n) = n
+instance Embeddable Int where
+    embed = Nat . N . max 0
+    project (Nat (N n)) = n
+    project v = projectionBug v
 
 instance Show Nat where
-    show n = show $ project n
+    show (N n) = show n
 
 data List = Nil | Cons Val List
     deriving (Eq)
 
-instance Embeddable List where
-    type HostType List = [Val]
-    embed [] = Nil
-    embed (v:vs) = Cons v (embed vs)
+instance Embeddable a => Embeddable [a] where
+    embed = List . go
+        where go [] = Nil
+              go (v:vs) = Cons (embed v) $ go vs
 
-    project Nil = []
-    project (Cons v vs) = v:project vs
+    project (List a) = go a
+        where go Nil = []
+              go (Cons v vs) = project v:go vs
+    project v = projectionBug v
 
 instance Show List where
-    show l = show $ project l
+    show l = beg ++ go "" l ++ end
+        where (beg, sep, end) = ("[", ", ", "]")
+              go _ Nil = ""
+              go c (Cons v vs) = c ++ show v ++ go sep vs
 
 newtype Boolean = B Bool
     deriving (Eq)
 
-instance Embeddable Boolean where
-    type HostType Boolean = Bool
-    embed = B
-    project (B b) = b
+instance Embeddable Bool where
+    embed = Boolean . B
+    project (Boolean (B b)) = b
+    project v = projectionBug v
 
 instance Show Boolean where
     show (B True) = "#t"
@@ -87,6 +90,10 @@ data Val = List List
          | Nat Nat
          | Boolean Boolean
     deriving (Eq)
+
+instance Embeddable Val where
+    embed = id
+    project = id
 
 instance Show Val where
     show (List xs) = show xs

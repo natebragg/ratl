@@ -12,7 +12,6 @@ import Language.Ratl.Ty (
     )
 import Language.Ratl.Ast (
     Embeddable(..),
-    Nat(..),
     List(..),
     Val(..),
     Var(..),
@@ -26,19 +25,16 @@ import Data.ByteString.Char8 (unpack)
 import Data.FileEmbed (embedFile)
 
 arith :: (Int -> Int -> Int) -> [Val] -> Val
-arith op [Nat n, Nat m] = Nat $ embed $ project n `op` project m
+arith op [n, m] = embed $ project n `op` project m
 
-less :: [Val] -> Val
-less [Nat n, Nat m] = Boolean $ embed $ project n < project m
-
-greater :: [Val] -> Val
-greater [Nat n, Nat m] = Boolean $ embed $ project n > project m
+cmp :: (Int -> Int -> Bool) -> [Val] -> Val
+cmp op [n, m] = embed $ project n `op` project m
 
 equal :: [Val] -> Val
-equal [a, b] = Boolean $ embed $ a == b
+equal [a, b] = embed $ a == b
 
 null' :: [Val] -> Val
-null' [List xs] = Boolean $ embed $ xs == Nil
+null' [List xs] = embed $ xs == Nil
 
 car :: [Val] -> Val
 car [List (Cons x _)] = x
@@ -59,8 +55,8 @@ prims = makeProg [
     (V "*",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 (arith (*))),
 
     -- comparison operations
-    (V "<",     Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 less),
-    (V ">",     Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 greater),
+    (V "<",     Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 (cmp (<))),
+    (V ">",     Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 (cmp (>))),
     (V "=",     Native (Arrow ((), ()) [Tyvar "a", Tyvar "a"] BooleanTy)                           2 equal),
 
     -- list functions

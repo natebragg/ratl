@@ -38,7 +38,6 @@ import Language.Ratl.Ty (
     FunTy(..),
     )
 import Language.Ratl.Ast (
-    Nat(..),
     List(..),
     Var(..),
     Val(..),

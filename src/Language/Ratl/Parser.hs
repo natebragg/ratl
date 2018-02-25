@@ -5,9 +5,6 @@ module Language.Ratl.Parser (
 
 import Language.Ratl.Ast (
     Embeddable(..),
-    Nat(..),
-    List(..),
-    Boolean(..),
     Var(..),
     Val(..),
     Fun(..),
@@ -75,24 +72,24 @@ symbol = P.symbol lexer
 num :: Parser Integer
 num = P.lexeme lexer (P.decimal lexer)
 
-nat :: Parser Nat
-nat = embed <$> fromInteger <$> num
+nat :: Parser Int
+nat = fromInteger <$> num
 
-list :: Parser List
-list = embed <$> brackets (sepEndBy val comma)
+list :: Parser [Val]
+list = brackets (sepEndBy val comma)
    <?> "list"
 
-boolean :: Parser Boolean
-boolean = embed <$> ((reserved "#t" >> return True)
-                 <|> (reserved "#f" >> return False))
+boolean :: Parser Bool
+boolean = ((reserved "#t" >> return True)
+       <|> (reserved "#f" >> return False))
 
 var :: Parser Var
 var = V <$> identifier
 
 val :: Parser Val
-val = List <$> list
-  <|> Boolean <$> boolean
-  <|> Nat <$> nat
+val = embed <$> list
+  <|> embed <$> boolean
+  <|> embed <$> nat
   <?> "value"
 
 ex :: Parser Ex
