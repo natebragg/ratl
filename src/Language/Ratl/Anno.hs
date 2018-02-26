@@ -56,6 +56,7 @@ instance Annotatory Ty where
     annotate deg_max NatTy = return NatTy
     annotate deg_max BooleanTy = return BooleanTy
     annotate deg_max UnitTy = return UnitTy
+    annotate deg_max SymTy = return SymTy
     annotate deg_max (Tyvar x) = return (Tyvar x)
 
 freshAnno :: MonadState Anno m => m Anno

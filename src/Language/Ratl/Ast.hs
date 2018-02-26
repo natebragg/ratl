@@ -84,21 +84,22 @@ instance Show Boolean where
     show (B True) = "#t"
     show (B False) = "#f"
 
-data Var = V String
-    deriving (Eq)
-
-instance Show Var where
-    show (V x) = x
-
 instance Embeddable () where
     embed () = Unit
     project Unit = ()
     project v = projectionBug v
 
+data Sym = S String
+    deriving (Eq)
+
+instance Show Sym where
+    show (S x) = '\'' : x
+
 data Val = List List
          | Nat Nat
          | Boolean Boolean
          | Unit
+         | Sym Sym
     deriving (Eq)
 
 instance Embeddable Val where
@@ -109,7 +110,14 @@ instance Show Val where
     show (List xs) = show xs
     show (Nat n) = show n
     show (Boolean b) = show b
+    show (Sym s) = show s
     show Unit = show ()
+
+data Var = V String
+    deriving (Eq)
+
+instance Show Var where
+    show (V x) = x
 
 data NativeError = EmptyError
                  | DivideByZeroError

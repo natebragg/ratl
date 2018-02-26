@@ -12,6 +12,7 @@ data Ty a = NatTy
           | ListTy [a] (Ty a)
           | BooleanTy
           | UnitTy
+          | SymTy
           | Tyvar String
     deriving (Eq, Ord)
 
@@ -20,6 +21,7 @@ instance Show (Ty a) where
     show (ListTy _ t) = "[" ++ show t ++ "]"
     show BooleanTy = "Boolean"
     show UnitTy = "Unit"
+    show SymTy = "Sym"
     show (Tyvar x) = "'" ++ x
 
 instance Functor Ty where
@@ -27,6 +29,7 @@ instance Functor Ty where
     fmap f (ListTy qs t) = ListTy (fmap f qs) (fmap f t)
     fmap _    BooleanTy  = BooleanTy
     fmap _       UnitTy  = UnitTy
+    fmap _        SymTy  = SymTy
     fmap _     (Tyvar x) = Tyvar x
 
 instance Foldable Ty where
@@ -34,6 +37,7 @@ instance Foldable Ty where
     foldMap f (ListTy qs t) = foldMap f qs `mappend` foldMap f t
     foldMap _    BooleanTy  = mempty
     foldMap _       UnitTy  = mempty
+    foldMap _        SymTy  = mempty
     foldMap _     (Tyvar x) = mempty
 
 instance Traversable Ty where
@@ -41,6 +45,7 @@ instance Traversable Ty where
     traverse f (ListTy qs t) = ListTy <$> traverse f qs <*> traverse f t
     traverse _    BooleanTy  = pure BooleanTy
     traverse _       UnitTy  = pure UnitTy
+    traverse _        SymTy  = pure SymTy
     traverse _     (Tyvar x) = pure $ Tyvar x
 
 eqTy :: Ty a -> Ty a -> Bool
@@ -48,6 +53,7 @@ eqTy        NatTy         NatTy = True
 eqTy (ListTy _ t) (ListTy _ t') = eqTy t t'
 eqTy    BooleanTy     BooleanTy = True
 eqTy       UnitTy        UnitTy = True
+eqTy        SymTy         SymTy = True
 eqTy    (Tyvar x)     (Tyvar y) = x == y
 eqTy            _             _ = False
 

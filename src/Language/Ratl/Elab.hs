@@ -101,6 +101,7 @@ freein         NatTy = []
 freein (ListTy _ ty) = freein ty
 freein     BooleanTy = []
 freein        UnitTy = []
+freein         SymTy = []
 freein     (Tyvar y) = [y]
 
 solve :: TyvarEnv a -> (Ty a, Ty a) -> TyvarEnv a
@@ -123,6 +124,7 @@ tysubst theta = subst
         subst (ListTy ps ty) = ListTy ps $ subst ty
         subst      BooleanTy = BooleanTy
         subst         UnitTy = UnitTy
+        subst          SymTy = SymTy
         subst      (Tyvar x) = varsubst theta x
 
 class Instantiable f where
@@ -393,6 +395,10 @@ instance Elab Val where
         q <- freshAnno
         q' <- freshAnno
         return (UnitTy, (q, q'))
+    elab (Sym _) = do
+        q <- freshAnno
+        q' <- freshAnno
+        return (SymTy, (q, q'))
     elab (List l) = elab l
 
 instance Elab List where

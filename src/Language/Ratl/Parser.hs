@@ -103,6 +103,7 @@ ty :: Parser (Ty ())
 ty = (reserved "Nat" >> return NatTy)
   <|> (reserved "Boolean" >> return BooleanTy)
   <|> (reserved "Unit" >> return UnitTy)
+  <|> (reserved "Sym" >> return SymTy)
   <|> ListTy [] <$> brackets ty
   <?> "type"
 
