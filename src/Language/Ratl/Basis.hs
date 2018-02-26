@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Language.Ratl.Basis (
     arity,
@@ -12,6 +13,7 @@ import Language.Ratl.Ty (
     )
 import Language.Ratl.Ast (
     Embeddable(..),
+    NativeError(..),
     List(..),
     Val(..),
     Var(..),
@@ -21,29 +23,32 @@ import Language.Ratl.Ast (
     lookupFun,
     )
 
+import Control.Monad.Except (Except, throwError)
 import Data.ByteString.Char8 (unpack)
 import Data.FileEmbed (embedFile)
 
-arith :: (Int -> Int -> Int) -> [Val] -> Val
-arith op [n, m] = embed $ project n `op` project m
+arith :: (Int -> Int -> Int) -> [Val] -> Except NativeError Val
+arith op [n, m] = return $ embed $ project n `op` project m
 
-cmp :: (Int -> Int -> Bool) -> [Val] -> Val
-cmp op [n, m] = embed $ project n `op` project m
+cmp :: (Int -> Int -> Bool) -> [Val] -> Except NativeError Val
+cmp op [n, m] = return $ embed $ project n `op` project m
 
-equal :: [Val] -> Val
-equal [a, b] = embed $ a == b
+equal :: [Val] -> Except NativeError Val
+equal [a, b] = return $ embed $ a == b
 
-null' :: [Val] -> Val
-null' [List xs] = embed $ xs == Nil
+null' :: [Val] -> Except NativeError Val
+null' [List xs] = return $ embed $ xs == Nil
 
-car :: [Val] -> Val
-car [List (Cons x _)] = x
+car :: [Val] -> Except NativeError Val
+car [List (Cons x _)] = return $ x
+car [List Nil] = throwError EmptyError
 
-cdr :: [Val] -> Val
-cdr [List (Cons _ xs)] = List xs
+cdr :: [Val] -> Except NativeError Val
+cdr [List (Cons _ xs)] = return $ List xs
+cdr [List Nil] = throwError EmptyError
 
-cons :: [Val] -> Val
-cons [x, List xs] = List (Cons x xs)
+cons :: [Val] -> Except NativeError Val
+cons [x, List xs] = return $ List (Cons x xs)
 
 arity :: Var -> Int
 arity = maybe 1 (\(Native _ a _) -> a) . lookupFun prims

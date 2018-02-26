@@ -6,6 +6,7 @@ module Language.Ratl.Eval (
 
 import Language.Ratl.Ast (
     Embeddable(..),
+    NativeError(..),
     Var(..),
     Val(..),
     Fun(..),
@@ -15,8 +16,8 @@ import Language.Ratl.Ast (
     )
 
 import Control.Monad (when)
-import Control.Monad.Except (MonadError(..))
-import Control.Monad.Except.Extra (unlessJust)
+import Control.Monad.Except (MonadError(..), withExcept)
+import Control.Monad.Except.Extra (unlessJust, toError)
 import Data.Maybe (listToMaybe, catMaybes)
 
 lookupFunBySCP :: [Prog a] -> Var -> Maybe (Fun a)
@@ -24,10 +25,12 @@ lookupFunBySCP p x = listToMaybe $ catMaybes $ map (flip lookupFun x) p
 
 data RuntimeError = ArityError Int Int
                   | NameError Var
+                  | NativeError NativeError
 
 instance Show RuntimeError where
     show (ArityError f a) = "Expected " ++ show f ++ " arguments, but got " ++ show a ++ " at runtime."
     show (NameError x) = "Name " ++ show x ++ " is not defined at runtime."
+    show (NativeError e) = show e
 
 run :: MonadError RuntimeError m => [Prog a] -> Ex -> m Val
 run phi = eval []
@@ -61,4 +64,4 @@ run phi = eval []
           app (Native _ a f) vs = do
                 when (a /= length vs) $
                     throwError $ ArityError a (length vs)
-                return $ f vs
+                toError $ withExcept NativeError $ f vs

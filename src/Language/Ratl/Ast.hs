@@ -1,8 +1,11 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 
 module Language.Ratl.Ast (
     Embeddable(..),
+    NativeError(..),
     List(..),
     Var(..),
     Val(..),
@@ -23,6 +26,7 @@ module Language.Ratl.Ast (
 
 import Language.Ratl.Ty (FunTy)
 import Control.Arrow ((***))
+import Control.Monad.Except (Except)
 import Data.Graph.Inductive.Graph (mkGraph, insEdges)
 import Data.Graph.Inductive.PatriciaTree (Gr(..))
 import Data.Graph.Inductive.Extra (
@@ -100,8 +104,14 @@ instance Show Val where
     show (Nat n) = show n
     show (Boolean b) = show b
 
-data Fun a = Fun (FunTy a) Var Ex
-           | Native (FunTy a) Int ([Val] -> Val)
+data NativeError = EmptyError
+
+instance Show NativeError where
+    show EmptyError = "Tried to access contents of empty list."
+
+data Fun a where
+    Fun :: FunTy a -> Var -> Ex -> Fun a
+    Native :: FunTy a -> Int -> ([Val] -> Except NativeError Val) -> Fun a
 
 tyOf :: Fun a -> FunTy a
 tyOf (Fun ty _ _) = ty
