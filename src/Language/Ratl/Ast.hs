@@ -90,9 +90,15 @@ data Var = V String
 instance Show Var where
     show (V x) = x
 
+instance Embeddable () where
+    embed () = Unit
+    project Unit = ()
+    project v = projectionBug v
+
 data Val = List List
          | Nat Nat
          | Boolean Boolean
+         | Unit
     deriving (Eq)
 
 instance Embeddable Val where
@@ -103,6 +109,7 @@ instance Show Val where
     show (List xs) = show xs
     show (Nat n) = show n
     show (Boolean b) = show b
+    show Unit = show ()
 
 data NativeError = EmptyError
                  | DivideByZeroError

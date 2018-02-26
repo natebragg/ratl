@@ -102,6 +102,7 @@ ex = Val <$> val
 ty :: Parser (Ty ())
 ty = (reserved "Nat" >> return NatTy)
   <|> (reserved "Boolean" >> return BooleanTy)
+  <|> (reserved "Unit" >> return UnitTy)
   <|> ListTy [] <$> brackets ty
   <?> "type"
 
