@@ -137,6 +137,9 @@ instance Instantiable TyList where
                       frees = nub $ map varnum $ concatMap freein tys
                       bound = nub $ map varnum $ concatMap freein tys'
 
+instance Instantiable Ty where
+    instantiate tys ty = head $ unTyList $ instantiate tys $ TyList [ty]
+
 instance Instantiable FunTy where
     instantiate tys (Arrow q tys' ty') = Arrow q (init tys''ty'') (last tys''ty'')
         where tys''ty'' = unTyList $ instantiate tys (TyList $ tys' ++ [ty'])
@@ -392,14 +395,15 @@ instance Elab List where
         q' <- freshAnno
         ty <- annoMax $ ListTy [] $ Tyvar "a"
         return (ty, (q, q'))
-    elab (Cons v l) = do
+    elab (Cons v vs) = do
         (vty, _) <- elab v
-        (lty, _) <- elab l
+        (lty, (q, q')) <- elab vs
         ty <- case lty of
-            ListTy ps (Tyvar _)     -> return $ ListTy ps vty
-            ListTy _ l | eqTy l vty -> return lty
-            ListTy _ l              -> throwError $ TypeError [(vty, l)]
-            t                       -> throwError $ TypeError [(ListTy [] vty, t)]
-        q <- freshAnno
-        q' <- freshAnno
+            ListTy ps lty' ->
+                let lty'' = instantiate [vty] lty'
+                    vty'' = instantiate [lty'] vty
+                in if eqTy lty'' vty''
+                   then return $ ListTy ps lty''
+                   else throwError $ TypeError [(vty'', lty'')]
+            t -> throwError $ TypeError [(ListTy [] vty, t)]
         return (ty, (q, q'))
