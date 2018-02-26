@@ -105,9 +105,11 @@ instance Show Val where
     show (Boolean b) = show b
 
 data NativeError = EmptyError
+                 | DivideByZeroError
 
 instance Show NativeError where
     show EmptyError = "Tried to access contents of empty list."
+    show DivideByZeroError = "Tried to divide by zero."
 
 data Fun a where
     Fun :: FunTy a -> Var -> Ex -> Fun a

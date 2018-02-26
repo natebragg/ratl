@@ -1,0 +1,31 @@
+(define divides? ([Nat] -> Boolean) (dennum)
+    (let ((d (car dennum))
+          (n (car (cdr dennum))))
+         (= n (* d (/ n d)))))
+
+(define filtercar ([Nat] -> [Nat]) (xs)
+    (let ((x (car xs))
+          (ys (cdr xs)))
+         (if (null? ys)
+             []
+             (let ((rest (filtercar (cons x (cdr ys)))))
+                  (if (divides? xs)
+                      rest
+                      (cons (car ys) rest))))))
+
+(define eratos ([Nat] -> [Nat]) (xs)
+    (if (null? xs)
+        xs
+        (cons (car xs) (eratos (filtercar xs)))))
+
+(define range ([Nat] -> [Nat]) (nm)
+    (let ((n (car nm))
+          (m (car (cdr nm))))
+         (if (= n m)
+             []
+             (cons n (range (cons (+ n 1) (cdr nm)))))))
+
+(define main (Nat -> [Nat]) (n)
+    (if (< n 2)
+        []
+        (eratos (range (cons 2 (cons n []))))))

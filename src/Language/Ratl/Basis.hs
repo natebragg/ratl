@@ -30,6 +30,10 @@ import Data.FileEmbed (embedFile)
 arith :: (Int -> Int -> Int) -> [Val] -> Except NativeError Val
 arith op [n, m] = return $ embed $ project n `op` project m
 
+divide :: [Val] -> Except NativeError Val
+divide [_, m] | m == embed (0 :: Int) = throwError DivideByZeroError
+divide vs = arith div vs
+
 cmp :: (Int -> Int -> Bool) -> [Val] -> Except NativeError Val
 cmp op [n, m] = return $ embed $ project n `op` project m
 
@@ -58,6 +62,7 @@ prims = makeProg [
     -- arithmetic operations
     (V "+",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 (arith (+))),
     (V "*",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 (arith (*))),
+    (V "/",     Native (Arrow ((), ()) [NatTy, NatTy] NatTy)                                       2 divide),
 
     -- comparison operations
     (V "<",     Native (Arrow ((), ()) [NatTy, NatTy] BooleanTy)                                   2 (cmp (<))),
