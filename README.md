@@ -27,7 +27,7 @@ Then to build, just run:
 
 Ratl can then be run:
 
-    stack exec ratl examples/ratl/sum.ratl [1, 2, 3, 4, 5]
+    stack exec ratl examples/ratl/sum.ratl [1 2 3 4 5]
 
 ## Usage
 
@@ -50,9 +50,9 @@ the result returned by `main`.  In the directory where Ratl was downloaded,
 run the following commands:
 
     $ echo "(define main ([Nat] -> [Nat]) (xs) xs)" > id.ratl
-    $ stack exec ratl id.ratl [1,2,3]
+    $ stack exec ratl id.ratl [1 2 3]
     main: 1.0
-    [1,2,3]
+    (1 2 3)
 
 The program faithfully returned its input.  Even better, Ratl analyzed `main`,
 and decided that it would execute in constant time: 1.0!  Sounds fast.
@@ -60,7 +60,7 @@ and decided that it would execute in constant time: 1.0!  Sounds fast.
 Now, a more complex example:
 
     $ echo "(define main ([Nat] -> Nat) (xs) (car xs))" > car.ratl
-    $ stack exec ratl car.ratl [3,2,1]
+    $ stack exec ratl car.ratl [3 2 1]
     main: 4.0
     3
 
@@ -72,7 +72,7 @@ Let's analyze a more interesting program, shall we?
 
     $ echo "(define main ([Nat] -> Nat) (xs)
             (if (not (null? xs)) (+ 1 (main (cdr xs))) 0))" > length.ratl
-    $ stack exec ratl length.ratl [9,8,7,6,5,4,3,2,1]
+    $ stack exec ratl length.ratl [9 8 7 6 5 4 3 2 1]
     main: 27.0*n + 21.0
     9
 
@@ -96,13 +96,15 @@ Builtin functions include arithmetic with `+`, `*`, and `/`, comparison with
 `<`, `>` and `=`, fetching the `car` and `cdr` of a list, prepending to a list
 with `cons`, testing a list with `null?`, and negating booleans with `not`.
 
-Literal values include the natural numbers starting at zero, booleans, and
-lists.  Lists can be over naturals or booleans, or over lists, lists of lists,
-etc.  Naturals are depicted in the usual way.  Lists are comma-delimited, in
-square brackets.  Booleans are represented by the symbols `#t` for true and
-`#f` for false.
+Literal values include the natural numbers starting at zero, booleans, symbols,
+and lists.  Lists can be over naturals or booleans, or over lists, lists of
+lists, etc.  Naturals are depicted in the usual way.  Booleans are represented
+by the symbols `#t` for true and `#f` for false.  Symbols are represented by
+any characters besides whitespace and `()[];`.  Lists are space-delimited, in
+square brackets or parentheses.  Both symbols and lists must be prefixed by
+a quote mark, or be embedded in a `(quote ...)` expression.
 
-Identifiers are made of any characters besides whitespace and `()[];,`.
+Identifiers are made of the same characters as symbols.
 
 E.g., if you wanted to find the length of a list:
 
@@ -112,7 +114,7 @@ E.g., if you wanted to find the length of a list:
             0))
 
     (define main (Nat -> Nat) (n)
-        (length [1, 2, 3, 4, 5, 6, 7, 8, 9]))
+        (length '[1 2 3 4 5 6 7 8 9]))
 
 For more examples, take a look under the `examples/ratl` directory.
 

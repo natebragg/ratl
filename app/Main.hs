@@ -17,7 +17,8 @@ import System.Console.GetOpt (usageInfo, getOpt, OptDescr(..), ArgDescr(..), Arg
 
 import qualified Data.Clp.Clp as Clp (version)
 import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralForm(..))
-import Language.Ratl.Parser (prog, val)
+import Language.Ratl.Reader (sexp, sexps)
+import Language.Ratl.Parser (preorder, prog)
 import Language.Ratl.Anno (annotate)
 import Language.Ratl.Basis (prims, basis)
 import Language.Ratl.Ast (
@@ -121,12 +122,14 @@ main = do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
     inp <- readFile fn
-    b <- handleE $ parse (prog <* eof) "initial basis" basis
+    sb <- handleE $ parse (sexps <* eof) "initial basis" basis
+    b <- handleE $ parse (prog <* eof) "initial basis" $ preorder sb
     let prims_basis = prims `mappend` b
-    m <- handleE $ parse (prog <* eof) fn inp
+    sm <- handleE $ parse (sexps <* eof) fn inp
+    m <- handleE $ parse (prog <* eof) fn $ preorder sm
     let p = callgraph $ prims_basis `mappend` m
     a <- if mode /= Run then return $ embed (0 :: Int) else
-        handleE $ parse (val <* eof) "command line" cmdline
+        handleE $ parse (sexp <* eof) "command line" cmdline
     programs <- handleEx $ check deg_max p
     let mainapp a = (App (V "main") [(Val a)])
     cl_prog <- if mode /= Run then return [] else do

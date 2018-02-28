@@ -3,7 +3,7 @@
         (if (not (= 0 (car xs)))
             (cons (car xs) (filtzero (cdr xs)))
             (filtzero (cdr xs)))
-        []))
+        '[]))
 
 (define main ([Nat] -> [Nat]) (xs)
     (filtzero xs))

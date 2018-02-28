@@ -1,10 +1,16 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+
 module Language.Ratl.Parser (
+    preorder,
     prog,
-    val,
 ) where
 
 import Language.Ratl.Ast (
     Embeddable(..),
+    List(..),
+    Sym(..),
     Var(..),
     Val(..),
     Fun(..),
@@ -17,108 +23,127 @@ import Language.Ratl.Ty (
     FunTy(..),
     )
 
-import Data.Char (isSpace, isDigit)
-import Text.Parsec (try, many, count, sepEndBy, (<|>), (<?>))
-import Text.Parsec.Char (noneOf)
-import Text.Parsec.String (Parser)
-import Text.Parsec.Language (LanguageDef, emptyDef)
-import Text.Parsec.Token (GenLanguageDef(..))
-import qualified Text.Parsec.Token as P
-import Control.Monad (mzero, mfilter)
+import Text.Parsec (Parsec, ParsecT, Stream(..), try, many, (<|>), (<?>))
+import Text.Parsec.Pos (newPos, sourceName, sourceLine, sourceColumn)
+import Text.Parsec.Prim (
+    tokenPrim,
+    updateParserState,
+    getParserState,
+    setParserState,
+    State(..),
+    unexpected,
+    )
 
+reservedSyms = map embed [
+    S "->",
+    S "Nat", S "Boolean", S "Unit", S "Sym",
+    S "define", S "if", S "let",
+    S "#t", S "#f"
+    ]
 
+newtype Iterator = Iterator { runIterator :: Maybe ((Val, Iterator), Iterator) }
 
-lispStyle :: LanguageDef st
-lispStyle = emptyDef {
-                commentLine    = ";",
-                nestedComments = True,
-                identStart     = try $ mfilter (not . isDigit) $ identLetter lispStyle,
-                identLetter    = try $ mfilter (not . isSpace) $ noneOf "()[];,",
-                opStart        = opLetter lispStyle,
-                opLetter       = mzero,
-                reservedOpNames= ["->"],
-                reservedNames  = ["define", "if", "let",
-                                  "#t", "#f",
-                                  "Nat", "Boolean"],
-                caseSensitive  = True
-            }
+skipNext :: Iterator -> Iterator
+skipNext = Iterator . fmap (\((v, _), skip) -> ((v, skip), skip)) . runIterator
 
-lexer = P.makeTokenParser lispStyle
+preorder :: Val -> Iterator
+preorder = gov (Iterator Nothing)
+    where gov :: Iterator -> Val -> Iterator
+          gov next v@(List vs) = Iterator $ Just ((v, gol next vs), next)
+          gov next v           = Iterator $ Just ((v, next), next)
+          gol :: Iterator -> List -> Iterator
+          gol next (Cons v vs) = gov (gol next vs) v
+          gol next Nil         = next
 
-whiteSpace :: Parser ()
-whiteSpace = P.whiteSpace lexer
+instance Monad m => Stream Iterator m Val where
+    uncons = return . fmap fst . runIterator
 
-parens :: Parser a -> Parser a
-parens = P.parens lexer
+type SexpParser = Parsec Iterator ()
 
-reserved :: String -> Parser ()
-reserved = P.reserved lexer
+satisfy :: (Show a, Stream s m a) => (a -> Bool) -> ParsecT s u m a
+satisfy f = tokenPrim (\a -> show a)
+                      (\pos _a _as -> newPos (sourceName pos) (sourceLine pos) (1 + sourceColumn pos))
+                      (\a -> if f a then Just a else Nothing)
 
-reservedOp :: String -> Parser ()
-reservedOp = P.reservedOp lexer
+item :: (Show a, Eq a, Stream s m a) => a -> ParsecT s u m a
+item a = satisfy (==a) <?> show a
 
-brackets :: Parser a -> Parser a
-brackets = P.brackets lexer
+anyItem :: (Show a, Stream s m a) => ParsecT s u m a
+anyItem = satisfy (const True)
 
-identifier :: Parser String
-identifier = P.identifier lexer
+consume :: SexpParser Val
+consume = updateParserState (\st -> st {stateInput = skipNext $ stateInput st}) >> anyItem
 
-comma :: Parser ()
-comma = P.comma lexer >> return ()
+nat :: SexpParser Val
+nat = satisfy (\case Nat _ -> True; _ -> False)
 
-symbol :: String -> Parser String
-symbol = P.symbol lexer
+boolean :: SexpParser Val
+boolean = satisfy (\case Boolean _ -> True; _ -> False)
 
-num :: Parser Integer
-num = P.lexeme lexer (P.decimal lexer)
+sym :: SexpParser Val
+sym = satisfy (\case Sym _ -> True; _ -> False)
 
-nat :: Parser Int
-nat = fromInteger <$> num
+list :: SexpParser a -> SexpParser a
+list p = do
+    st <- getParserState
+    ((v, _), skip) <- maybe (unexpected "end of expression") return $
+                      runIterator $ stateInput st
+    setParserState $ st {stateInput = preorder v}
+    satisfy (\case List _ -> True; _ -> False)
+    result <- p
+    updateParserState $ \st -> st {stateInput = Iterator $ Just ((v, skip), skip)}
+    anyItem
+    return result
 
-list :: Parser [Val]
-list = brackets (sepEndBy val comma)
-   <?> "list"
+identifier :: SexpParser Val
+identifier = try $ do
+    name <- sym
+    if project name `elem` reservedSyms
+    then unexpected $ "reserved name " ++ show name
+    else return name
 
-boolean :: Parser Bool
-boolean = ((reserved "#t" >> return True)
-       <|> (reserved "#f" >> return False))
+reserved :: Sym -> SexpParser ()
+reserved s = try $ item (Sym s) >> return ()
 
-var :: Parser Var
-var = V <$> identifier
+var :: SexpParser Var
+var = (\(Sym (S x)) -> V x) <$> identifier
+  <?> "identifier"
 
-val :: Parser Val
-val = embed <$> list
-  <|> embed <$> boolean
-  <|> embed <$> nat
+val :: SexpParser Val
+val = nat
+  <|> boolean
+  <|> try (list $ reserved (S "quote") >> consume)
   <?> "value"
 
-ex :: Parser Ex
-ex = Val <$> val
- <|> Var <$> var
- <|> parens ((reserved "if" >> If <$> ex <*> ex <*> ex)
-         <|> (reserved "let" >> Let <$> parens (many $ parens $ (,) <$> var <*> ex) <*> ex)
-         <|> try (App <$> var <*> many ex))
+ex :: SexpParser Ex
+ex = Var <$> var
+ <|> Val <$> val
+ <|> (list $ (reserved (S "if")  >> If <$> ex <*> ex <*> ex)
+         <|> (reserved (S "let") >> Let <$> (list $ many $ list $ (,) <$> var <*> ex) <*> ex)
+         <|> (App <$> var <*> many ex))
 
-ty :: Parser (Ty ())
-ty = (reserved "Nat" >> return NatTy)
-  <|> (reserved "Boolean" >> return BooleanTy)
-  <|> (reserved "Unit" >> return UnitTy)
-  <|> (reserved "Sym" >> return SymTy)
-  <|> ListTy [] <$> brackets ty
-  <?> "type"
+ty :: SexpParser (Ty ())
+ty = (reserved (S "Nat") >> return NatTy)
+ <|> (reserved (S "Boolean") >> return BooleanTy)
+ <|> (reserved (S "Unit") >> return UnitTy)
+ <|> (reserved (S "Sym") >> return SymTy)
+ <|> (list $ ListTy [] <$> ty)
+ <?> "type"
 
-funty :: Parser (FunTy ())
-funty = do t1 <- ty
-           t2 <- reservedOp "->" >> ty
-           return $ Arrow ((), ()) [t1] t2
+funty :: SexpParser (FunTy ())
+funty = do
+    t1 <- ty
+    reserved (S "->")
+    t2 <- ty
+    return $ Arrow ((), ()) [t1] t2
 
-fun :: Parser (Var, Fun ())
-fun = parens (reserved "define" >>
+fun :: SexpParser (Var, Fun ())
+fun = (list $ reserved (S "define") >>
               (,) <$> var
-                  <*> (Fun <$> parens funty
-                           <*> parens var
+                  <*> (Fun <$> list funty
+                           <*> list var
                            <*> ex))
   <?> "function definition"
 
-prog :: Parser (Prog ())
-prog = whiteSpace >> makeProg <$> many fun
+prog :: SexpParser (Prog ())
+prog = makeProg <$> (list $ many fun)

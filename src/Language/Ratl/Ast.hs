@@ -7,6 +7,7 @@ module Language.Ratl.Ast (
     Embeddable(..),
     NativeError(..),
     List(..),
+    Sym(..),
     Var(..),
     Val(..),
     Fun(..),
@@ -42,7 +43,7 @@ class Embeddable a where
     embed :: a -> Val
     project :: Val -> a
 
-data Nat = N Int
+newtype Nat = N Int
     deriving (Eq)
 
 instance Embeddable Int where
@@ -68,7 +69,7 @@ instance Embeddable a => Embeddable [a] where
 
 instance Show List where
     show l = beg ++ go "" l ++ end
-        where (beg, sep, end) = ("[", ", ", "]")
+        where (beg, sep, end) = ("(", " ", ")")
               go _ Nil = ""
               go c (Cons v vs) = c ++ show v ++ go sep vs
 
@@ -89,11 +90,16 @@ instance Embeddable () where
     project Unit = ()
     project v = projectionBug v
 
-data Sym = S String
+newtype Sym = S String
     deriving (Eq)
 
 instance Show Sym where
-    show (S x) = '\'' : x
+    show (S x) = x
+
+instance Embeddable Sym where
+    embed = Sym
+    project (Sym x) = x
+    project v = projectionBug v
 
 data Val = List List
          | Nat Nat

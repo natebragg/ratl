@@ -7,7 +7,7 @@
     (let ((x (car xs))
           (ys (cdr xs)))
          (if (null? ys)
-             []
+             '[]
              (let ((rest (filtercar (cons x (cdr ys)))))
                   (if (divides? xs)
                       rest
@@ -22,10 +22,10 @@
     (let ((n (car nm))
           (m (car (cdr nm))))
          (if (= n m)
-             []
+             '[]
              (cons n (range (cons (+ n 1) (cdr nm)))))))
 
 (define main (Nat -> [Nat]) (n)
     (if (< n 2)
-        []
-        (eratos (range (cons 2 (cons n []))))))
+        '[]
+        (eratos (range (cons 2 (cons n '[]))))))
