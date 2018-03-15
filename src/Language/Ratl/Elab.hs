@@ -53,9 +53,15 @@ import Language.Ratl.Ast (
 import Language.Ratl.Basis (arity)
 
 type TyEnv a = [(Var, Ty a)]
+type FunEnv a = [(Var, Fun a)]
 type SharedTys a = MonoidalMap (Ty a) [Ty a]
 type TyvarEnv a = [(String, Ty a)]
 type ProgEnv = [(Var, [GeneralForm])]
+
+update :: Eq a => a -> b -> [(a, b)] -> [(a,b)]
+update a b [] = [(a,b)]
+update a b ((a',_):abs) | a == a' = (a,b):abs
+update a b (ab:abs) = ab:update a b abs
 
 data Cost = Cost { k_var,
                    k_val,
@@ -192,7 +198,7 @@ data CheckE = CheckE {
 data CheckF = CheckF {
         degree :: Int,
         scps :: [Prog ()],
-        comp :: Prog Anno,
+        comp :: FunEnv Anno,
         cost :: Cost
     }
 
@@ -221,7 +227,7 @@ annoMax :: (Annotatory a, MonadState Anno m, MonadReader CheckE m) => a b -> m (
 annoMax a = degreeof >>= flip annotate a
 
 lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (Fun Anno))
-lookupThisSCP x = asks (flip lookupFun x . comp . checkF)
+lookupThisSCP x = asks (lookup x . comp . checkF)
 
 assoc :: (a, (b, c)) -> ((a, b), c)
 assoc (a, (b, c)) = ((a, b), c)
@@ -242,7 +248,7 @@ zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 
 check :: (MonadError TypeError m) => Int -> [Prog ()] -> m ProgEnv
 check deg_max p = flip evalStateT 0 $ fmap concat $ forM p $ \scp -> do
-    scp' <- annotate deg_max scp
+    scp' <- travFun (traverse $ annotate deg_max) scp
     (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
 
@@ -251,8 +257,8 @@ checkEx deg_max p e = flip evalStateT 0 $ do
     ((ty, (q, q')), css) <- runWriterT $ runReaderT (elab e) $ CheckE [] $ CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
     return $ GeneralForm Minimize (sparse [(q, 1.0)]) (constrainShares css)
 
-elabSCP :: (MonadError TypeError m, MonadState Anno m) => Prog Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
-elabSCP = travFun (traverse elabF)
+elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
+elabSCP = traverse (traverse elabF)
     where elabF :: (MonadError TypeError m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
           elabF f = do
                     mapReaderT (mapWriterT (fmap $ second $ constrainShares)) $ elabFE f
@@ -342,8 +348,8 @@ instance Elab Ex where
                     scp <- asks (comp . checkF)
                     fun <- annoMax $ instantiate tys asc
                     -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
-                    cfscp <- annotate (degree - 1) $ updateFun scp f fun
-                    let Just cffun = lookupFun cfscp f
+                    cfscp <- traverse (traverse $ annotate (degree - 1)) $ update f fun scp
+                    let Just cffun = lookup f cfscp
                     constrain $ equate (tyOf fun) [tyOf asc, tyOf cffun]
                     constrain =<< withReaderT (\ce -> (checkF ce) {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (elabSCP cfscp))
                     return $ tyOf fun
@@ -351,9 +357,9 @@ instance Elab Ex where
                 scp <- unlessJustM (lookupSCP f) $
                        throwError $ NameError f
                 let fun = instantiate (map void tys) $ fromJust $ lookupFun scp f
-                scp' <- annoMax $ updateFun scp f fun
+                scp' <- travFun (traverse annoMax) $ updateFun scp f fun
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
-                return $ tyOf $ fromJust $ lookupFun scp' f
+                return $ tyOf $ fromJust $ lookup f scp'
         q  <- freshAnno
         q' <- freshAnno
         let tys'' = unTyList $ instantiate tys' $ TyList tys
