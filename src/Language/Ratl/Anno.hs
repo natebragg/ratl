@@ -15,6 +15,9 @@ import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
     )
+import Language.Ratl.Index (
+    Index,
+    )
 import Language.Ratl.Ast (
     Fun(..),
     Prog,
@@ -23,11 +26,14 @@ import Language.Ratl.Ast (
 
 type Anno = Int
 
-reannotate :: (Traversable t, MonadState Anno m) => t Anno -> m (t Anno)
-reannotate = traverse ((const <$> freshAnno <*>) . pure)
+reannotate :: (Traversable t, MonadState Anno m) => t a -> m (t Anno)
+reannotate = traverse $ const freshAnno
 
 class Annotatory a where
     annotate :: MonadState Anno m => Int -> a b -> m (a Anno)
+
+instance Annotatory Index where
+    annotate _ = reannotate
 
 instance Annotatory Prog where
     annotate deg_max p = travProg (traverse (annotate deg_max)) p
