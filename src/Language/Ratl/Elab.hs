@@ -31,6 +31,10 @@ import Language.Ratl.Anno (
     reannotate,
     freshAnno,
     )
+import Language.Ratl.Index (
+    Index,
+    indexDeg,
+    )
 import Language.Ratl.Ty (
     Ty(..),
     eqTy,
@@ -52,9 +56,55 @@ import Language.Ratl.Ast (
     )
 import Language.Ratl.Basis (arity)
 
-type TyEnv a = [(Var, Ty a)]
-type FunEnv a = [(Var, Fun a)]
-type SharedTys a = MonoidalMap (Ty a) [Ty a]
+newtype ATy a = ATy { runaty :: ([Index a], Ty a) }
+    deriving (Eq, Ord)
+
+instance Functor ATy where
+    fmap f (ATy (q, t)) = ATy . (,) (fmap (fmap f) q) $ fmap f t
+
+instance Foldable ATy where
+    foldMap f (ATy (q, t)) = foldMap (foldMap f) q `mappend` foldMap f t
+
+instance Traversable ATy where
+    traverse f (ATy (q, t)) = (ATy .) . (,) <$> traverse (traverse f) q <*> traverse f t
+
+instance Annotatory ATy where
+    annotate dm (ATy (q, t)) = (ATy .) . (,) <$> traverse (annotate dm) q <*> annotate dm t
+
+aty :: MonadState Anno m => Int -> Ty Anno -> m (ATy Anno)
+aty k t = do
+    q <- traverse (annotate k) (indexDeg k t)
+    return $ ATy (q, t)
+
+newtype AFun a = AFun { runafun :: (([Index a], [Index a]), Fun a) }
+
+instance Functor AFun where
+    fmap f (AFun ((q, q'), t)) = AFun . (,) (fmap (fmap f) q, fmap (fmap f) q') $ fmap f t
+
+instance Foldable AFun where
+    foldMap f (AFun ((q, q'), t)) = foldMap (foldMap f) q `mappend` foldMap (foldMap f) q' `mappend` foldMap f t
+
+instance Traversable AFun where
+    traverse f (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> traverse (traverse f) q <*> traverse (traverse f) q') <*> traverse f t
+
+instance Annotatory AFun where
+    annotate dm (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> traverse (annotate dm) q <*> traverse (annotate dm) q') <*> annotate dm t
+
+instance Instantiable AFun where
+    instantiate tys (AFun (qs, t)) = AFun . (,) qs $ instantiate tys t
+
+afun :: MonadState Anno m => Int -> Fun a -> m (AFun Anno)
+afun k fun = do
+    let Arrow _ (t:_) t' = tyOf fun
+    q  <- traverse (annotate k) $ indexDeg k t
+    q' <- traverse (annotate k) $ indexDeg k t'
+    fun' <- annotate k fun
+    return $ AFun ((q, q'), fun')
+atyOf = tyOf . snd . runafun
+
+type TyEnv a = [(Var, ATy a)]
+type FunEnv a = [(Var, AFun a)]
+type SharedTys a = MonoidalMap (ATy a) [ATy a]
 type TyvarEnv a = [(String, Ty a)]
 type ProgEnv = [(Var, [GeneralForm])]
 
@@ -177,6 +227,9 @@ class Comparable a where
     equate = relate Eql
     exceed = relate Geq
 
+instance Comparable ATy where
+    relate c t ts = relate c ((snd . runaty) t) (map (snd . runaty) ts)
+
 instance Comparable Ty where
     relate c t ts = [sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 | (p, qs) <- zip (qsOf t) $ transpose $ map qsOf ts, not $ elem p qs]
         where qsOf (ListTy qs _) = qs
@@ -214,7 +267,7 @@ constrain c = tell (c, mempty)
 constrainShares :: ([GeneralConstraint], SharedTys Anno) -> [GeneralConstraint]
 constrainShares = uncurry (++) . second (foldMapWithKey equate . getMonoidalMap)
 
-gamma :: MonadReader CheckE m => Var -> m (Maybe (Ty Anno))
+gamma :: MonadReader CheckE m => Var -> m (Maybe (ATy Anno))
 gamma x = asks (lookup x . env)
 
 costof :: MonadReader CheckE m => (Cost -> a) -> m a
@@ -226,7 +279,7 @@ degreeof = asks (degree . checkF)
 annoMax :: (Annotatory a, MonadState Anno m, MonadReader CheckE m) => a b -> m (a Anno)
 annoMax a = degreeof >>= flip annotate a
 
-lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (Fun Anno))
+lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (AFun Anno))
 lookupThisSCP x = asks (lookup x . comp . checkF)
 
 assoc :: (a, (b, c)) -> ((a, b), c)
@@ -248,7 +301,7 @@ zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 
 check :: (MonadError TypeError m) => Int -> [Prog ()] -> m ProgEnv
 check deg_max p = flip evalStateT 0 $ fmap concat $ forM p $ \scp -> do
-    scp' <- travFun (traverse $ annotate deg_max) scp
+    scp' <- travFun (traverse $ afun deg_max) scp
     (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
 
@@ -259,32 +312,32 @@ checkEx deg_max p e = flip evalStateT 0 $ do
 
 elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
 elabSCP = traverse (traverse elabF)
-    where elabF :: (MonadError TypeError m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
+    where elabF :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
           elabF f = do
                     mapReaderT (mapWriterT (fmap $ second $ constrainShares)) $ elabFE f
                     deg_max <- asks degree
-                    return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
-          elabFE :: (MonadError TypeError m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
-          elabFE (Fun (Arrow (qf, qf') [pty] rty) x e) = do
-                    (ty, (q, q')) <- withReaderT (CheckE [(x, pty)]) $ elab e
+                    return $ map (objective (atyOf f)) [deg_max,deg_max-1..0]
+          elabFE :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
+          elabFE (AFun ((pqs, rqs), Fun (Arrow (qf, qf') [pty] rty) x e)) = do
+                    (ATy (qs, ty), (q, q')) <- withReaderT (CheckE [(x, ATy (pqs, pty))]) $ elab e
                     let ty'' = tysubst (solve [] (ty, rty)) ty
                     when (not $ eqTy rty ty'') $
                         throwError $ TypeError $ [(rty, ty'')]
                     constrain $ equate rty [ty'']
                     constrain [sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
                     constrain [sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
-          elabFE (Native (Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) _ _) = -- hack for cdr
+          elabFE (AFun (qs, Native (Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) _ _)) = -- hack for cdr
                     constrain [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
-          elabFE (Native (Arrow (qf, qf') [tyh, ListTy rs tyt] (ListTy ps tyc)) _ _) = do -- hack for cons
+          elabFE (AFun (qs, Native (Arrow (qf, qf') [tyh, ListTy rs tyt] (ListTy ps tyc)) _ _)) = do -- hack for cons
                     constrain [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf:rs) (tail $ shift (qf':ps)), not $ elem r sps]
                     constrain $ tyh `exceed` [tyc] ++ tyt `exceed` [tyc]
-          elabFE (Native (Arrow (qf, qf') _ _) _ _) =
+          elabFE (AFun (qs, Native (Arrow (qf, qf') _ _) _ _)) =
                     constrain [sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
 
 class Elab a where
-    elab :: (MonadError TypeError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty Anno, (Anno, Anno))
+    elab :: (MonadError TypeError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (ATy Anno, (Anno, Anno))
 
 instance Elab Ex where
     elab (Var x) = do
@@ -303,9 +356,9 @@ instance Elab Ex where
         constrain [sparse [exchange $ Consume q, exchange $ Supply q'] `Geq` k]
         return (ty, (q, q'))
     elab (If ep et ef) = do
-        (tyep, (qip, qip')) <- elab ep
-        ((tyet, (qit, qit')), (tcs, tss)) <- mapReaderT runWriterT $ elab et
-        ((tyef, (qif, qif')), (fcs, fss)) <- mapReaderT runWriterT $ elab ef
+        (ATy (qsp, tyep), (qip, qip')) <- elab ep
+        ((ATy (qst, tyet), (qit, qit')), (tcs, tss)) <- mapReaderT runWriterT $ elab et
+        ((ATy (qsf, tyef), (qif, qif')), (fcs, fss)) <- mapReaderT runWriterT $ elab ef
         let tys = [tyep, tyet, tyef]
         constrain tcs
         constrain fcs
@@ -333,33 +386,35 @@ instance Elab Ex where
                    sparse [exchange $ Consume qip', exchange $ Supply qif] `Geq` kf,
                    sparse [exchange $ Consume qit', exchange $ Supply q']  `Geq` kc,
                    sparse [exchange $ Consume qif', exchange $ Supply q']  `Geq` kc]
-        return (ty'', (q, q'))
+        degree <- degreeof
+        aty' <- aty degree ty''
+        return (aty', (q, q'))
     elab (App f es) = do
-        (tys, (qs, q's)) <- second unzip <$> unzip <$> mapM elab es
+        (tys, (qs, q's)) <- first (map (snd . runaty)) <$> second unzip <$> unzip <$> mapM elab es
         when (arity f /= length es) $
             throwError $ ArityError (arity f) (length es)
+        degree <- degreeof
         Arrow (qf, qf') tys' ty'' <- lookupThisSCP f >>= \case
             Just asc -> do
-                degree <- degreeof
                 cost_free <- costof (== zero)
                 if degree <= 1 || cost_free then
-                    return $ instantiate tys $ tyOf asc
+                    return $ instantiate tys $ atyOf asc
                 else do
                     scp <- asks (comp . checkF)
                     fun <- annoMax $ instantiate tys asc
                     -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
                     cfscp <- traverse (traverse $ annotate (degree - 1)) $ update f fun scp
                     let Just cffun = lookup f cfscp
-                    constrain $ equate (tyOf fun) [tyOf asc, tyOf cffun]
+                    constrain $ equate (atyOf fun) [atyOf asc, atyOf cffun]
                     constrain =<< withReaderT (\ce -> (checkF ce) {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (elabSCP cfscp))
-                    return $ tyOf fun
+                    return $ atyOf fun
             Nothing -> do
                 scp <- unlessJustM (lookupSCP f) $
                        throwError $ NameError f
                 let fun = instantiate (map void tys) $ fromJust $ lookupFun scp f
-                scp' <- travFun (traverse annoMax) $ updateFun scp f fun
+                scp' <- travFun (traverse $ afun degree) $ updateFun scp f fun
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
-                return $ tyOf $ fromJust $ lookup f scp'
+                return $ atyOf $ fromJust $ lookup f scp'
         q  <- freshAnno
         q' <- freshAnno
         let tys'' = unTyList $ instantiate tys' $ TyList tys
@@ -375,7 +430,8 @@ instance Elab Ex where
                    (q_in, q_out) <- qs_args]
         constrain [sparse (map exchange [Consume q_ap, Supply qf, Supply c]) `Eql` k1]
         constrain [sparse (map exchange [Supply q', Consume qf', Consume c]) `Eql` k2]
-        return (ty'', (q, q'))
+        aty' <- aty degree ty''
+        return (aty', (q, q'))
     elab (Let ds e) = do
         (tyds, (qs, q's)) <- second unzip <$> unzip <$> mapM (fmap assoc . traverse elab) ds
         (ty, (qe, qe')) <- withReaderT (\ce -> ce {env = (reverse tyds) ++ env ce}) $ elab e
@@ -392,19 +448,27 @@ instance Elab Val where
     elab (Nat _) = do
         q <- freshAnno
         q' <- freshAnno
-        return (NatTy, (q, q'))
+        degree <- degreeof
+        aty' <- aty degree NatTy
+        return (aty', (q, q'))
     elab (Boolean _) = do
         q <- freshAnno
         q' <- freshAnno
-        return (BooleanTy, (q, q'))
+        degree <- degreeof
+        aty' <- aty degree BooleanTy
+        return (aty', (q, q'))
     elab Unit = do
         q <- freshAnno
         q' <- freshAnno
-        return (UnitTy, (q, q'))
+        degree <- degreeof
+        aty' <- aty degree UnitTy
+        return (aty', (q, q'))
     elab (Sym _) = do
         q <- freshAnno
         q' <- freshAnno
-        return (SymTy, (q, q'))
+        degree <- degreeof
+        aty' <- aty degree SymTy
+        return (aty', (q, q'))
     elab (List l) = elab l
 
 instance Elab List where
@@ -412,10 +476,12 @@ instance Elab List where
         q <- freshAnno
         q' <- freshAnno
         ty <- annoMax $ ListTy [] $ Tyvar "a"
-        return (ty, (q, q'))
+        degree <- degreeof
+        aty' <- aty degree ty
+        return (aty', (q, q'))
     elab (Cons v vs) = do
-        (vty, _) <- elab v
-        (lty, (q, q')) <- elab vs
+        (ATy (_, vty), _) <- elab v
+        (ATy (_, lty), (q, q')) <- elab vs
         ty <- case lty of
             ListTy ps lty' ->
                 let lty'' = instantiate [vty] lty'
@@ -424,4 +490,6 @@ instance Elab List where
                    then return $ ListTy ps lty''
                    else throwError $ TypeError [(vty'', lty'')]
             t -> throwError $ TypeError [(ListTy [] vty, t)]
-        return (ty, (q, q'))
+        degree <- degreeof
+        aty' <- aty degree ty
+        return (aty', (q, q'))
