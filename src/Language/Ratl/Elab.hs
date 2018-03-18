@@ -265,12 +265,12 @@ elabSCP = traverse (traverse elabF)
                     deg_max <- asks degree
                     return $ map (objective (tyOf f)) [deg_max,deg_max-1..0]
           elabFE :: (MonadError TypeError m, MonadState Anno m) => Fun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
-          elabFE (Fun (Arrow (qf, qf') tys ty') x e) = do
-                    (ty, (q, q')) <- withReaderT (CheckE (zip [x] tys)) $ elab e
-                    let ty'' = tysubst (solve [] (ty, ty')) ty
-                    when (not $ eqTy ty' ty'') $
-                        throwError $ TypeError $ [(ty', ty'')]
-                    constrain $ equate ty' [ty'']
+          elabFE (Fun (Arrow (qf, qf') [pty] rty) x e) = do
+                    (ty, (q, q')) <- withReaderT (CheckE [(x, pty)]) $ elab e
+                    let ty'' = tysubst (solve [] (ty, rty)) ty
+                    when (not $ eqTy rty ty'') $
+                        throwError $ TypeError $ [(rty, ty'')]
+                    constrain $ equate rty [ty'']
                     constrain [sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
                     constrain [sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
           elabFE (Native (Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) _ _) = -- hack for cdr
