@@ -31,6 +31,10 @@ import Language.Ratl.Anno (
     reannotate,
     freshAnno,
     )
+import Language.Ratl.Index (
+    Index,
+    indexDeg,
+    )
 import Language.Ratl.Ty (
     Ty(..),
     eqTy,
@@ -51,10 +55,6 @@ import Language.Ratl.Ast (
     travFun,
     )
 import Language.Ratl.Basis (arity)
-
-data Index = Index
-    deriving (Eq, Ord)
-indexDeg k ty = [Index]
 
 newtype ATy a = ATy { runaty :: ([Index], Ty a) }
     deriving (Eq, Ord)

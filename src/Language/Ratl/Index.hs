@@ -9,7 +9,7 @@ import Language.Ratl.Ty (Ty(..))
 
 data Index = AIndex
            | LIndex [Index]
-    deriving Show
+    deriving (Eq, Ord, Show)
 
 -- All combinations of elements of the inputs ordered by total weight, as
 -- determined by in index of the input element.  Starting with the empty
