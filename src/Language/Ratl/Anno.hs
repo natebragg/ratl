@@ -15,9 +15,6 @@ import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
     )
-import Language.Ratl.Index (
-    Index,
-    )
 import Language.Ratl.Ast (
     Fun(..),
     Prog,
@@ -31,9 +28,6 @@ reannotate = traverse $ const freshAnno
 
 class Annotatory a where
     annotate :: MonadState Anno m => Int -> a b -> m (a Anno)
-
-instance Annotatory Index where
-    annotate _ = reannotate
 
 instance Annotatory Prog where
     annotate deg_max p = travProg (traverse (annotate deg_max)) p
