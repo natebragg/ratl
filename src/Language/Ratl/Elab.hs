@@ -31,10 +31,6 @@ import Language.Ratl.Anno (
     reannotate,
     freshAnno,
     )
-import Language.Ratl.Index (
-    Index,
-    indexDeg,
-    )
 import Language.Ratl.Ty (
     Ty(..),
     eqTy,
@@ -56,39 +52,43 @@ import Language.Ratl.Ast (
     )
 import Language.Ratl.Basis (arity)
 
-newtype ATy a = ATy { runaty :: ([Index a], Ty a) }
+data Index = Index
+    deriving (Eq, Ord)
+indexDeg k ty = [Index]
+
+newtype ATy a = ATy { runaty :: ([Index], Ty a) }
     deriving (Eq, Ord)
 
 instance Functor ATy where
-    fmap f (ATy (q, t)) = ATy . (,) (fmap (fmap f) q) $ fmap f t
+    fmap f (ATy (q, t)) = ATy . (,) q $ fmap f t
 
 instance Foldable ATy where
-    foldMap f (ATy (q, t)) = foldMap (foldMap f) q `mappend` foldMap f t
+    foldMap f (ATy (q, t)) = foldMap f t
 
 instance Traversable ATy where
-    traverse f (ATy (q, t)) = (ATy .) . (,) <$> traverse (traverse f) q <*> traverse f t
+    traverse f (ATy (q, t)) = ATy . (,) q <$> traverse f t
 
 instance Annotatory ATy where
-    annotate dm (ATy (q, t)) = (ATy .) . (,) <$> traverse (annotate dm) q <*> annotate dm t
+    annotate dm (ATy (q, t)) = ATy . (,) q <$> annotate dm t
 
 aty :: MonadState Anno m => Int -> Ty Anno -> m (ATy Anno)
 aty k t = do
-    q <- traverse (annotate k) (indexDeg k t)
+    let q = (indexDeg k t)
     return $ ATy (q, t)
 
-newtype AFun a = AFun { runafun :: (([Index a], [Index a]), Fun a) }
+newtype AFun a = AFun { runafun :: (([Index], [Index]), Fun a) }
 
 instance Functor AFun where
-    fmap f (AFun ((q, q'), t)) = AFun . (,) (fmap (fmap f) q, fmap (fmap f) q') $ fmap f t
+    fmap f (AFun ((q, q'), t)) = AFun . (,) (q, q') $ fmap f t
 
 instance Foldable AFun where
-    foldMap f (AFun ((q, q'), t)) = foldMap (foldMap f) q `mappend` foldMap (foldMap f) q' `mappend` foldMap f t
+    foldMap f (AFun ((q, q'), t)) = foldMap f t
 
 instance Traversable AFun where
-    traverse f (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> traverse (traverse f) q <*> traverse (traverse f) q') <*> traverse f t
+    traverse f (AFun ((q, q'), t)) = AFun . (,) (q, q') <$> traverse f t
 
 instance Annotatory AFun where
-    annotate dm (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> traverse (annotate dm) q <*> traverse (annotate dm) q') <*> annotate dm t
+    annotate dm (AFun ((q, q'), t)) = AFun . (,) (q, q') <$> annotate dm t
 
 instance Instantiable AFun where
     instantiate tys (AFun (qs, t)) = AFun . (,) qs $ instantiate tys t
@@ -96,8 +96,8 @@ instance Instantiable AFun where
 afun :: MonadState Anno m => Int -> Fun a -> m (AFun Anno)
 afun k fun = do
     let Arrow _ (t:_) t' = tyOf fun
-    q  <- traverse (annotate k) $ indexDeg k t
-    q' <- traverse (annotate k) $ indexDeg k t'
+    let q  = indexDeg k t
+    let q' = indexDeg k t'
     fun' <- annotate k fun
     return $ AFun ((q, q'), fun')
 atyOf = tyOf . snd . runafun
