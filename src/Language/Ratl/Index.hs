@@ -37,6 +37,7 @@ index (NatTy)      = [[AIndex]]
 index (BooleanTy)  = [[AIndex]]
 index (UnitTy)     = [[AIndex]]
 index (SymTy)      = [[AIndex]]
+index (Tyvar _)    = [[AIndex]]
 index (ListTy _ t) = do
     cs <- combos (index t)
     return $ LIndex <$> (choices =<< cs)
