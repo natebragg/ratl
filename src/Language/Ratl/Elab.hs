@@ -326,7 +326,7 @@ elabSCP = traverse (traverse elabF)
                     constrain $ equate rty [ty'']
                     constrain [sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
                     constrain [sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
-          elabFE (AFun (qs, Native (Arrow (qf, qf') [ListTy ps _] (ListTy rs _)) _ _)) = -- hack for cdr
+          elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') [pty@(ListTy ps pt)] (ListTy rs rt)) _ _)) | pt == rt = do -- hack for cdr
                     constrain [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
           elabFE (AFun (qs, Native (Arrow (qf, qf') [tyh, ListTy rs tyt] (ListTy ps tyc)) _ _)) = do -- hack for cons
