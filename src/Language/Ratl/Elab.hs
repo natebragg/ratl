@@ -9,7 +9,7 @@ module Language.Ratl.Elab (
 import Data.List (intersect, intercalate, union, nub, foldl', transpose)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
-import Data.Maybe (listToMaybe, isJust, fromJust)
+import Data.Maybe (listToMaybe, isJust, fromJust, mapMaybe)
 import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
 import Control.Monad (when, forM, void)
@@ -33,6 +33,7 @@ import Language.Ratl.Anno (
     )
 import Language.Ratl.Index (
     Index,
+    deg,
     indexDeg,
     )
 import Language.Ratl.Ty (
@@ -76,32 +77,35 @@ aty k t = do
     let q = (indexDeg k t)
     return $ ATy (q, t)
 
-newtype AFun a = AFun { runafun :: (([Index], [Index]), Fun a) }
+newtype AFun a = AFun { runafun :: ((IxEnv a, IxEnv a), Fun a) }
 
 instance Functor AFun where
-    fmap f (AFun ((q, q'), t)) = AFun . (,) (q, q') $ fmap f t
+    fmap f (AFun ((q, q'), t)) = AFun . (,) (fmap (fmap f) q, fmap (fmap f) q') $ fmap f t
 
 instance Foldable AFun where
-    foldMap f (AFun ((q, q'), t)) = foldMap f t
+    foldMap f (AFun ((q, q'), t)) = foldMap (foldMap f) q `mappend` foldMap (foldMap f) q' `mappend` foldMap f t
 
 instance Traversable AFun where
-    traverse f (AFun ((q, q'), t)) = AFun . (,) (q, q') <$> traverse f t
+    traverse f (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> traverse (traverse f) q <*> traverse (traverse f) q') <*> traverse f t
 
 instance Annotatory AFun where
-    annotate dm (AFun ((q, q'), t)) = AFun . (,) (q, q') <$> annotate dm t
+    annotate dm (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> reanno q <*> reanno q') <*> annotate dm t
+        where reanno = traverse reannotate . filter ((<= dm) . deg . fst)
 
 instance Instantiable AFun where
     instantiate tys (AFun (qs, t)) = AFun . (,) qs $ instantiate tys t
 
 afun :: MonadState Anno m => Int -> Fun a -> m (AFun Anno)
 afun k fun = do
-    let Arrow _ (t:_) t' = tyOf fun
-    let q  = indexDeg k t
-    let q' = indexDeg k t'
+    let Arrow _ ts t' = tyOf fun
+    q  <- traverse (reannotate . flip (,) ()) $ indexDeg k $ pairify ts
+    q' <- traverse (reannotate . flip (,) ()) $ indexDeg k t'
     fun' <- annotate k fun
     return $ AFun ((q, q'), fun')
 atyOf = tyOf . snd . runafun
 
+newtype CIxEnv a = CIxEnv {runcix :: IxEnv a}
+type IxEnv a = [(Index, a)]
 type TyEnv a = [(Var, ATy a)]
 type FunEnv a = [(Var, AFun a)]
 type SharedTys a = MonoidalMap (ATy a) [ATy a]
@@ -208,6 +212,8 @@ instance Instantiable Fun where
     instantiate tys (Fun ty x e) = Fun (instantiate tys ty) x e
     instantiate tys (Native ty a f) = Native (instantiate tys ty) a f
 
+pairify [ty] = ty
+
 objective :: FunTy Anno -> Int -> LinearFunction
 objective fty degree = sparse $ objF fty
     where payIf d = if degree == d then 1.0 else 0.0
@@ -229,6 +235,9 @@ class Comparable a where
 
 instance Comparable ATy where
     relate c t ts = relate c ((snd . runaty) t) (map (snd . runaty) ts)
+
+instance Comparable CIxEnv where
+    relate c i is = [sparse (map exchange (Consume p:map Supply ps)) `c` 0.0 | (ix, p) <- runcix i, ps <- [mapMaybe (lookup ix . runcix) is], not $ null ps, not $ elem p ps]
 
 instance Comparable Ty where
     relate c t ts = [sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 | (p, qs) <- zip (qsOf t) $ transpose $ map qsOf ts, not $ elem p qs]
@@ -321,7 +330,7 @@ checkEx deg_max p e = flip evalStateT 0 $ do
 elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
 elabSCP = traverse (traverse elabF)
     where elabF :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
-          elabF f = do
+          elabF f@(AFun ((pqs, _), fun)) = do
                     mapReaderT (mapWriterT (fmap $ second $ constrainShares)) $ elabFE f
                     deg_max <- asks degree
                     return $ map (objective (atyOf f)) [deg_max,deg_max-1..0]
@@ -337,11 +346,11 @@ elabSCP = traverse (traverse elabF)
           elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') [pty@(ListTy ps pt)] (ListTy rs rt)) _ _)) | pt == rt = do -- hack for cdr
                     constrainT [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf':rs) (tail $ ashift (qf:ps)), not $ elem r sps]
-          elabFE (AFun (qs, Native (Arrow (qf, qf') [tyh, ListTy rs tyt] (ListTy ps tyc)) _ _)) = do -- hack for cons
+          elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') ptys@[tyh, ListTy rs tyt] rty@(ListTy ps tyc)) _ _)) = do -- hack for cons
                     constrainT [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf:rs) (tail $ ashift (qf':ps)), not $ elem r sps]
                     constrainT $ tyh `exceed` [tyc] ++ tyt `exceed` [tyc]
-          elabFE (AFun (qs, Native (Arrow (qf, qf') _ _) _ _)) =
+          elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') tys ty') _ _)) = do
                     constrainT [sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
 
 class Elab a where
