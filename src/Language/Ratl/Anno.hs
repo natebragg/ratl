@@ -42,10 +42,10 @@ instance Annotatory Fun where
 
 instance Annotatory FunTy where
     annotate deg_max (Arrow _ ts1 t2) = do
-        ts1' <- mapM (annotate deg_max) ts1
-        t2' <- annotate deg_max t2
         q  <- freshAnno
+        ts1' <- mapM (annotate deg_max) ts1
         q' <- freshAnno
+        t2' <- annotate deg_max t2
         return $ Arrow (q, q') ts1' t2'
 
 instance Annotatory Ty where

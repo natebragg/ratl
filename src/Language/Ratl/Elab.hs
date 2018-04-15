@@ -215,8 +215,8 @@ objective fty degree = sparse $ objF fty
           objTy (ListTy ps _) = map (second payIf) $ zip ps [1..]
           objTy            _  = []
 
-shift :: [a] -> [[a]]
-shift ps = [p_1] ++ transpose [ps, p_ik]
+ashift :: [a] -> [[a]]
+ashift ps = [p_1] ++ transpose [ps, p_ik]
     where (p_1, p_ik) = splitAt 1 ps
 
 class Comparable a where
@@ -236,8 +236,13 @@ instance Comparable Ty where
               qsOf            _  = []
 
 instance Comparable FunTy where
-    relate c a as = (concatMap (uncurry (relate c)) $ zip (psOf a) (transpose $ map psOf as) ++ [(rOf a, map rOf as)]) ++
-                    [sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 | (p, qs) <- [(qOf a, map qOf as), (q'Of a, map q'Of as)], not $ elem p qs]
+    relate c a as = [sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 |
+                        (p, qs) <- [(qOf a, map qOf as)], not $ elem p qs] ++
+                    (concatMap (uncurry (relate c)) $
+                              zip (psOf a) (transpose $ map psOf as)) ++
+                    [sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 |
+                        (p, qs) <- [(q'Of a, map q'Of as)], not $ elem p qs] ++
+                    (relate c (rOf a) (map rOf as))
         where qOf  (Arrow (q,  _)   _   _) = q
               q'Of (Arrow (_, q')   _   _) = q'
               psOf (Arrow       _ tys   _) = tys
@@ -328,10 +333,10 @@ elabSCP = traverse (traverse elabF)
                     constrain [sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
           elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') [pty@(ListTy ps pt)] (ListTy rs rt)) _ _)) | pt == rt = do -- hack for cdr
                     constrain [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
-                               (r, sps) <- zip (qf':rs) (tail $ shift (qf:ps)), not $ elem r sps]
+                               (r, sps) <- zip (qf':rs) (tail $ ashift (qf:ps)), not $ elem r sps]
           elabFE (AFun (qs, Native (Arrow (qf, qf') [tyh, ListTy rs tyt] (ListTy ps tyc)) _ _)) = do -- hack for cons
                     constrain [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
-                               (r, sps) <- zip (qf:rs) (tail $ shift (qf':ps)), not $ elem r sps]
+                               (r, sps) <- zip (qf:rs) (tail $ ashift (qf':ps)), not $ elem r sps]
                     constrain $ tyh `exceed` [tyc] ++ tyt `exceed` [tyc]
           elabFE (AFun (qs, Native (Arrow (qf, qf') _ _) _ _)) =
                     constrain [sparse [exchange $ Consume qf,   exchange $ Supply qf'] `Geq` 0.0]
@@ -343,10 +348,10 @@ instance Elab Ex where
     elab (Var x) = do
         ty <- unlessJustM (gamma x) $
                 throwError $ NameError x
-        ty' <- reannotate ty
-        share $ singleton ty [ty']
         q  <- freshAnno
+        ty' <- reannotate ty
         q' <- freshAnno
+        share $ singleton ty [ty']
         k <- costof k_var
         constrain [sparse [exchange $ Consume q, exchange $ Supply q'] `Geq` k]
         return (ty', (q, q'))
@@ -474,8 +479,8 @@ instance Elab Val where
 instance Elab List where
     elab Nil = do
         q <- freshAnno
-        q' <- freshAnno
         ty <- annoMax $ ListTy [] $ Tyvar "a"
+        q' <- freshAnno
         degree <- degreeof
         aty' <- aty degree ty
         return (aty', (q, q'))
