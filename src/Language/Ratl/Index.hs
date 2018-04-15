@@ -3,6 +3,7 @@ module Language.Ratl.Index (
   deg,
   index,
   indexDeg,
+  zeroIndex,
 ) where
 
 import Language.Ratl.Ty (Ty(..))
@@ -44,3 +45,6 @@ index (ListTy _ t) = do
 
 indexDeg :: Int -> Ty a -> [Index]
 indexDeg k = concat . take (k + 1) . index
+
+zeroIndex :: Ty a -> Index
+zeroIndex = head . head . index
