@@ -4,11 +4,13 @@ module Language.Ratl.Index (
   index,
   indexDeg,
   zeroIndex,
+  inject,
 ) where
 
 import Language.Ratl.Ty (Ty(..))
 
 data Index = AIndex
+           | VIndex
            | LIndex [Index]
     deriving (Eq, Ord, Show)
 
@@ -31,6 +33,7 @@ choices (is:cs) = [i:cs' | i <- is, cs' <- choices cs]
 
 deg :: Index -> Int
 deg AIndex = 0
+deg VIndex = 0
 deg (LIndex is) = length is + sum (map deg is)
 
 index :: Ty a -> [[Index]]
@@ -38,7 +41,7 @@ index (NatTy)      = [[AIndex]]
 index (BooleanTy)  = [[AIndex]]
 index (UnitTy)     = [[AIndex]]
 index (SymTy)      = [[AIndex]]
-index (Tyvar _)    = [[AIndex]]
+index (Tyvar _)    = [[VIndex]]
 index (ListTy _ t) = do
     cs <- combos (index t)
     return $ LIndex <$> (choices =<< cs)
@@ -48,3 +51,13 @@ indexDeg k = concat . take (k + 1) . index
 
 zeroIndex :: Ty a -> Index
 zeroIndex = head . head . index
+
+-- The goal of inject is to find the type index containing the given
+-- index with every other position set to the inner type's zero index.
+-- The core precondition is that the index must be in the projection
+-- of the type's index set.
+inject :: Ty a -> Index -> Maybe Index
+inject (ListTy _ t)      (LIndex is)       = LIndex <$> traverse (inject t) is
+inject ty                VIndex            = Just $ zeroIndex ty
+inject ty AIndex | zeroIndex ty == AIndex  = Just AIndex
+inject _                 _                 = Nothing

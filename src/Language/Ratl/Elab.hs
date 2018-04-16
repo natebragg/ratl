@@ -14,7 +14,7 @@ import Control.Applicative (empty)
 import Control.Arrow (first, second, (&&&))
 import Control.Monad (when, forM, void)
 import Control.Monad.Except (MonadError(..))
-import Control.Monad.Except.Extra (unlessJustM)
+import Control.Monad.Except.Extra (unlessJust, unlessJustM)
 import Control.Monad.State (MonadState, evalStateT)
 import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, mapReaderT, ReaderT, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, mapWriterT, WriterT, tell)
@@ -36,6 +36,7 @@ import Language.Ratl.Index (
     deg,
     indexDeg,
     zeroIndex,
+    inject,
     )
 import Language.Ratl.Ty (
     Ty(..),
@@ -241,6 +242,11 @@ rezero ty qs = do
     q_0' <- freshAnno
     return $ update (zeroIndex ty) q_0' qs
 
+injectAnno :: (MonadReader CheckE m, MonadError TypeError m, MonadState Anno m) => Ty Anno -> IxEnv Anno -> m (IxEnv Anno)
+injectAnno t qs = do
+    qs' <- traverse (\(ix, q) -> flip (,) q <$> inject t ix `unlessJust` throwError (ProjectionError t ix)) qs
+    k <- degreeof
+    traverse (\ix -> (,) ix <$> lookup ix qs' `unlessJust` freshAnno) $ indexDeg k t
 
 objective :: FunTy Anno -> Int -> LinearFunction
 objective fty degree = sparse $ objF fty
@@ -334,11 +340,13 @@ assoc (a, (b, c)) = ((a, b), c)
 data TypeError = TypeError [(Ty Anno, Ty Anno)]
                | ArityError Int Int
                | NameError Var
+               | ProjectionError (Ty Anno) Index
 
 instance Show TypeError where
     show (TypeError ts) = "Cannot unify unlike types: " ++ intercalate ", " (map (\(t, t') -> show t ++ " and " ++ show t') ts)
     show (ArityError f a) = "Expected " ++ show f ++ " arguments, but got " ++ show a ++ "."
     show (NameError x) = "Name " ++ show x ++ " is not defined."
+    show (ProjectionError t i) = "Index " ++ show i ++ " does not appear to be a projection of type " ++ show t ++ "."
 
 zipR :: [a] -> [b] -> ([(a,b)], ([a], [b]))
 zipR     []     bs = ([], ([], bs))
