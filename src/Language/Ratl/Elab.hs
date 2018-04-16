@@ -35,6 +35,7 @@ import Language.Ratl.Anno (
 import Language.Ratl.Index (
     Index,
     deg,
+    index,
     indexDeg,
     zeroIndex,
     shift,
@@ -370,7 +371,7 @@ check :: (MonadError TypeError m) => Int -> [Prog ()] -> m ProgEnv
 check deg_max p = flip evalStateT 0 $ fmap concat $ forM p $ \scp -> do
     scp' <- travFun (traverse $ afun deg_max) scp
     (los, (ics, cs)) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
-    return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
+    return $ map (second $ \os -> [GeneralForm Minimize o ics | o <- os]) los
 
 checkEx :: (MonadError TypeError m) => Int -> [Prog ()] -> Ex -> m GeneralForm
 checkEx deg_max p e = flip evalStateT 0 $ do
@@ -384,7 +385,8 @@ elabSCP = traverse (traverse elabF)
           elabF f@(AFun ((pqs, _), fun)) = do
                     mapReaderT (mapWriterT (fmap $ second $ constrainShares)) $ elabFE f
                     deg_max <- asks degree
-                    return $ map (objective (atyOf f)) [deg_max,deg_max-1..0]
+                    let Arrow _ ptys _ = tyOf fun
+                    return $ reverse $ take (deg_max + 1) $ map (sparse . map (flip (,) 1.0 . fromJust . flip lookup pqs)) $ index $ pairify ptys
           elabFE :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT (([GeneralConstraint], [GeneralConstraint]), SharedTys Anno) m) ()
           elabFE (AFun ((pqs, rqs), Fun (Arrow (qf, qf') [pty] rty) x e)) = do
                     xqs <- rezero pty pqs
