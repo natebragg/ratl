@@ -6,6 +6,8 @@ module Language.Ratl.Index (
   zeroIndex,
   shift,
   inject,
+  extend,
+  expand,
 ) where
 
 import Control.Arrow (first, second, (***))
@@ -90,3 +92,25 @@ inject (ListTy _ t)      (LIndex is)       = LIndex <$> traverse (inject t) is
 inject ty                VIndex            = Just $ zeroIndex ty
 inject ty AIndex | zeroIndex ty == AIndex  = Just AIndex
 inject _                 _                 = Nothing
+
+-- Extend takes a type and an index of equal or less width and yields an
+-- index of the same degree but as wide as the type, extended at the init.
+extend :: Ty a -> Index -> Maybe Index
+extend ty ix = revix <$> expand (revty ty) (revix ix)
+    where revty (PairTy (t1, t2)) = rt t2 t1
+          revty                ty = ty
+          rt (PairTy (t1, t2)) t3 = rt t2 $ PairTy (t1, t3)
+          rt                t1 t3 = PairTy (t1, t3)
+          revix (PIndex (i1, i2)) = ri i2 i1
+          revix                ix = ix
+          ri (PIndex (i1, i2)) i3 = ri i2 $ PIndex (i1, i3)
+          ri                i1 i3 = PIndex (i1, i3)
+
+-- Extend takes a type and an index of equal or less width and yields an
+-- index of the same degree but as wide as the type, expanded at the tail.
+expand :: Ty a -> Index -> Maybe Index
+expand ty ix = inject ty =<< go ty ix
+    where go (PairTy (t1, t2)) (PIndex (i1, i2)) = PIndex . (,) i1 <$> go t2 i2
+          go (PairTy (t1, t2))                i1 = PIndex . (,) i1 <$> go t2 VIndex
+          go                 _ (PIndex        _) = Nothing
+          go                 _                 i = Just i

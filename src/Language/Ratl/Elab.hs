@@ -6,7 +6,8 @@ module Language.Ratl.Elab (
     checkEx,
 ) where
 
-import Data.List (intersect, intercalate, union, nub, foldl', transpose)
+import Data.List (intersect, intercalate, union, nub, foldl', transpose, tails, unionBy)
+import Data.Function (on)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
 import Data.Maybe (listToMaybe, isJust, fromJust, mapMaybe)
@@ -38,6 +39,8 @@ import Language.Ratl.Index (
     zeroIndex,
     shift,
     inject,
+    extend,
+    expand,
     )
 import Language.Ratl.Ty (
     Ty(..),
@@ -239,6 +242,11 @@ instance Instantiable Fun where
 pairify [ty] = ty
 pairify (ty:tys) = PairTy (ty, pairify tys)
 
+situate :: [Ty a] -> [IxEnv a] -> IxEnv a
+situate tys ixss = foldl (unionBy ((==) `on` fst)) [] $ map (uncurry place) $ zip ptys ixss
+    where place pty ixs = map (first (fromJust . extend (head ptys) . fromJust . expand pty)) ixs
+          ptys = map pairify $ tails tys
+
 rezero :: MonadState Anno m => Ty a -> IxEnv Anno -> m (IxEnv Anno)
 rezero ty qs = do
     q_0' <- freshAnno
@@ -389,6 +397,7 @@ elabSCP = traverse (traverse elabF)
                     constrainT [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf':rs) (tail $ ashift (qf:ps)), not $ elem r sps]
           elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') ptys@[tyh, ListTy rs tyt] rty@(ListTy ps tyc)) _ _)) = do -- hack for cons
+                    let ss = map (\(i, (i1, i2)) -> (,) <$> lookup (fromJust $ extend (pairify ptys) i) pqs <*> sequence (filter isJust [lookup i1 rqs, lookup i2 rqs])) $ shift rty
                     constrainT [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf:rs) (tail $ ashift (qf':ps)), not $ elem r sps]
                     constrainT $ tyh `exceed` [tyc] ++ tyt `exceed` [tyc]
