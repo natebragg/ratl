@@ -132,28 +132,16 @@ instance Show NativeError where
     show EmptyError = "Tried to access contents of empty list."
     show DivideByZeroError = "Tried to divide by zero."
 
-data Fun a where
-    Fun :: FunTy a -> Var -> Ex -> Fun a
-    Native :: FunTy a -> Int -> ([Val] -> Except NativeError Val) -> Fun a
+data Fun where
+    Fun :: FunTy -> Var -> Ex -> Fun
+    Native :: FunTy -> Int -> ([Val] -> Except NativeError Val) -> Fun
 
-tyOf :: Fun a -> FunTy a
+tyOf :: Fun -> FunTy
 tyOf (Fun ty _ _) = ty
 tyOf (Native ty _ _) = ty
 
-instance Show (Fun a) where
+instance Show Fun where
     show _ = "(define ...)"
-
-instance Functor Fun where
-    fmap f (Fun ty x e) = Fun (fmap f ty) x e
-    fmap f (Native ty a g) = Native (fmap f ty) a g
-
-instance Foldable Fun where
-    foldMap f (Fun ty _ _) = foldMap f ty
-    foldMap f (Native ty _ _) = foldMap f ty
-
-instance Traversable Fun where
-    traverse f (Fun ty x e) = Fun <$> traverse f ty <*> pure x <*> pure e
-    traverse f (Native ty a g) = Native <$> traverse f ty <*> pure a <*> pure g
 
 data Ex = Var Var
         | Val Val
@@ -162,46 +150,37 @@ data Ex = Var Var
         | Let [(Var, Ex)] Ex
     deriving (Show, Eq)
 
-newtype Prog a = Prog {getProg :: Gr (Var, Fun a) ()}
+newtype Prog = Prog {getProg :: Gr (Var, Fun) ()}
     deriving (Monoid)
 
-instance Functor Prog where
-    fmap f (Prog fs) = Prog $ getOverNodes $ fmap (fmap (fmap f)) $ OverNodes fs
-
-instance Foldable Prog where
-    foldMap f (Prog fs) = foldMap (foldMap (foldMap f)) $ OverNodes fs
-
-instance Traversable Prog where
-    traverse f (Prog fs) = Prog <$> (getOverNodes <$> traverse (traverse (traverse f)) (OverNodes fs))
-
-makeProg :: [(Var, Fun a)] -> Prog a
+makeProg :: [(Var, Fun)] -> Prog
 makeProg = Prog . flip mkGraph [] . zip [1..]
 
-lookupFun :: Prog a -> Var -> Maybe (Fun a)
+lookupFun :: Prog -> Var -> Maybe Fun
 lookupFun = lookup . OverNodes . getProg
     where lookup t key = fmap snd $ find ((key ==) . fst) t
 
-updateFun :: Prog a -> Var -> Fun a -> Prog a
+updateFun :: Prog -> Var -> Fun -> Prog
 updateFun p x f = case lookupFun p x of
     Just _ -> mapProg (\(y, g) -> (y, if x == y then f else g)) p
     Nothing -> p `mappend` makeProg [(x, f)]
 
-mapFun :: ((Var, Fun a) -> b) -> Prog a -> [b]
+mapFun :: ((Var, Fun) -> b) -> Prog -> [b]
 mapFun f (Prog fs) = foldMap ((:[]) . f) $ OverNodes fs
 
-mapProg :: ((Var, Fun a) -> (Var, Fun b)) -> Prog a -> Prog b
+mapProg :: ((Var, Fun) -> (Var, Fun)) -> Prog -> Prog
 mapProg f (Prog fs) = Prog $ getOverNodes $ fmap f $ OverNodes fs
 
-travFun :: Applicative f => ((Var, Fun a) -> f b) -> Prog a -> f [b]
+travFun :: Applicative f => ((Var, Fun) -> f b) -> Prog -> f [b]
 travFun f (Prog fs) = toList <$> traverse f (OverNodes fs)
 
-travProg :: Applicative f => ((Var, Fun a) -> f (Var, Fun b)) -> Prog a -> f (Prog b)
+travProg :: Applicative f => ((Var, Fun) -> f (Var, Fun)) -> Prog -> f Prog
 travProg f (Prog fs) = Prog <$> (getOverNodes <$> traverse f (OverNodes fs))
 
-connects :: [(Var, Var)] -> Prog a -> Prog a
+connects :: [(Var, Var)] -> Prog -> Prog
 connects vs (Prog fs) = Prog $ insEdges (concatMap firstEdge vs) fs
     where firstEdge = take 1 . makeEdgesWhere fs () . (named *** named)
           named = (. fst) . (==)
 
-scSubprograms :: Prog a -> [Prog a]
+scSubprograms :: Prog -> [Prog]
 scSubprograms = map Prog . scSubgraphs . getProg

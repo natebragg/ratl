@@ -20,7 +20,7 @@ import Control.Monad.Except (MonadError(..), withExcept)
 import Control.Monad.Except.Extra (unlessJust, toError)
 import Data.Maybe (listToMaybe, catMaybes)
 
-lookupFunBySCP :: [Prog a] -> Var -> Maybe (Fun a)
+lookupFunBySCP :: [Prog] -> Var -> Maybe (Fun)
 lookupFunBySCP p x = listToMaybe $ catMaybes $ map (flip lookupFun x) p
 
 data RuntimeError = ArityError Int Int
@@ -32,7 +32,7 @@ instance Show RuntimeError where
     show (NameError x) = "Name " ++ show x ++ " is not defined at runtime."
     show (NativeError e) = show e
 
-run :: MonadError RuntimeError m => [Prog a] -> Ex -> m Val
+run :: MonadError RuntimeError m => [Prog] -> Ex -> m Val
 run phi = eval []
     where eval :: MonadError RuntimeError m => [(Var, Val)] -> Ex -> m Val
           eval rho (Var x) = unlessJust (lookup x rho) $
@@ -55,7 +55,7 @@ run phi = eval []
                         evalds ((x, v):rho') ds
                 in do rho' <- evalds rho ds
                       eval rho' e
-          app :: MonadError RuntimeError m => Fun a -> [Val] -> m Val
+          app :: MonadError RuntimeError m => Fun -> [Val] -> m Val
           app (Fun    _ x b) vs = do
                 let a = length [x]
                 when (a /= length vs) $

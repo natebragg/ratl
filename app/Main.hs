@@ -19,7 +19,6 @@ import qualified Data.Clp.Clp as Clp (version)
 import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralForm(..))
 import Language.Ratl.Reader (sexp, sexps)
 import Language.Ratl.Parser (preorder, prog)
-import Language.Ratl.Anno (annotate)
 import Language.Ratl.Basis (prims, basis)
 import Language.Ratl.Ast (
     Ex(..),
@@ -49,7 +48,7 @@ pretty_bound cs = if null bounds then show 0.0 else intercalate " + " bounds
           coeff (1,   c) = [show c ++ "*n"]
           coeff (n,   c) = [show c ++ "*n^" ++ show n]
 
-callgraph :: Prog a -> [Prog a]
+callgraph :: Prog -> [Prog]
 callgraph = scSubprograms . (connects =<< flatten . mapFun (second calls))
     where flatten = concatMap $ uncurry (map . (,))
           calls (Native _ _ _) = []

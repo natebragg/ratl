@@ -122,22 +122,22 @@ ex = Var <$> var
          <|> (reserved (S "let") >> Let <$> (list $ many $ list $ (,) <$> var <*> ex) <*> ex)
          <|> (App <$> var <*> many ex))
 
-ty :: SexpParser (Ty ())
+ty :: SexpParser Ty
 ty = (reserved (S "Nat") >> return NatTy)
  <|> (reserved (S "Boolean") >> return BooleanTy)
  <|> (reserved (S "Unit") >> return UnitTy)
  <|> (reserved (S "Sym") >> return SymTy)
- <|> (list $ ListTy [] <$> ty)
+ <|> (list $ ListTy <$> ty)
  <?> "type"
 
-funty :: SexpParser (FunTy ())
+funty :: SexpParser FunTy
 funty = do
     t1 <- ty
     reserved (S "->")
     t2 <- ty
-    return $ Arrow ((), ()) [t1] t2
+    return $ Arrow [t1] t2
 
-fun :: SexpParser (Var, Fun ())
+fun :: SexpParser (Var, Fun)
 fun = (list $ reserved (S "define") >>
               (,) <$> var
                   <*> (Fun <$> list funty
@@ -145,5 +145,5 @@ fun = (list $ reserved (S "define") >>
                            <*> ex))
   <?> "function definition"
 
-prog :: SexpParser (Prog ())
+prog :: SexpParser Prog
 prog = makeProg <$> (list $ many fun)

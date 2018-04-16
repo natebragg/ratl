@@ -57,7 +57,7 @@ deg VIndex = 0
 deg (PIndex (i1, i2)) = deg i1 + deg i2
 deg (LIndex is) = length is + sum (map deg is)
 
-index :: Ty a -> [[Index]]
+index :: Ty -> [[Index]]
 index (NatTy)      = [[AIndex]]
 index (BooleanTy)  = [[AIndex]]
 index (UnitTy)     = [[AIndex]]
@@ -67,35 +67,35 @@ index (PairTy ts)  = do
     ds <- groupBy ((==) `on` deg . PIndex . heads) $
           uncurry (diagonals `on` index) ts
     return $ ds >>= \(d1, d2) -> curry PIndex <$> d1 <*> d2
-index (ListTy _ t) = do
+index (ListTy t) = do
     cs <- combos (index t)
     return $ LIndex <$> (choices =<< cs)
 
-indexDeg :: Int -> Ty a -> [Index]
+indexDeg :: Int -> Ty -> [Index]
 indexDeg k = concat . take (k + 1) . index
 
-zeroIndex :: Ty a -> Index
+zeroIndex :: Ty -> Index
 zeroIndex = head . head . index
 
-shift :: Ty a -> [(Index, (Index, Index))]
-shift (ListTy _ t) = zip zeroes $ zip zeroes $ tail zeroes
+shift :: Ty -> [(Index, (Index, Index))]
+shift (ListTy t) = zip zeroes $ zip zeroes $ tail zeroes
     where zeroes = map LIndex $ inits $ repeat $ zeroIndex t
-shift           _  = []
+shift         _  = []
 
 -- The goal of inject is to find the type index containing the given
 -- index with every other position set to the inner type's zero index.
 -- The core precondition is that the index must be in the projection
 -- of the type's index set.
-inject :: Ty a -> Index -> Maybe Index
+inject :: Ty -> Index -> Maybe Index
 inject (PairTy (t1, t2)) (PIndex (i1, i2)) = (PIndex .) . (,) <$> inject t1 i1 <*> inject t2 i2
-inject (ListTy _ t)      (LIndex is)       = LIndex <$> traverse (inject t) is
+inject (ListTy t)        (LIndex is)       = LIndex <$> traverse (inject t) is
 inject ty                VIndex            = Just $ zeroIndex ty
 inject ty AIndex | zeroIndex ty == AIndex  = Just AIndex
 inject _                 _                 = Nothing
 
 -- Extend takes a type and an index of equal or less width and yields an
 -- index of the same degree but as wide as the type, extended at the init.
-extend :: Ty a -> Index -> Maybe Index
+extend :: Ty -> Index -> Maybe Index
 extend ty ix = revix <$> expand (revty ty) (revix ix)
     where revty (PairTy (t1, t2)) = rt t2 t1
           revty                ty = ty
@@ -108,7 +108,7 @@ extend ty ix = revix <$> expand (revty ty) (revix ix)
 
 -- Extend takes a type and an index of equal or less width and yields an
 -- index of the same degree but as wide as the type, expanded at the tail.
-expand :: Ty a -> Index -> Maybe Index
+expand :: Ty -> Index -> Maybe Index
 expand ty ix = inject ty =<< go ty ix
     where go (PairTy (t1, t2)) (PIndex (i1, i2)) = PIndex . (,) i1 <$> go t2 i2
           go (PairTy (t1, t2))                i1 = PIndex . (,) i1 <$> go t2 VIndex

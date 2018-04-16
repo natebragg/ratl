@@ -28,7 +28,6 @@ import Data.Clp.Program (
     )
 import Language.Ratl.Anno (
     Anno,
-    Annotatory(..),
     reannotate,
     freshAnno,
     )
@@ -45,7 +44,6 @@ import Language.Ratl.Index (
     )
 import Language.Ratl.Ty (
     Ty(..),
-    eqTy,
     varname,
     varnum,
     FunTy(..),
@@ -64,79 +62,72 @@ import Language.Ratl.Ast (
     )
 import Language.Ratl.Basis (arity)
 
-newtype ETy a = ETy { runety :: ((IxEnv a, IxEnv a), Ty a) }
+newtype ETy a = ETy { runety :: ((IxEnv a, IxEnv a), Ty) }
     deriving (Eq, Ord)
 
 instance Functor ETy where
-    fmap f (ETy ((q, q'), t)) = ETy . (,) (fmap (fmap f) q, fmap (fmap f) q') $ fmap f t
+    fmap f (ETy ((q, q'), t)) = ETy . (,) (fmap (fmap f) q, fmap (fmap f) q') $ t
 
 instance Foldable ETy where
-    foldMap f (ETy ((q, q'), t)) = foldMap (foldMap f) q `mappend` foldMap (foldMap f) q' `mappend` foldMap f t
+    foldMap f (ETy ((q, q'), t)) = foldMap (foldMap f) q `mappend` foldMap (foldMap f) q'
 
 instance Traversable ETy where
-    traverse f (ETy ((q, q'), t)) = (ETy .) . (,) <$> ((,) <$> traverse (traverse f) q <*> traverse (traverse f) q') <*> traverse f t
-
-instance Annotatory ETy where
-    annotate dm (ETy ((q, q'), t)) = (ETy .) . (,) <$> ((,) <$> traverse reannotate q <*> traverse reannotate q') <*> annotate dm t
+    traverse f (ETy ((q, q'), t)) = (ETy .) . (,) <$> ((,) <$> traverse (traverse f) q <*> traverse (traverse f) q') <*> pure t
 
 atoe :: MonadState Anno m => ATy Anno -> m (ETy Anno)
 atoe (ATy (q, ty)) = do
     q' <- rezero ty q
     return $ ETy ((q, q'), ty)
 
-newtype ATy a = ATy { runaty :: (IxEnv a, Ty a) }
+newtype ATy a = ATy { runaty :: (IxEnv a, Ty) }
     deriving (Eq, Ord)
 
 instance Functor ATy where
-    fmap f (ATy (q, t)) = ATy . (,) (fmap (fmap f) q) $ fmap f t
+    fmap f (ATy (q, t)) = ATy . (,) (fmap (fmap f) q) $ t
 
 instance Foldable ATy where
-    foldMap f (ATy (q, t)) = foldMap (foldMap f) q `mappend` foldMap f t
+    foldMap f (ATy (q, t)) = foldMap (foldMap f) q
 
 instance Traversable ATy where
-    traverse f (ATy (q, t)) = (ATy .) . (,) <$> traverse (traverse f) q <*> traverse f t
+    traverse f (ATy (q, t)) = (ATy .) . (,) <$> traverse (traverse f) q <*> pure t
 
-instance Annotatory ATy where
-    annotate dm (ATy (q, t)) = (ATy .) . (,) <$> traverse reannotate q <*> annotate dm t
-
-aty :: (MonadReader CheckE m, MonadState Anno m) => Ty Anno -> m (ATy Anno)
+aty :: (MonadReader CheckE m, MonadState Anno m) => Ty -> m (ATy Anno)
 aty t = do
     k <- degreeof
     q  <- traverse (reannotate . flip (,) ()) $ indexDeg k t
     return $ ATy (q, t)
 
-newtype AFun a = AFun { runafun :: ((IxEnv a, IxEnv a), Fun a) }
+newtype AFun a = AFun { runafun :: ((IxEnv a, IxEnv a), Fun) }
 
 instance Functor AFun where
-    fmap f (AFun ((q, q'), t)) = AFun . (,) (fmap (fmap f) q, fmap (fmap f) q') $ fmap f t
+    fmap f (AFun ((q, q'), t)) = AFun . (,) (fmap (fmap f) q, fmap (fmap f) q') $ t
 
 instance Foldable AFun where
-    foldMap f (AFun ((q, q'), t)) = foldMap (foldMap f) q `mappend` foldMap (foldMap f) q' `mappend` foldMap f t
+    foldMap f (AFun ((q, q'), t)) = foldMap (foldMap f) q `mappend` foldMap (foldMap f) q'
 
 instance Traversable AFun where
-    traverse f (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> traverse (traverse f) q <*> traverse (traverse f) q') <*> traverse f t
+    traverse f (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> traverse (traverse f) q <*> traverse (traverse f) q') <*> pure t
 
-instance Annotatory AFun where
-    annotate dm (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> reanno q <*> reanno q') <*> annotate dm t
-        where reanno = traverse reannotate . filter ((<= dm) . deg . fst)
+annotate :: MonadState Anno m => Int -> AFun a -> m (AFun Anno)
+annotate dm (AFun ((q, q'), t)) = (AFun .) . (,) <$> ((,) <$> reanno q <*> reanno q') <*> pure t
+    where reanno = traverse reannotate . filter ((<= dm) . deg . fst)
 
-instance Instantiable AFun where
+instance Instantiable (AFun a) where
     instantiate tys (AFun (qs, t)) = AFun . (,) qs $ instantiate tys t
 
-afun :: MonadState Anno m => Int -> Fun a -> m (AFun Anno)
+afun :: MonadState Anno m => Int -> Fun -> m (AFun Anno)
 afun k fun = do
-    let Arrow _ ts t' = tyOf fun
+    let Arrow ts t' = tyOf fun
     q  <- traverse (reannotate . flip (,) ()) $ indexDeg k $ pairify ts
     q' <- traverse (reannotate . flip (,) ()) $ indexDeg k t'
-    fun' <- annotate k fun
-    return $ AFun ((q, q'), fun')
+    return $ AFun ((q, q'), fun)
 
 newtype CIxEnv a = CIxEnv {runcix :: IxEnv a}
 type IxEnv a = [(Index, a)]
 type TyEnv a = [(Var, ATy a)]
 type FunEnv a = [(Var, AFun a)]
 type SharedTys a = MonoidalMap (ATy a) [ATy a]
-type TyvarEnv a = [(String, Ty a)]
+type TyvarEnv = [(String, Ty)]
 type ProgEnv = [(Var, [GeneralForm])]
 
 update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
@@ -186,41 +177,41 @@ exchange :: Resource -> (Anno, Double)
 exchange (Consume q) = (q, 1.0)
 exchange (Supply  q) = (q, -1.0)
 
-freein :: Ty a -> [String]
-freein         NatTy = []
-freein (ListTy _ ty) = freein ty
-freein     BooleanTy = []
-freein        UnitTy = []
-freein         SymTy = []
-freein     (Tyvar y) = [y]
+freein :: Ty -> [String]
+freein       NatTy = []
+freein (ListTy ty) = freein ty
+freein   BooleanTy = []
+freein      UnitTy = []
+freein       SymTy = []
+freein   (Tyvar y) = [y]
 
-solve :: TyvarEnv a -> (Ty a, Ty a) -> TyvarEnv a
+solve :: TyvarEnv -> (Ty, Ty) -> TyvarEnv
 solve theta (ty, ty') = compose (assoc (tysubst theta ty) (tysubst theta ty')) theta
-  where assoc (ListTy _ ty) (ListTy _ ty') = assoc ty ty'
-        assoc     (Tyvar x)            ty' = [(x, ty')]
-        assoc             _              _ = []
+  where assoc (ListTy ty) (ListTy ty') = assoc ty ty'
+        assoc   (Tyvar x)          ty' = [(x, ty')]
+        assoc           _            _ = []
 
-compose :: TyvarEnv a -> TyvarEnv a -> TyvarEnv a
+compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
 compose theta2 theta1 = map (id &&& replace) domain
   where domain  = union (map fst theta2) (map fst theta1)
         replace = tysubst theta2 . varsubst theta1
 
-varsubst :: TyvarEnv a -> String -> Ty a
+varsubst :: TyvarEnv -> String -> Ty
 varsubst theta x = maybe (Tyvar x) id $ lookup x theta
 
-tysubst :: TyvarEnv a -> Ty a -> Ty a
+tysubst :: TyvarEnv -> Ty -> Ty
 tysubst theta = subst
-  where subst          NatTy = NatTy
-        subst (ListTy ps ty) = ListTy ps $ subst ty
-        subst      BooleanTy = BooleanTy
-        subst         UnitTy = UnitTy
-        subst          SymTy = SymTy
-        subst      (Tyvar x) = varsubst theta x
+  where subst       NatTy = NatTy
+        subst (ListTy ty) = ListTy $ subst ty
+        subst   BooleanTy = BooleanTy
+        subst      UnitTy = UnitTy
+        subst       SymTy = SymTy
+        subst   (Tyvar x) = varsubst theta x
 
-class Instantiable f where
-    instantiate :: [Ty a] -> f a -> f a
+class Instantiable t where
+    instantiate :: [Ty] -> t -> t
 
-newtype TyList a = TyList { unTyList :: [Ty a] }
+newtype TyList = TyList { unTyList :: [Ty] }
 
 instance Instantiable TyList where
     instantiate tys (TyList tys') = TyList $ map (tysubst varenv) tys''
@@ -235,7 +226,7 @@ instance Instantiable Ty where
     instantiate tys ty = head $ unTyList $ instantiate tys $ TyList [ty]
 
 instance Instantiable FunTy where
-    instantiate tys (Arrow q tys' ty') = Arrow q (init tys''ty'') (last tys''ty'')
+    instantiate tys (Arrow tys' ty') = Arrow (init tys''ty'') (last tys''ty'')
         where tys''ty'' = unTyList $ instantiate tys (TyList $ tys' ++ [ty'])
 
 instance Instantiable Fun where
@@ -245,17 +236,17 @@ instance Instantiable Fun where
 pairify [ty] = ty
 pairify (ty:tys) = PairTy (ty, pairify tys)
 
-situate :: [Ty a] -> [IxEnv a] -> IxEnv a
+situate :: [Ty] -> [IxEnv a] -> IxEnv a
 situate tys ixss = foldl (unionBy ((==) `on` fst)) [] $ map (uncurry place) $ zip ptys ixss
     where place pty ixs = map (first (fromJust . extend (head ptys) . fromJust . expand pty)) ixs
           ptys = map pairify $ tails tys
 
-rezero :: MonadState Anno m => Ty a -> IxEnv Anno -> m (IxEnv Anno)
+rezero :: MonadState Anno m => Ty -> IxEnv Anno -> m (IxEnv Anno)
 rezero ty qs = do
     q_0' <- freshAnno
     return $ update (zeroIndex ty) q_0' qs
 
-injectAnno :: (MonadReader CheckE m, MonadError TypeError m, MonadState Anno m) => Ty Anno -> IxEnv Anno -> m (IxEnv Anno)
+injectAnno :: (MonadReader CheckE m, MonadError TypeError m, MonadState Anno m) => Ty -> IxEnv Anno -> m (IxEnv Anno)
 injectAnno t qs = do
     qs' <- traverse (\(ix, q) -> flip (,) q <$> inject t ix `unlessJust` throwError (ProjectionError t ix)) qs
     k <- degreeof
@@ -279,12 +270,12 @@ data CheckE = CheckE {
 
 data CheckF = CheckF {
         degree :: Int,
-        scps :: [Prog ()],
+        scps :: [Prog],
         comp :: FunEnv Anno,
         cost :: Cost
     }
 
-lookupSCP :: MonadReader CheckE m => Var -> m (Maybe (Prog ()))
+lookupSCP :: MonadReader CheckE m => Var -> m (Maybe Prog)
 lookupSCP x = asks (listToMaybe . filter (isJust . flip lookupFun x) . scps . checkF)
 
 share :: (Monoid a, MonadWriter (a, SharedTys b) m) => SharedTys b -> m ()
@@ -305,19 +296,16 @@ costof k = asks (k . cost . checkF)
 degreeof :: MonadReader CheckE m => m Int
 degreeof = asks (degree . checkF)
 
-annoMax :: (Annotatory a, MonadState Anno m, MonadReader CheckE m) => a b -> m (a Anno)
-annoMax a = degreeof >>= flip annotate a
-
 lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (AFun Anno))
 lookupThisSCP x = asks (lookup x . comp . checkF)
 
 assoc :: (a, (b, c)) -> ((a, b), c)
 assoc (a, (b, c)) = ((a, b), c)
 
-data TypeError = TypeError [(Ty Anno, Ty Anno)]
+data TypeError = TypeError [(Ty, Ty)]
                | ArityError Int Int
                | NameError Var
-               | ProjectionError (Ty Anno) Index
+               | ProjectionError Ty Index
 
 instance Show TypeError where
     show (TypeError ts) = "Cannot unify unlike types: " ++ intercalate ", " (map (\(t, t') -> show t ++ " and " ++ show t') ts)
@@ -330,13 +318,13 @@ zipR     []     bs = ([], ([], bs))
 zipR     as     [] = ([], (as, []))
 zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 
-check :: (MonadError TypeError m) => Int -> [Prog ()] -> m ProgEnv
+check :: (MonadError TypeError m) => Int -> [Prog] -> m ProgEnv
 check deg_max p = flip evalStateT 0 $ fmap concat $ forM p $ \scp -> do
     scp' <- travFun (traverse $ afun deg_max) scp
     (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
 
-checkEx :: (MonadError TypeError m) => Int -> [Prog ()] -> Ex -> m GeneralForm
+checkEx :: (MonadError TypeError m) => Int -> [Prog] -> Ex -> m GeneralForm
 checkEx deg_max p e = flip evalStateT 0 $ do
     ((ty, (q, q')), css) <- runWriterT $ runReaderT (elab e) $ CheckE [] $ CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
     return $ GeneralForm Minimize (sparse [(q, 1.0)]) $ constrainShares css
@@ -347,14 +335,14 @@ elabSCP = traverse (traverse elabF)
           elabF f@(AFun ((pqs, _), fun)) = do
                     mapReaderT (mapWriterT (fmap $ second $ constrainShares)) $ elabFE f
                     deg_max <- asks degree
-                    let Arrow _ ptys _ = tyOf fun
+                    let Arrow ptys _ = tyOf fun
                     return $ reverse $ take (deg_max + 1) $ map (sparse . map (flip (,) 1.0 . fromJust . flip lookup pqs)) $ index $ pairify ptys
           elabFE :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
-          elabFE (AFun ((pqs, rqs), Fun (Arrow (qf, qf') [pty] rty) x e)) = do
+          elabFE (AFun ((pqs, rqs), Fun (Arrow [pty] rty) x e)) = do
                     xqs <- rezero pty pqs
                     (ETy ((qs, qs'), ty), (q, q')) <- withReaderT (CheckE $ zip [x] [ATy (xqs, pty)]) $ elab e
                     let ty'' = tysubst (solve [] (ty, rty)) ty
-                    when (not $ eqTy rty ty'') $
+                    when (rty /= ty'') $
                         throwError $ TypeError $ [(rty, ty'')]
                     qsx' <- withReaderT (CheckE []) $ injectAnno ty'' qs'
                     let z  = zeroIndex ty
@@ -363,15 +351,15 @@ elabSCP = traverse (traverse elabF)
                         Just pqs_0 = lookup pz pqs
                     constrain [sparse (map exchange [Consume pqs_0, Supply qs_0]) `Eql` 0.0]
                     constrain $ equate (CIxEnv rqs) [CIxEnv qsx']
-          elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') [pty@(ListTy ps pt)] (ListTy rs rt)) _ _)) | pt == rt = do -- hack for cdr
+          elabFE (AFun ((pqs, rqs), Native (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _)) | pt == rt = do -- hack for cdr
                     let ss = map (\(i, (i1, i2)) -> (,) <$> lookup i rqs <*> sequence (filter isJust [lookup i1 pqs, lookup i2 pqs])) $ shift pty
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
                                Just (q, ps) <- takeWhile isJust ss, not $ elem q ps]
-          elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') ptys@[tyh, ListTy rs tyt] rty@(ListTy ps tyc)) _ _)) = do -- hack for cons
+          elabFE (AFun ((pqs, rqs), Native (Arrow ptys@[tyh, ListTy tyt] rty@(ListTy tyc)) _ _)) = do -- hack for cons
                     let ss = map (\(i, (i1, i2)) -> (,) <$> lookup (fromJust $ extend (pairify ptys) i) pqs <*> sequence (filter isJust [lookup i1 rqs, lookup i2 rqs])) $ shift rty
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
                                Just (q, ps) <- takeWhile isJust ss, not $ elem q ps]
-          elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') tys ty') _ _)) = do
+          elabFE (AFun ((pqs, rqs), Native (Arrow tys ty') _ _)) = do
                     let z = zeroIndex $ pairify tys
                         Just qs_0  = lookup z  pqs
                         z' = zeroIndex ty'
@@ -420,8 +408,8 @@ instance Elab Ex where
                 return $ MonoidalMap $ fromList $ elems ss'
         share =<< reannotateShares tss
         share =<< reannotateShares fss
-        let ifty = Arrow ((), ()) [BooleanTy, Tyvar "a", Tyvar "a"] (Tyvar "a")
-        Arrow (q, q') tys' ty'' <- annoMax $ instantiate (map void tys) ifty
+        let ifty = Arrow [BooleanTy, Tyvar "a", Tyvar "a"] (Tyvar "a")
+        let Arrow tys' ty'' = instantiate tys ifty
         let tys'' = unTyList $ instantiate tys' $ TyList tys
         let [typ, tyt, tyf] = tys'
         qxp  <- injectAnno typ qsp
@@ -431,7 +419,7 @@ instance Elab Ex where
         qxf  <- injectAnno tyf qsf
         qxf' <- injectAnno tyf qsf'
         ety'@(ETy ((qix, qix'), _)) <- atoe =<< aty ty''
-        let ineqs = filter (not . uncurry eqTy) (zip tys'' tys')
+        let ineqs = filter (uncurry (/=)) (zip tys'' tys')
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
         [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
@@ -453,6 +441,8 @@ instance Elab Ex where
                    sparse [exchange $ Consume qxp_0', exchange $ Supply qxf_0] `Geq` kf,
                    sparse [exchange $ Consume qxt_0', exchange $ Supply q_0']  `Geq` kc,
                    sparse [exchange $ Consume qxf_0', exchange $ Supply q_0']  `Geq` kc]
+        let q = 0
+            q' = 0
         return (ety', (q, q'))
     elab (App f es) = do
         (etys, (qs, q's)) <- second unzip <$> unzip <$> mapM elab es
@@ -460,14 +450,14 @@ instance Elab Ex where
         when (arity f /= length es) $
             throwError $ ArityError (arity f) (length es)
         degree <- degreeof
-        ((qif, qif'), Arrow (qf, qf') tys' ty'') <- lookupThisSCP f >>= \case
+        ((qif, qif'), Arrow tys' ty'') <- lookupThisSCP f >>= \case
             Just asc -> do
                 cost_free <- costof (== zero)
                 if degree <= 1 || cost_free then
                     return $ second (instantiate tys . tyOf) $ runafun asc
                 else do
                     scp <- asks (comp . checkF)
-                    fun <- annoMax $ instantiate tys asc
+                    fun <- annotate degree $ instantiate tys asc
                     -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
                     cfscp <- traverse (traverse $ annotate (degree - 1)) $ update f fun scp
                     let Just cffun = lookup f cfscp
@@ -478,7 +468,7 @@ instance Elab Ex where
             Nothing -> do
                 scp <- unlessJustM (lookupSCP f) $
                        throwError $ NameError f
-                let fun = instantiate (map void tys) $ fromJust $ lookupFun scp f
+                let fun = instantiate tys $ fromJust $ lookupFun scp f
                 scp' <- travFun (traverse $ afun degree) $ updateFun scp f fun
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
                 return $ second tyOf $ runafun $ fromJust $ lookup f scp'
@@ -490,7 +480,7 @@ instance Elab Ex where
         qix  <- rezero ty'' qif'
         qix' <- rezero ty'' qif'
         let ety' = ETy ((qix, qix'), ty'')
-        let ineqs = filter (not . uncurry eqTy) (zip tys'' tys')
+        let ineqs = filter (uncurry (/=)) (zip tys'' tys')
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
         let z = zeroIndex $ pairify tys'
@@ -563,20 +553,19 @@ instance Elab Val where
 instance Elab List where
     elab Nil = do
         q <- freshAnno
-        ty <- annoMax $ ListTy [] $ Tyvar "a"
         q' <- freshAnno
-        ety' <- atoe =<< aty ty
+        ety' <- atoe =<< aty (ListTy $ Tyvar "a")
         return (ety', (q, q'))
     elab (Cons v vs) = do
         (ETy (_, vty), _) <- elab v
         (ETy (_, lty), (q, q')) <- elab vs
         ty <- case lty of
-            ListTy ps lty' ->
+            ListTy lty' ->
                 let lty'' = instantiate [vty] lty'
                     vty'' = instantiate [lty'] vty
-                in if eqTy lty'' vty''
-                   then return $ ListTy ps lty''
+                in if lty'' == vty''
+                   then return $ ListTy lty''
                    else throwError $ TypeError [(vty'', lty'')]
-            t -> throwError $ TypeError [(ListTy [] vty, t)]
+            t -> throwError $ TypeError [(ListTy vty, t)]
         ety' <- atoe =<< aty ty
         return (ety', (q, q'))

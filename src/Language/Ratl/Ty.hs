@@ -1,6 +1,5 @@
 module Language.Ratl.Ty (
     Ty(..),
-    eqTy,
     varname,
     varnum,
     FunTy(..),
@@ -8,55 +7,22 @@ module Language.Ratl.Ty (
 
 import Data.Char (chr, ord)
 
-data Ty a = NatTy
-          | ListTy [a] (Ty a)
-          | PairTy (Ty a, Ty a)
+data Ty   = NatTy
+          | ListTy Ty
+          | PairTy (Ty, Ty)
           | BooleanTy
           | UnitTy
           | SymTy
           | Tyvar String
     deriving (Eq, Ord)
 
-instance Show (Ty a) where
+instance Show Ty where
     show NatTy = "Nat"
-    show (ListTy _ t) = "[" ++ show t ++ "]"
+    show (ListTy t) = "[" ++ show t ++ "]"
     show BooleanTy = "Boolean"
     show UnitTy = "Unit"
     show SymTy = "Sym"
     show (Tyvar x) = "'" ++ x
-
-instance Functor Ty where
-    fmap _        NatTy  = NatTy
-    fmap f (ListTy qs t) = ListTy (fmap f qs) (fmap f t)
-    fmap _    BooleanTy  = BooleanTy
-    fmap _       UnitTy  = UnitTy
-    fmap _        SymTy  = SymTy
-    fmap _     (Tyvar x) = Tyvar x
-
-instance Foldable Ty where
-    foldMap _        NatTy  = mempty
-    foldMap f (ListTy qs t) = foldMap f qs `mappend` foldMap f t
-    foldMap _    BooleanTy  = mempty
-    foldMap _       UnitTy  = mempty
-    foldMap _        SymTy  = mempty
-    foldMap _     (Tyvar x) = mempty
-
-instance Traversable Ty where
-    traverse _        NatTy  = pure NatTy
-    traverse f (ListTy qs t) = ListTy <$> traverse f qs <*> traverse f t
-    traverse _    BooleanTy  = pure BooleanTy
-    traverse _       UnitTy  = pure UnitTy
-    traverse _        SymTy  = pure SymTy
-    traverse _     (Tyvar x) = pure $ Tyvar x
-
-eqTy :: Ty a -> Ty a -> Bool
-eqTy        NatTy         NatTy = True
-eqTy (ListTy _ t) (ListTy _ t') = eqTy t t'
-eqTy    BooleanTy     BooleanTy = True
-eqTy       UnitTy        UnitTy = True
-eqTy        SymTy         SymTy = True
-eqTy    (Tyvar x)     (Tyvar y) = x == y
-eqTy            _             _ = False
 
 varname :: Int -> String
 varname n = if m > 0 then 'a':show m else [chr (ord 'a' + n)]
@@ -66,16 +32,7 @@ varnum :: String -> Int
 varnum (v:ms) = (ord v - ord 'a') +
                 if not $ null ms then (ord 'z' - ord 'a') + read ms else 0
 
-data FunTy a = Arrow (a, a) [Ty a] (Ty a)
+data FunTy = Arrow [Ty] (Ty)
 
-instance Show (FunTy a) where
-    show (Arrow _ ts t') = concatMap (\t -> show t ++ " -> ") ts ++ show t'
-
-instance Functor FunTy where
-    fmap f (Arrow (q, q') ts t') = Arrow (f q, f q') (fmap (fmap f) ts) (fmap f t')
-
-instance Foldable FunTy where
-    foldMap f (Arrow (q, q') ts t') = f q `mappend` f q' `mappend` foldMap (foldMap f) ts `mappend` foldMap f t'
-
-instance Traversable FunTy where
-    traverse f (Arrow (q, q') ts t') = Arrow <$> ((,) <$> f q <*> f q') <*> traverse (traverse f) ts <*> traverse f t'
+instance Show FunTy where
+    show (Arrow ts t') = concatMap (\t -> show t ++ " -> ") ts ++ show t'
