@@ -130,7 +130,6 @@ afun k fun = do
     q' <- traverse (reannotate . flip (,) ()) $ indexDeg k t'
     fun' <- annotate k fun
     return $ AFun ((q, q'), fun')
-atyOf = tyOf . snd . runafun
 
 newtype CIxEnv a = CIxEnv {runcix :: IxEnv a}
 type IxEnv a = [(Index, a)]
@@ -262,17 +261,6 @@ injectAnno t qs = do
     k <- degreeof
     traverse (\ix -> (,) ix <$> lookup ix qs' `unlessJust` freshAnno) $ indexDeg k t
 
-objective :: FunTy Anno -> Int -> LinearFunction
-objective fty degree = sparse $ objF fty
-    where payIf d = if degree == d then 1.0 else 0.0
-          objF (Arrow (q, _) tys _) = (q, payIf 0):concatMap objTy tys
-          objTy (ListTy ps _) = map (second payIf) $ zip ps [1..]
-          objTy            _  = []
-
-ashift :: [a] -> [[a]]
-ashift ps = [p_1] ++ transpose [ps, p_ik]
-    where (p_1, p_ik) = splitAt 1 ps
-
 class Comparable a where
     relate :: (LinearFunction -> Double -> GeneralConstraint) -> a Anno -> [a Anno] -> [GeneralConstraint]
     equate :: a Anno -> [a Anno] -> [GeneralConstraint]
@@ -283,24 +271,6 @@ class Comparable a where
 
 instance Comparable CIxEnv where
     relate c i is = [sparse (map exchange (Consume p:map Supply ps)) `c` 0.0 | (ix, p) <- runcix i, ps <- [mapMaybe (lookup ix . runcix) is], not $ null ps, not $ elem p ps]
-
-instance Comparable Ty where
-    relate c t ts = [sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 | (p, qs) <- zip (qsOf t) $ transpose $ map qsOf ts, not $ elem p qs]
-        where qsOf (ListTy qs _) = qs
-              qsOf            _  = []
-
-instance Comparable FunTy where
-    relate c a as = [sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 |
-                        (p, qs) <- [(qOf a, map qOf as)], not $ elem p qs] ++
-                    (concatMap (uncurry (relate c)) $
-                              zip (psOf a) (transpose $ map psOf as)) ++
-                    [sparse (map exchange (Consume p:map Supply qs)) `c` 0.0 |
-                        (p, qs) <- [(q'Of a, map q'Of as)], not $ elem p qs] ++
-                    (relate c (rOf a) (map rOf as))
-        where qOf  (Arrow (q,  _)   _   _) = q
-              q'Of (Arrow (_, q')   _   _) = q'
-              psOf (Arrow       _ tys   _) = tys
-              rOf  (Arrow       _   _ ty') = ty'
 
 data CheckE = CheckE {
         env :: TyEnv Anno,
@@ -537,13 +507,11 @@ instance Elab Ex where
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno
-        cx <- freshAnno
-        let (qs_args, ([q_ap], _)) = zipR (q:q's) qs
         let (qs_0_args, ([q_ap_0], _)) = zipR (q_0:qxs'_0) qxs_0
         constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
                    (q_in, q_out) <- qs_0_args]
-        constrain [sparse (map exchange [Consume q_ap_0, Supply qf_0, Supply cx]) `Eql` k1]
-        constrain [sparse (map exchange [Supply q_0', Consume qf_0', Consume cx]) `Eql` k2]
+        constrain [sparse (map exchange [Consume q_ap_0, Supply qf_0, Supply c]) `Eql` k1]
+        constrain [sparse (map exchange [Supply q_0', Consume qf_0', Consume c]) `Eql` k2]
         return (ety', (q, q'))
     elab (Let ds e) = do
         (tyds, (qs, q's)) <- second unzip <$> unzip <$> mapM (fmap assoc . traverse elab) ds
