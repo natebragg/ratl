@@ -4,9 +4,11 @@ module Language.Ratl.Index (
   index,
   indexDeg,
   zeroIndex,
+  shift,
   inject,
 ) where
 
+import Data.List (inits)
 import Language.Ratl.Ty (Ty(..))
 
 data Index = AIndex
@@ -51,6 +53,11 @@ indexDeg k = concat . take (k + 1) . index
 
 zeroIndex :: Ty a -> Index
 zeroIndex = head . head . index
+
+shift :: Ty a -> [(Index, (Index, Index))]
+shift (ListTy _ t) = zip zeroes $ zip zeroes $ tail zeroes
+    where zeroes = map LIndex $ inits $ repeat $ zeroIndex t
+shift           _  = []
 
 -- The goal of inject is to find the type index containing the given
 -- index with every other position set to the inner type's zero index.

@@ -36,6 +36,7 @@ import Language.Ratl.Index (
     deg,
     indexDeg,
     zeroIndex,
+    shift,
     inject,
     )
 import Language.Ratl.Ty (
@@ -383,6 +384,7 @@ elabSCP = traverse (traverse elabF)
                     constrainT [sparse (map exchange [Consume qf, Supply q]) `Eql` 0.0]
                     constrainT [sparse (map exchange [Supply qf', Consume q']) `Eql` 0.0]
           elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') [pty@(ListTy ps pt)] (ListTy rs rt)) _ _)) | pt == rt = do -- hack for cdr
+                    let ss = map (\(i, (i1, i2)) -> (,) <$> lookup i rqs <*> sequence (filter isJust [lookup i1 pqs, lookup i2 pqs])) $ shift pty
                     constrainT [sparse (map exchange (Supply r:map Consume sps)) `Eql` 0.0 |
                                (r, sps) <- zip (qf':rs) (tail $ ashift (qf:ps)), not $ elem r sps]
           elabFE (AFun ((pqs, rqs), Native (Arrow (qf, qf') ptys@[tyh, ListTy rs tyt] rty@(ListTy ps tyc)) _ _)) = do -- hack for cons
