@@ -79,12 +79,6 @@ instance Foldable ATy where
 instance Traversable ATy where
     traverse f (ATy (q, t)) = (ATy .) . (,) <$> traverse (traverse f) q <*> pure t
 
-aty :: (MonadReader CheckE m, MonadState Anno m) => Ty -> m (ATy Anno)
-aty t = do
-    k <- degreeof
-    q  <- traverse (reannotate . flip (,) ()) $ indexDeg k t
-    return $ ATy (q, t)
-
 newtype AFun a = AFun { runafun :: ((IxEnv a, IxEnv a), Fun) }
 
 instance Functor AFun where
@@ -228,6 +222,13 @@ situate :: [Ty] -> [IxEnv a] -> IxEnv a
 situate tys ixss = foldl (unionBy ((==) `on` fst)) [] $ map (uncurry place) $ zip ptys ixss
     where place pty ixs = map (first (fromJust . extend (head ptys) . fromJust . expand pty)) ixs
           ptys = map pairify $ tails tys
+
+freshBounds :: (MonadReader CheckE m, MonadState Anno m) => Ty -> m (IxEnv Anno, IxEnv Anno)
+freshBounds t = do
+    k <- degreeof
+    q  <- traverse (reannotate . flip (,) ()) $ indexDeg k t
+    q' <- rezero t q
+    return (q, q')
 
 rezero :: MonadState Anno m => Ty -> IxEnv Anno -> m (IxEnv Anno)
 rezero ty qs = do
@@ -406,7 +407,7 @@ instance Elab Ex where
         qit' <- injectAnno tyt qt'
         qif  <- injectAnno tyf qf
         qif' <- injectAnno tyf qf'
-        (_, (q, q')) <- atoe =<< aty ty''
+        (q, q') <- freshBounds ty''
         let ineqs = filter (uncurry (/=)) (zip tys'' tys')
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
@@ -508,22 +509,27 @@ instance Elab Ex where
 
 instance Elab Val where
     elab (Nat _) = do
-        (ty, (q, q')) <- atoe =<< aty NatTy
+        let ty = NatTy
+        (q, q') <- freshBounds ty
         return (ty, (q, q'))
     elab (Boolean _) = do
-        (ty, (q, q')) <- atoe =<< aty BooleanTy
+        let ty = BooleanTy
+        (q, q') <- freshBounds ty
         return (ty, (q, q'))
     elab Unit = do
-        (ty, (q, q')) <- atoe =<< aty UnitTy
+        let ty = UnitTy
+        (q, q') <- freshBounds ty
         return (ty, (q, q'))
     elab (Sym _) = do
-        (ty, (q, q')) <- atoe =<< aty SymTy
+        let ty = SymTy
+        (q, q') <- freshBounds ty
         return (ty, (q, q'))
     elab (List l) = elab l
 
 instance Elab List where
     elab Nil = do
-        (ty, (q, q')) <- atoe =<< aty (ListTy $ Tyvar "a")
+        let ty = (ListTy $ Tyvar "a")
+        (q, q') <- freshBounds ty
         return (ty, (q, q'))
     elab (Cons v vs) = do
         (vty, _) <- elab v
@@ -536,5 +542,5 @@ instance Elab List where
                    then return $ ListTy lty''
                    else throwError $ TypeError [(vty'', lty'')]
             t -> throwError $ TypeError [(ListTy vty, t)]
-        (_, (q, q')) <- atoe =<< aty ty
+        (q, q') <- freshBounds ty
         return (ty, (q, q'))
