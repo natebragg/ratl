@@ -10,6 +10,7 @@ import Data.Char (chr, ord)
 
 data Ty a = NatTy
           | ListTy [a] (Ty a)
+          | PairTy (Ty a, Ty a)
           | BooleanTy
           | UnitTy
           | SymTy

@@ -237,6 +237,7 @@ instance Instantiable Fun where
     instantiate tys (Native ty a f) = Native (instantiate tys ty) a f
 
 pairify [ty] = ty
+pairify (ty:tys) = PairTy (ty, pairify tys)
 
 rezero :: MonadState Anno m => Ty a -> IxEnv Anno -> m (IxEnv Anno)
 rezero ty qs = do
