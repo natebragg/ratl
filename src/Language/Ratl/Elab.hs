@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 
@@ -193,10 +194,8 @@ tysubst theta = subst
 class Instantiable t where
     instantiate :: [Ty] -> t -> t
 
-newtype TyList = TyList { unTyList :: [Ty] }
-
-instance Instantiable TyList where
-    instantiate tys (TyList tys') = TyList $ map (tysubst varenv) tys''
+instance Instantiable [Ty] where
+    instantiate tys tys' = map (tysubst varenv) tys''
         where varenv = foldl' solve [] $ zip tys'' tys
               tys'' = map (tysubst env) tys'
                 where env = zip (map varname $ intersect frees bound) (map (Tyvar . varname) [next_var..])
@@ -205,11 +204,11 @@ instance Instantiable TyList where
                       bound = nub $ map varnum $ concatMap freein tys'
 
 instance Instantiable Ty where
-    instantiate tys ty = head $ unTyList $ instantiate tys $ TyList [ty]
+    instantiate tys ty = head $ instantiate tys $ [ty]
 
 instance Instantiable FunTy where
     instantiate tys (Arrow tys' ty') = Arrow (init tys''ty'') (last tys''ty'')
-        where tys''ty'' = unTyList $ instantiate tys (TyList $ tys' ++ [ty'])
+        where tys''ty'' = instantiate tys (tys' ++ [ty'])
 
 instance Instantiable Fun where
     instantiate tys (Fun ty x e) = Fun (instantiate tys ty) x e
@@ -399,7 +398,7 @@ instance Elab Ex where
         share =<< reannotateShares fss
         let ifty = Arrow [BooleanTy, Tyvar "a", Tyvar "a"] (Tyvar "a")
         let Arrow tys' ty'' = instantiate tys ifty
-        let tys'' = unTyList $ instantiate tys' $ TyList tys
+        let tys'' = instantiate tys' tys
         let [typ, tyt, tyf] = tys'
         qip  <- injectAnno typ qp
         qip' <- injectAnno typ qp'
@@ -458,7 +457,7 @@ instance Elab Ex where
                 scp' <- travFun (traverse $ afun degree) $ updateFun scp f fun
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
                 return $ second tyOf $ runafun $ fromJust $ lookup f scp'
-        let tys'' = unTyList $ instantiate tys' $ TyList tys
+        let tys'' = instantiate tys' tys
         qxs  <- traverse (uncurry injectAnno) $ zip tys' qs
         qxs' <- traverse (uncurry injectAnno) $ zip tys' qs'
         q  <- rezero ty'' qf'
