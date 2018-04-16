@@ -320,15 +320,14 @@ lookupSCP x = asks (listToMaybe . filter (isJust . flip lookupFun x) . scps . ch
 share :: (Monoid a, MonadWriter (a, SharedTys b) m) => SharedTys b -> m ()
 share m = tell (mempty, m)
 
-constrain :: (Monoid b, MonadWriter (([GeneralConstraint], [GeneralConstraint]), b) m) => ([GeneralConstraint], [GeneralConstraint]) -> m ()
+constrain :: (Monoid b, MonadWriter ([GeneralConstraint], b) m) => [GeneralConstraint] -> m ()
 constrain c = tell (c, mempty)
 
-constrainI :: (Monoid b, MonadWriter (([GeneralConstraint], [GeneralConstraint]), b) m) => [GeneralConstraint] -> m ()
-constrainI c = constrain (c, mempty)
+constrainI :: (Monoid b, MonadWriter ([GeneralConstraint], b) m) => [GeneralConstraint] -> m ()
+constrainI c = constrain c
 
-constrainShares :: (([GeneralConstraint], [GeneralConstraint]), SharedTys Anno) -> ([GeneralConstraint], [GeneralConstraint])
-constrainShares = uncurry ((++) . fst) . second (foldMapWithKey ((. map (CIxEnv . fst . runaty)) . equate . CIxEnv . fst . runaty) . getMonoidalMap)
-              &&& uncurry ((++) . snd) . second (foldMapWithKey ((. map (snd . runaty))          . equate          . snd . runaty) . getMonoidalMap)
+constrainShares :: ([GeneralConstraint], SharedTys Anno) -> [GeneralConstraint]
+constrainShares = uncurry (++) . second (foldMapWithKey ((. map (CIxEnv . fst . runaty)) . equate . CIxEnv . fst . runaty) . getMonoidalMap)
 
 gamma :: MonadReader CheckE m => Var -> m (Maybe (ATy Anno))
 gamma x = asks (lookup x . env)
@@ -367,24 +366,23 @@ zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 check :: (MonadError TypeError m) => Int -> [Prog ()] -> m ProgEnv
 check deg_max p = flip evalStateT 0 $ fmap concat $ forM p $ \scp -> do
     scp' <- travFun (traverse $ afun deg_max) scp
-    (los, (ics, cs)) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
-    return $ map (second $ \os -> [GeneralForm Minimize o ics | o <- os]) los
+    (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
+    return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
 
 checkEx :: (MonadError TypeError m) => Int -> [Prog ()] -> Ex -> m GeneralForm
 checkEx deg_max p e = flip evalStateT 0 $ do
     ((ty, (q, q')), css) <- runWriterT $ runReaderT (elab e) $ CheckE [] $ CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
-    let (ics, tcs) = constrainShares css
-    return $ GeneralForm Minimize (sparse [(q, 1.0)]) tcs
+    return $ GeneralForm Minimize (sparse [(q, 1.0)]) $ constrainShares css
 
-elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], [GeneralConstraint]) m) [(Var, [LinearFunction])]
+elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
 elabSCP = traverse (traverse elabF)
-    where elabF :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], [GeneralConstraint]) m) [LinearFunction]
+    where elabF :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
           elabF f@(AFun ((pqs, _), fun)) = do
                     mapReaderT (mapWriterT (fmap $ second $ constrainShares)) $ elabFE f
                     deg_max <- asks degree
                     let Arrow _ ptys _ = tyOf fun
                     return $ reverse $ take (deg_max + 1) $ map (sparse . map (flip (,) 1.0 . fromJust . flip lookup pqs)) $ index $ pairify ptys
-          elabFE :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT (([GeneralConstraint], [GeneralConstraint]), SharedTys Anno) m) ()
+          elabFE :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           elabFE (AFun ((pqs, rqs), Fun (Arrow (qf, qf') [pty] rty) x e)) = do
                     xqs <- rezero pty pqs
                     (ETy ((qs, qs'), ty), (q, q')) <- withReaderT (CheckE $ zip [x] [ATy (xqs, pty)]) $ elab e
@@ -414,7 +412,7 @@ elabSCP = traverse (traverse elabF)
                     constrainI [sparse [exchange $ Consume qs_0, exchange $ Supply qs_0'] `Geq` 0.0]
 
 class Elab a where
-    elab :: (MonadError TypeError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT (([GeneralConstraint], [GeneralConstraint]), SharedTys Anno) m) (ETy Anno, (Anno, Anno))
+    elab :: (MonadError TypeError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (ETy Anno, (Anno, Anno))
 
 instance Elab Ex where
     elab (Var x) = do
