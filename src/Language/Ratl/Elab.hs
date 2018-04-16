@@ -62,22 +62,10 @@ import Language.Ratl.Ast (
     )
 import Language.Ratl.Basis (arity)
 
-newtype ETy a = ETy { runety :: ((IxEnv a, IxEnv a), Ty) }
-    deriving (Eq, Ord)
-
-instance Functor ETy where
-    fmap f (ETy ((q, q'), t)) = ETy . (,) (fmap (fmap f) q, fmap (fmap f) q') $ t
-
-instance Foldable ETy where
-    foldMap f (ETy ((q, q'), t)) = foldMap (foldMap f) q `mappend` foldMap (foldMap f) q'
-
-instance Traversable ETy where
-    traverse f (ETy ((q, q'), t)) = (ETy .) . (,) <$> ((,) <$> traverse (traverse f) q <*> traverse (traverse f) q') <*> pure t
-
-atoe :: MonadState Anno m => ATy Anno -> m (ETy Anno)
+atoe :: MonadState Anno m => ATy Anno -> m (Ty, (IxEnv Anno, IxEnv Anno))
 atoe (ATy (q, ty)) = do
     q' <- rezero ty q
-    return $ ETy ((q, q'), ty)
+    return (ty, (q, q'))
 
 newtype ATy a = ATy { runaty :: (IxEnv a, Ty) }
     deriving (Eq, Ord)
@@ -327,7 +315,9 @@ check deg_max p = flip evalStateT 0 $ fmap concat $ forM p $ \scp -> do
 checkEx :: (MonadError TypeError m) => Int -> [Prog] -> Ex -> m GeneralForm
 checkEx deg_max p e = flip evalStateT 0 $ do
     ((ty, (q, q')), css) <- runWriterT $ runReaderT (elab e) $ CheckE [] $ CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
-    return $ GeneralForm Minimize (sparse [(q, 1.0)]) $ constrainShares css
+    let z = zeroIndex ty
+        Just q_0 = lookup z q
+    return $ GeneralForm Minimize (sparse [(q_0, 1.0)]) $ constrainShares css
 
 elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
 elabSCP = traverse (traverse elabF)
@@ -340,16 +330,16 @@ elabSCP = traverse (traverse elabF)
           elabFE :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           elabFE (AFun ((pqs, rqs), Fun (Arrow [pty] rty) x e)) = do
                     xqs <- rezero pty pqs
-                    (ETy ((qs, qs'), ty), (q, q')) <- withReaderT (CheckE $ zip [x] [ATy (xqs, pty)]) $ elab e
+                    (ty, (q, q')) <- withReaderT (CheckE $ zip [x] [ATy (xqs, pty)]) $ elab e
                     let ty'' = tysubst (solve [] (ty, rty)) ty
                     when (rty /= ty'') $
                         throwError $ TypeError $ [(rty, ty'')]
-                    qsx' <- withReaderT (CheckE []) $ injectAnno ty'' qs'
+                    qsx' <- withReaderT (CheckE []) $ injectAnno ty'' q'
                     let z  = zeroIndex ty
-                        Just qs_0  = lookup  z qs
+                        Just q_0   = lookup  z q
                         pz = zeroIndex pty
                         Just pqs_0 = lookup pz pqs
-                    constrain [sparse (map exchange [Consume pqs_0, Supply qs_0]) `Eql` 0.0]
+                    constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
                     constrain $ equate (CIxEnv rqs) [CIxEnv qsx']
           elabFE (AFun ((pqs, rqs), Native (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _)) | pt == rt = do -- hack for cdr
                     let ss = map (\(i, (i1, i2)) -> (,) <$> lookup i rqs <*> sequence (filter isJust [lookup i1 pqs, lookup i2 pqs])) $ shift pty
@@ -367,35 +357,33 @@ elabSCP = traverse (traverse elabF)
                     constrain [sparse [exchange $ Consume qs_0, exchange $ Supply qs_0'] `Geq` 0.0]
 
 class Elab a where
-    elab :: (MonadError TypeError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (ETy Anno, (Anno, Anno))
+    elab :: (MonadError TypeError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty, (IxEnv Anno, IxEnv Anno))
 
 instance Elab Ex where
     elab (Var x) = do
         ty <- unlessJustM (gamma x) $
                 throwError $ NameError x
-        q  <- freshAnno
         ty' <- reannotate ty
-        q' <- freshAnno
         share $ singleton ty [ty']
-        ety'@(ETy ((qi, qi'), tyi)) <- atoe ty'
+        (tyi, (q, q')) <- atoe ty'
         let z = zeroIndex tyi
-            Just qi_0  = lookup z qi
-            Just qi_0' = lookup z qi'
+            Just q_0  = lookup z q
+            Just q_0' = lookup z q'
         k <- costof k_var
-        constrain [sparse [exchange $ Consume qi_0, exchange $ Supply qi_0'] `Geq` k]
-        return (ety', (q, q'))
+        constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Geq` k]
+        return (tyi, (q, q'))
     elab (Val v) = do
-        (ety'@(ETy ((qi, qi'), ty)), (q, q')) <- elab v
+        (ty, (q, q')) <- elab v
         k <- costof k_val
         let z = zeroIndex ty
-            Just qi_0  = lookup z qi
-            Just qi_0' = lookup z qi'
-        constrain [sparse [exchange $ Consume qi_0, exchange $ Supply qi_0'] `Geq` k]
-        return (ety', (q, q'))
+            Just q_0  = lookup z q
+            Just q_0' = lookup z q'
+        constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Geq` k]
+        return (ty, (q, q'))
     elab (If ep et ef) = do
-        (ETy ((qsp, qsp'), tyep), (qip, qip')) <- elab ep
-        ((ETy ((qst, qst'), tyet), (qit, qit')), (tcs, tss)) <- mapReaderT runWriterT $ elab et
-        ((ETy ((qsf, qsf'), tyef), (qif, qif')), (fcs, fss)) <- mapReaderT runWriterT $ elab ef
+        (tyep, (qp, qp')) <- elab ep
+        ((tyet, (qt, qt')), (tcs, tss)) <- mapReaderT runWriterT $ elab et
+        ((tyef, (qf, qf')), (fcs, fss)) <- mapReaderT runWriterT $ elab ef
         let tys = [tyep, tyet, tyef]
         constrain tcs
         constrain fcs
@@ -412,45 +400,42 @@ instance Elab Ex where
         let Arrow tys' ty'' = instantiate tys ifty
         let tys'' = unTyList $ instantiate tys' $ TyList tys
         let [typ, tyt, tyf] = tys'
-        qxp  <- injectAnno typ qsp
-        qxp' <- injectAnno typ qsp'
-        qxt  <- injectAnno tyt qst
-        qxt' <- injectAnno tyt qst'
-        qxf  <- injectAnno tyf qsf
-        qxf' <- injectAnno tyf qsf'
-        ety'@(ETy ((qix, qix'), _)) <- atoe =<< aty ty''
+        qip  <- injectAnno typ qp
+        qip' <- injectAnno typ qp'
+        qit  <- injectAnno tyt qt
+        qit' <- injectAnno tyt qt'
+        qif  <- injectAnno tyf qf
+        qif' <- injectAnno tyf qf'
+        (_, (q, q')) <- atoe =<< aty ty''
         let ineqs = filter (uncurry (/=)) (zip tys'' tys')
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
         [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
         let z = zeroIndex ty''
-            Just q_0  = lookup z qix
-            Just q_0' = lookup z qix'
+            Just q_0  = lookup z q
+            Just q_0' = lookup z q'
         let zp = zeroIndex typ
-            Just qxp_0  = lookup zp qxp
-            Just qxp_0' = lookup zp qxp'
+            Just qip_0  = lookup zp qip
+            Just qip_0' = lookup zp qip'
         let zt = zeroIndex tyt
-            Just qxt_0  = lookup zt qxt
-            Just qxt_0' = lookup zt qxt'
+            Just qit_0  = lookup zt qit
+            Just qit_0' = lookup zt qit'
         let zf = zeroIndex tyf
-            Just qxf_0  = lookup zf qxf
-            Just qxf_0' = lookup zf qxf'
-        constrain $ exceed (CIxEnv $ delete zt qxt) [CIxEnv qix] ++ exceed (CIxEnv $ delete zf qxf) [CIxEnv qix]
-        constrain [sparse [exchange $ Consume q_0,    exchange $ Supply qxp_0] `Geq` kp,
-                   sparse [exchange $ Consume qxp_0', exchange $ Supply qxt_0] `Geq` kt,
-                   sparse [exchange $ Consume qxp_0', exchange $ Supply qxf_0] `Geq` kf,
-                   sparse [exchange $ Consume qxt_0', exchange $ Supply q_0']  `Geq` kc,
-                   sparse [exchange $ Consume qxf_0', exchange $ Supply q_0']  `Geq` kc]
-        let q = 0
-            q' = 0
-        return (ety', (q, q'))
+            Just qif_0  = lookup zf qif
+            Just qif_0' = lookup zf qif'
+        constrain $ exceed (CIxEnv $ delete zt qit) [CIxEnv q] ++ exceed (CIxEnv $ delete zf qif) [CIxEnv q]
+        constrain [sparse [exchange $ Consume q_0,    exchange $ Supply qip_0] `Geq` kp,
+                   sparse [exchange $ Consume qip_0', exchange $ Supply qit_0] `Geq` kt,
+                   sparse [exchange $ Consume qip_0', exchange $ Supply qif_0] `Geq` kf,
+                   sparse [exchange $ Consume qit_0', exchange $ Supply q_0']  `Geq` kc,
+                   sparse [exchange $ Consume qif_0', exchange $ Supply q_0']  `Geq` kc]
+        return (ty'', (q, q'))
     elab (App f es) = do
-        (etys, (qs, q's)) <- second unzip <$> unzip <$> mapM elab es
-        let ((qis, qis'), tys) = first unzip $ unzip $ map runety etys
+        (tys, (qs, qs')) <- second unzip <$> unzip <$> mapM elab es
         when (arity f /= length es) $
             throwError $ ArityError (arity f) (length es)
         degree <- degreeof
-        ((qif, qif'), Arrow tys' ty'') <- lookupThisSCP f >>= \case
+        ((qf, qf'), Arrow tys' ty'') <- lookupThisSCP f >>= \case
             Just asc -> do
                 cost_free <- costof (== zero)
                 if degree <= 1 || cost_free then
@@ -472,93 +457,77 @@ instance Elab Ex where
                 scp' <- travFun (traverse $ afun degree) $ updateFun scp f fun
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
                 return $ second tyOf $ runafun $ fromJust $ lookup f scp'
-        q  <- freshAnno
-        q' <- freshAnno
         let tys'' = unTyList $ instantiate tys' $ TyList tys
-        qxs  <- traverse (uncurry injectAnno) $ zip tys' qis
-        qxs' <- traverse (uncurry injectAnno) $ zip tys' qis'
-        qix  <- rezero ty'' qif'
-        qix' <- rezero ty'' qif'
-        let ety' = ETy ((qix, qix'), ty'')
+        qxs  <- traverse (uncurry injectAnno) $ zip tys' qs
+        qxs' <- traverse (uncurry injectAnno) $ zip tys' qs'
+        q  <- rezero ty'' qf'
+        q' <- rezero ty'' qf'
         let ineqs = filter (uncurry (/=)) (zip tys'' tys')
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
         let z = zeroIndex $ pairify tys'
-            Just qf_0  = lookup z qif
+            Just qf_0  = lookup z qf
             z' = zeroIndex ty''
-            Just qf_0' = lookup z' qif'
-            Just q_0   = lookup z' qix
-            Just q_0'  = lookup z' qix'
+            Just qf_0' = lookup z' qf'
+            Just q_0   = lookup z' q
+            Just q_0'  = lookup z' q'
             zs = map zeroIndex tys'
             qxs_0  = map (fromJust . uncurry lookup) $ zip zs qxs
-            qxs'_0 = map (fromJust . uncurry lookup) $ zip zs qxs'
+            qxs_0' = map (fromJust . uncurry lookup) $ zip zs qxs'
             qxf = situate tys' qxs
-        constrain $ equate (CIxEnv $ delete z qxf) [CIxEnv qif]
+        constrain $ equate (CIxEnv $ delete z qxf) [CIxEnv qf]
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno
-        let (qs_0_args, ([q_ap_0], _)) = zipR (q_0:qxs'_0) qxs_0
+        let (qs_0_args, ([q_ap_0], _)) = zipR (q_0:qxs_0') qxs_0
         constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
                    (q_in, q_out) <- qs_0_args]
         constrain [sparse (map exchange [Consume q_ap_0, Supply qf_0, Supply c]) `Eql` k1]
         constrain [sparse (map exchange [Supply q_0', Consume qf_0', Consume c]) `Eql` k2]
-        return (ety', (q, q'))
+        return (ty'', (q, q'))
     elab (Let ds e) = do
-        (tyds, (qs, q's)) <- second unzip <$> unzip <$> mapM (fmap assoc . traverse elab) ds
-        tyxs <- traverse (traverse $ \(ETy ((q, q'), ty)) -> rezero ty q >>= \qx -> return $ ATy (qx, ty)) tyds
-        (ETy ((qex, qex'), ty), (qe, qe')) <- withReaderT (\ce -> ce {env = reverse tyxs ++ env ce}) $ elab e
-        q  <- freshAnno
-        q' <- freshAnno
-        qix  <- rezero ty qex
-        qix' <- rezero ty qex'
-        let Just q_0  = lookup (zeroIndex ty) qix
-            Just q_0' = lookup (zeroIndex ty) qix'
+        (tyds, (qs, qs')) <- second unzip <$> unzip <$> mapM (fmap assoc . traverse elab) ds
+        tyxs <- traverse (\((x, ty), q) -> rezero ty q >>= \qx -> return $ (x, ATy (qx, ty))) $ zip tyds qs
+        (ty, (qe, qe')) <- withReaderT (\ce -> ce {env = reverse tyxs ++ env ce}) $ elab e
+        q  <- rezero ty qe
+        q' <- rezero ty qe'
         k1 <- costof k_lt1
         k2 <- costof k_lt2
-        let ((qds, qds'), tys) = first unzip $ unzip $ map (runety . snd) tyds
-            zs = map zeroIndex tys
-            qds_0  = map (fromJust . uncurry lookup) $ zip zs qds
-            qds'_0 = map (fromJust . uncurry lookup) $ zip zs qds'
-            z = zeroIndex ty
-            Just qe_0  = lookup z qex
-            Just qe_0' = lookup z qex'
+        let z  = zeroIndex ty
+            zs = map zeroIndex $ map snd tyds
+            Just q_0  = lookup z q
+            Just q_0' = lookup z q'
+            qs_0  = map (fromJust . uncurry lookup) $ zip zs qs
+            qs_0' = map (fromJust . uncurry lookup) $ zip zs qs'
+            Just qe_0  = lookup z qe
+            Just qe_0' = lookup z qe'
         constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
-                   (q_in, q_out) <- zip (q_0:qds'_0) (qds_0 ++ [qe_0])]
+                   (q_in, q_out) <- zip (q_0:qs_0') (qs_0 ++ [qe_0])]
         constrain [sparse (map exchange [Supply q_0', Consume qe_0']) `Geq` k2]
-        return (ETy ((qix, qix'), ty), (q, q'))
+        return (ty, (q, q'))
 
 instance Elab Val where
     elab (Nat _) = do
-        q <- freshAnno
-        q' <- freshAnno
-        ety' <- atoe =<< aty NatTy
-        return (ety', (q, q'))
+        (ty, (q, q')) <- atoe =<< aty NatTy
+        return (ty, (q, q'))
     elab (Boolean _) = do
-        q <- freshAnno
-        q' <- freshAnno
-        ety' <- atoe =<< aty BooleanTy
-        return (ety', (q, q'))
+        (ty, (q, q')) <- atoe =<< aty BooleanTy
+        return (ty, (q, q'))
     elab Unit = do
-        q <- freshAnno
-        q' <- freshAnno
-        ety' <- atoe =<< aty UnitTy
-        return (ety', (q, q'))
+        (ty, (q, q')) <- atoe =<< aty UnitTy
+        return (ty, (q, q'))
     elab (Sym _) = do
-        q <- freshAnno
-        q' <- freshAnno
-        ety' <- atoe =<< aty SymTy
-        return (ety', (q, q'))
+        (ty, (q, q')) <- atoe =<< aty SymTy
+        return (ty, (q, q'))
     elab (List l) = elab l
 
 instance Elab List where
     elab Nil = do
-        q <- freshAnno
-        q' <- freshAnno
-        ety' <- atoe =<< aty (ListTy $ Tyvar "a")
-        return (ety', (q, q'))
+        (ty, (q, q')) <- atoe =<< aty (ListTy $ Tyvar "a")
+        return (ty, (q, q'))
     elab (Cons v vs) = do
-        (ETy (_, vty), _) <- elab v
-        (ETy (_, lty), (q, q')) <- elab vs
+        (vty, _) <- elab v
+        (lty, _) <- elab vs
         ty <- case lty of
             ListTy lty' ->
                 let lty'' = instantiate [vty] lty'
@@ -567,5 +536,5 @@ instance Elab List where
                    then return $ ListTy lty''
                    else throwError $ TypeError [(vty'', lty'')]
             t -> throwError $ TypeError [(ListTy vty, t)]
-        ety' <- atoe =<< aty ty
-        return (ety', (q, q'))
+        (_, (q, q')) <- atoe =<< aty ty
+        return (ty, (q, q'))
