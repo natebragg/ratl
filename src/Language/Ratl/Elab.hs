@@ -105,7 +105,6 @@ afun k fun = do
     q' <- traverse (reannotate . flip (,) ()) $ indexDeg k t'
     return $ AFun ((q, q'), fun)
 
-newtype CIxEnv a = CIxEnv {runcix :: IxEnv a}
 type IxEnv a = [(Index, a)]
 type TyEnv a = [(Var, ATy a)]
 type FunEnv a = [(Var, AFun a)]
@@ -240,16 +239,14 @@ injectAnno t qs = do
     k <- degreeof
     traverse (\ix -> (,) ix <$> lookup ix qs' `unlessJust` freshAnno) $ indexDeg k t
 
-class Comparable a where
-    relate :: (LinearFunction -> Double -> GeneralConstraint) -> a Anno -> [a Anno] -> [GeneralConstraint]
-    equate :: a Anno -> [a Anno] -> [GeneralConstraint]
-    exceed :: a Anno -> [a Anno] -> [GeneralConstraint]
+relate :: (LinearFunction -> Double -> GeneralConstraint) -> IxEnv Anno -> [IxEnv Anno] -> [GeneralConstraint]
+relate c i is = [sparse (map exchange (Consume p:map Supply ps)) `c` 0.0 | (ix, p) <- i, ps <- [mapMaybe (lookup ix) is], not $ null ps, not $ elem p ps]
 
-    equate = relate Eql
-    exceed = relate Geq
+equate :: IxEnv Anno -> [IxEnv Anno] -> [GeneralConstraint]
+equate = relate Eql
 
-instance Comparable CIxEnv where
-    relate c i is = [sparse (map exchange (Consume p:map Supply ps)) `c` 0.0 | (ix, p) <- runcix i, ps <- [mapMaybe (lookup ix . runcix) is], not $ null ps, not $ elem p ps]
+exceed :: IxEnv Anno -> [IxEnv Anno] -> [GeneralConstraint]
+exceed = relate Geq
 
 data CheckE = CheckE {
         env :: TyEnv Anno,
@@ -273,7 +270,7 @@ constrain :: (Monoid b, MonadWriter ([GeneralConstraint], b) m) => [GeneralConst
 constrain c = tell (c, mempty)
 
 constrainShares :: ([GeneralConstraint], SharedTys Anno) -> [GeneralConstraint]
-constrainShares = uncurry (++) . second (foldMapWithKey ((. map (CIxEnv . fst . runaty)) . equate . CIxEnv . fst . runaty) . getMonoidalMap)
+constrainShares = uncurry (++) . second (foldMapWithKey ((. map (fst . runaty)) . equate . fst . runaty) . getMonoidalMap)
 
 gamma :: MonadReader CheckE m => Var -> m (Maybe (ATy Anno))
 gamma x = asks (lookup x . env)
@@ -340,7 +337,7 @@ elabSCP = traverse (traverse elabF)
                         pz = zeroIndex pty
                         Just pqs_0 = lookup pz pqs
                     constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
-                    constrain $ equate (CIxEnv rqs) [CIxEnv qsx']
+                    constrain $ equate rqs [qsx']
           elabFE (AFun ((pqs, rqs), Native (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _)) | pt == rt = do -- hack for cdr
                     let ss = map (\(i, (i1, i2)) -> (,) <$> lookup i rqs <*> sequence (filter isJust [lookup i1 pqs, lookup i2 pqs])) $ shift pty
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
@@ -392,7 +389,7 @@ instance Elab Ex where
         let reannotateShares ss = do
                 ss' <- traverseWithKey (flip (fmap . flip (,)) . reannotate) $
                         mapKeys (fromJust . flip lookup sharemap) $ getMonoidalMap ss
-                constrain $ concatMap (uncurry exceed . first (CIxEnv . fst . runaty) . second (pure . CIxEnv . fst . runaty . fst)) $ toList ss'
+                constrain $ concatMap (uncurry exceed . first (fst . runaty) . second (pure . fst . runaty . fst)) $ toList ss'
                 return $ MonoidalMap $ fromList $ elems ss'
         share =<< reannotateShares tss
         share =<< reannotateShares fss
@@ -423,7 +420,7 @@ instance Elab Ex where
         let zf = zeroIndex tyf
             Just qif_0  = lookup zf qif
             Just qif_0' = lookup zf qif'
-        constrain $ exceed (CIxEnv $ delete zt qit) [CIxEnv q] ++ exceed (CIxEnv $ delete zf qif) [CIxEnv q]
+        constrain $ exceed (delete zt qit) [q] ++ exceed (delete zf qif) [q]
         constrain [sparse [exchange $ Consume q_0,    exchange $ Supply qip_0] `Geq` kp,
                    sparse [exchange $ Consume qip_0', exchange $ Supply qit_0] `Geq` kt,
                    sparse [exchange $ Consume qip_0', exchange $ Supply qif_0] `Geq` kf,
@@ -446,8 +443,8 @@ instance Elab Ex where
                     -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
                     cfscp <- traverse (traverse $ annotate (degree - 1)) $ update f fun scp
                     let Just cffun = lookup f cfscp
-                    constrain $ equate (CIxEnv $ fst $ fst $ runafun fun) [CIxEnv $ fst $ fst $ runafun asc, CIxEnv $ fst $ fst $ runafun cffun]
-                    constrain $ equate (CIxEnv $ snd $ fst $ runafun fun) [CIxEnv $ snd $ fst $ runafun asc, CIxEnv $ snd $ fst $ runafun cffun]
+                    constrain $ equate (fst $ fst $ runafun fun) [fst $ fst $ runafun asc, fst $ fst $ runafun cffun]
+                    constrain $ equate (snd $ fst $ runafun fun) [snd $ fst $ runafun asc, snd $ fst $ runafun cffun]
                     constrain =<< withReaderT (\ce -> (checkF ce) {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (elabSCP cfscp))
                     return $ second tyOf $ runafun fun
             Nothing -> do
@@ -475,7 +472,7 @@ instance Elab Ex where
             qxs_0  = map (fromJust . uncurry lookup) $ zip zs qxs
             qxs_0' = map (fromJust . uncurry lookup) $ zip zs qxs'
             qxf = situate tys' qxs
-        constrain $ equate (CIxEnv $ delete z qxf) [CIxEnv qf]
+        constrain $ equate (delete z qxf) [qf]
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno
