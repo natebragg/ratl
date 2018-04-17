@@ -38,6 +38,7 @@ import Language.Ratl.Index (
     indexDeg,
     zeroIndex,
     shift,
+    spend,
     inject,
     extend,
     expand,
@@ -309,17 +310,25 @@ elabSCP = traverse (traverse elabF)
           elabFE (Native (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = do -- hack for cdr
                     let ss = map (\(i, (i1, i2)) -> (,) <$> lookup i rqs <*> sequence (filter isJust [lookup i1 pqs, lookup i2 pqs])) $ shift pty
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
-                               Just (q, ps) <- takeWhile isJust ss, not $ elem q ps]
+                               Just (q, ps) <- takeWhile isJust ss, not $ q `elem` ps]
+          elabFE (Native (Arrow [pty@(ListTy pt)] rt) _ _, (pqs, rqs)) | pt == rt = do -- hack for car
+                    let z = zeroIndex pty
+                        Just q_0  = lookup z  pqs
+                        z' = zeroIndex rt
+                        ss = map (\(ip, ir) -> (,) ((if ir == z' then (q_0:) else id) $
+                                                    maybe [] pure $ lookup ip pqs) <$> lookup ir rqs) $ spend pty
+                    constrain [sparse (map exchange (Supply q:map Consume ps)) `Geq` 0.0 |
+                               Just (ps, q) <- takeWhile isJust ss, not $ q `elem` ps]
           elabFE (Native (Arrow ptys@[tyh, ListTy tyt] rty@(ListTy tyc)) _ _, (pqs, rqs)) = do -- hack for cons
                     let ss = map (\(i, (i1, i2)) -> (,) <$> lookup (fromJust $ extend (pairify ptys) i) pqs <*> sequence (filter isJust [lookup i1 rqs, lookup i2 rqs])) $ shift rty
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
                                Just (q, ps) <- takeWhile isJust ss, not $ elem q ps]
           elabFE (Native (Arrow tys ty') _ _, (pqs, rqs)) = do
                     let z = zeroIndex $ pairify tys
-                        Just qs_0  = lookup z  pqs
+                        Just q_0  = lookup z  pqs
                         z' = zeroIndex ty'
-                        Just qs_0' = lookup z' rqs
-                    constrain [sparse [exchange $ Consume qs_0, exchange $ Supply qs_0'] `Geq` 0.0]
+                        Just q_0' = lookup z' rqs
+                    constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Geq` 0.0]
 
 class Elab a where
     elab :: (MonadError TypeError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty, (IxEnv Anno, IxEnv Anno))
