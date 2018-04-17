@@ -63,23 +63,6 @@ import Language.Ratl.Ast (
     )
 import Language.Ratl.Basis (arity)
 
-atoe :: MonadState Anno m => ATy Anno -> m (Ty, (IxEnv Anno, IxEnv Anno))
-atoe (ATy (q, ty)) = do
-    q' <- rezero ty q
-    return (ty, (q, q'))
-
-newtype ATy a = ATy { runaty :: (IxEnv a, Ty) }
-    deriving (Eq, Ord)
-
-instance Functor ATy where
-    fmap f (ATy (q, t)) = ATy . (,) (fmap (fmap f) q) $ t
-
-instance Foldable ATy where
-    foldMap f (ATy (q, t)) = foldMap (foldMap f) q
-
-instance Traversable ATy where
-    traverse f (ATy (q, t)) = (ATy .) . (,) <$> traverse (traverse f) q <*> pure t
-
 newtype AFun a = AFun { runafun :: ((IxEnv a, IxEnv a), Fun) }
 
 instance Functor AFun where
@@ -106,9 +89,9 @@ afun k fun = do
     return $ AFun ((q, q'), fun)
 
 type IxEnv a = [(Index, a)]
-type TyEnv a = [(Var, ATy a)]
+type TyEnv a = [(Var, (Ty, IxEnv a))]
 type FunEnv a = [(Var, AFun a)]
-type SharedTys a = MonoidalMap (ATy a) [ATy a]
+type SharedTys a = MonoidalMap (IxEnv a) [IxEnv a]
 type TyvarEnv = [(String, Ty)]
 type ProgEnv = [(Var, [GeneralForm])]
 
@@ -270,9 +253,9 @@ constrain :: (Monoid b, MonadWriter ([GeneralConstraint], b) m) => [GeneralConst
 constrain c = tell (c, mempty)
 
 constrainShares :: ([GeneralConstraint], SharedTys Anno) -> [GeneralConstraint]
-constrainShares = uncurry (++) . second (foldMapWithKey ((. map (fst . runaty)) . equate . fst . runaty) . getMonoidalMap)
+constrainShares = uncurry (++) . second (foldMapWithKey equate . getMonoidalMap)
 
-gamma :: MonadReader CheckE m => Var -> m (Maybe (ATy Anno))
+gamma :: MonadReader CheckE m => Var -> m (Maybe (Ty, IxEnv Anno))
 gamma x = asks (lookup x . env)
 
 costof :: MonadReader CheckE m => (Cost -> a) -> m a
@@ -327,7 +310,7 @@ elabSCP = traverse (traverse elabF)
           elabFE :: (MonadError TypeError m, MonadState Anno m) => AFun Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           elabFE (AFun ((pqs, rqs), Fun (Arrow [pty] rty) x e)) = do
                     xqs <- rezero pty pqs
-                    (ty, (q, q')) <- withReaderT (CheckE $ zip [x] [ATy (xqs, pty)]) $ elab e
+                    (ty, (q, q')) <- withReaderT (CheckE $ zip [x] [(pty, xqs)]) $ elab e
                     let ty'' = tysubst (solve [] (ty, rty)) ty
                     when (rty /= ty'') $
                         throwError $ TypeError $ [(rty, ty'')]
@@ -358,17 +341,17 @@ class Elab a where
 
 instance Elab Ex where
     elab (Var x) = do
-        ty <- unlessJustM (gamma x) $
+        (ty, qx) <- unlessJustM (gamma x) $
                 throwError $ NameError x
-        ty' <- reannotate ty
-        share $ singleton ty [ty']
-        (tyi, (q, q')) <- atoe ty'
-        let z = zeroIndex tyi
+        q  <- traverse reannotate qx
+        q' <- rezero ty q
+        share $ singleton qx [q]
+        let z = zeroIndex ty
             Just q_0  = lookup z q
             Just q_0' = lookup z q'
         k <- costof k_var
         constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Geq` k]
-        return (tyi, (q, q'))
+        return (ty, (q, q'))
     elab (Val v) = do
         (ty, (q, q')) <- elab v
         k <- costof k_val
@@ -384,12 +367,12 @@ instance Elab Ex where
         let tys = [tyep, tyet, tyef]
         constrain tcs
         constrain fcs
-        sharemap <- traverse (fmap <$> (,) <*> reannotate) $ union (keys tss) (keys fss)
+        sharemap <- traverse (fmap <$> (,) <*> traverse reannotate) $ union (keys tss) (keys fss)
         share $ MonoidalMap $ fromList $ map (second pure) sharemap
         let reannotateShares ss = do
-                ss' <- traverseWithKey (flip (fmap . flip (,)) . reannotate) $
+                ss' <- traverseWithKey (flip (fmap . flip (,)) . traverse reannotate) $
                         mapKeys (fromJust . flip lookup sharemap) $ getMonoidalMap ss
-                constrain $ concatMap (uncurry exceed . first (fst . runaty) . second (pure . fst . runaty . fst)) $ toList ss'
+                constrain $ concatMap (uncurry exceed . second (pure . fst)) $ toList ss'
                 return $ MonoidalMap $ fromList $ elems ss'
         share =<< reannotateShares tss
         share =<< reannotateShares fss
@@ -484,7 +467,7 @@ instance Elab Ex where
         return (ty'', (q, q'))
     elab (Let ds e) = do
         (tyds, (qs, qs')) <- second unzip <$> unzip <$> mapM (fmap assoc . traverse elab) ds
-        tyxs <- traverse (\((x, ty), q) -> rezero ty q >>= \qx -> return $ (x, ATy (qx, ty))) $ zip tyds qs
+        tyxs <- traverse (\((x, ty), q) -> (,) x <$> (,) ty <$> rezero ty q) $ zip tyds qs
         (ty, (qe, qe')) <- withReaderT (\ce -> ce {env = reverse tyxs ++ env ce}) $ elab e
         q  <- rezero ty qe
         q' <- rezero ty qe'
