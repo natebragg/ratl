@@ -79,8 +79,10 @@ zeroIndex :: Ty -> Index
 zeroIndex = head . head . index
 
 shift :: Ty -> [(Index, (Index, Index))]
-shift (ListTy t) = zip zeroes $ zip zeroes $ tail zeroes
-    where zeroes = map LIndex $ inits $ repeat $ zeroIndex t
+shift (ListTy t) = zip ixs $ zip ixs $ map next ixs
+    where ixs = concat $ index $ ListTy t
+          z = zeroIndex t
+          next (LIndex is) = LIndex $ z:is
 shift         _  = []
 
 spend :: Ty -> [(Index, Index)]
