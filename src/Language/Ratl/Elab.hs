@@ -7,13 +7,13 @@ module Language.Ratl.Elab (
     checkEx,
 ) where
 
-import Data.List (intersect, intercalate, union, nub, foldl', transpose, tails, unionBy)
+import Data.List (intersect, intercalate, union, nub, foldl', transpose, tails, unionBy, groupBy, sortBy)
 import Data.Function (on)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
 import Data.Maybe (listToMaybe, isJust, fromJust, mapMaybe)
 import Control.Applicative (empty)
-import Control.Arrow (first, second, (&&&))
+import Control.Arrow (first, second, (***), (&&&))
 import Control.Monad (when, forM, void)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Except.Extra (unlessJust, unlessJustM)
@@ -38,7 +38,6 @@ import Language.Ratl.Index (
     indexDeg,
     zeroIndex,
     shift,
-    spend,
     inject,
     extend,
     expand,
@@ -308,21 +307,24 @@ elabSCP = traverse (traverse elabF)
                     constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
                     constrain $ equate rqs [qsx']
           elabFE (Native (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = do -- hack for cdr
-                    let ss = map (\(i, (i1, i2)) -> (,) <$> lookup i rqs <*> sequence (filter isJust [lookup i1 pqs, lookup i2 pqs])) $ shift pty
+                    let Just shs = sequence $ takeWhile isJust $ map (\(((_, i), _), (i1, i2)) -> const (i, [i1, i2]) <$> lookup i1 pqs) $ shift pty
+                        shmap = map ((head *** nub . concat) . unzip) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) shs
+                        ss = map (\(i, is) -> (,) <$> lookup i rqs <*> sequence (filter isJust $ map (flip lookup pqs) is)) shmap
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
-                               Just (q, ps) <- takeWhile isJust ss, not $ q `elem` ps]
+                               Just (q, ps) <- ss, not $ q `elem` ps]
           elabFE (Native (Arrow [pty@(ListTy pt)] rt) _ _, (pqs, rqs)) | pt == rt = do -- hack for car
-                    let z = zeroIndex pty
-                        Just q_0  = lookup z  pqs
+                    let Just shs = sequence $ takeWhile isJust $ map (\(((ir, _), _), (_, ip)) -> const (ir, ip) <$> lookup ip pqs) $ shift pty
+                        z = zeroIndex pty
                         z' = zeroIndex rt
-                        ss = map (\(ip, ir) -> (,) ((if ir == z' then (q_0:) else id) $
-                                                    maybe [] pure $ lookup ip pqs) <$> lookup ir rqs) $ spend pty
+                        shmap = map ((head *** nub) . unzip) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) $ (z', z):shs
+                        ss = map (first $ \i -> maybe [] id $ (sequence . filter isJust . map (flip lookup pqs)) =<< lookup i shmap) rqs
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Geq` 0.0 |
-                               Just (ps, q) <- takeWhile isJust ss, not $ q `elem` ps]
+                               (ps, q) <- ss, not $ q `elem` ps]
           elabFE (Native (Arrow ptys@[tyh, ListTy tyt] rty@(ListTy tyc)) _ _, (pqs, rqs)) = do -- hack for cons
-                    let ss = map (\(i, (i1, i2)) -> (,) <$> lookup (fromJust $ extend (pairify ptys) i) pqs <*> sequence (filter isJust [lookup i1 rqs, lookup i2 rqs])) $ shift rty
+                    let Just shs = sequence $ takeWhile isJust $ map (\((_, i), (i1, i2)) -> const (i, [i1, i2]) <$> lookup i1 rqs) $ shift rty
+                        ss = map (\(i, is) -> (,) <$> lookup i pqs <*> sequence (filter isJust $ map (flip lookup rqs) is)) shs
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
-                               Just (q, ps) <- takeWhile isJust ss, not $ elem q ps]
+                               Just (q, ps) <- ss, not $ q `elem` ps]
           elabFE (Native (Arrow tys ty') _ _, (pqs, rqs)) = do
                     let z = zeroIndex $ pairify tys
                         Just q_0  = lookup z  pqs

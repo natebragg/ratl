@@ -5,7 +5,6 @@ module Language.Ratl.Index (
   indexDeg,
   zeroIndex,
   shift,
-  spend,
   inject,
   extend,
   expand,
@@ -78,16 +77,14 @@ indexDeg k = concat . take (k + 1) . index
 zeroIndex :: Ty -> Index
 zeroIndex = head . head . index
 
-shift :: Ty -> [(Index, (Index, Index))]
-shift (ListTy t) = zip ixs $ zip ixs $ map next ixs
-    where ixs = concat $ index $ ListTy t
-          z = zeroIndex t
-          next (LIndex is) = LIndex $ z:is
-shift         _  = []
-
-spend :: Ty -> [(Index, Index)]
-spend (ListTy t) = map (LIndex . pure &&& id) $ concat $ index t
-spend         _  = []
+shift :: Ty -> [(((Index, Index), Index), (Index, Index))]
+shift t@(ListTy _) = zip (zip sis pis) (zip tis lis)
+    where lis = concat $ tail $ index t
+          sis = map split lis
+          pis = map PIndex sis
+          tis = map snd sis
+          split (LIndex (i:is)) = (i, LIndex is)
+shift _ = []
 
 -- The goal of inject is to find the type index containing the given
 -- index with every other position set to the inner type's zero index.
