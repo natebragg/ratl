@@ -9,6 +9,7 @@ import Data.Either (lefts, rights)
 import Data.List (intercalate)
 import Data.Maybe (isNothing, fromJust)
 import Text.Parsec (parse, eof)
+import Text.Printf (printf)
 import Text.Read (readEither)
 import System.Exit (exitSuccess, exitFailure)
 import System.IO (readFile)
@@ -43,10 +44,10 @@ progressive_solve = fst . foldl accum ([], [])
 pretty_bound :: [Double] -> String
 pretty_bound cs = if null bounds then show 0.0 else intercalate " + " bounds
     where bounds = reverse $ concatMap coeff $ zip [0..] $ reverse cs
-          coeff (_, 0.0) = []
-          coeff (0,   c) = [show c]
-          coeff (1,   c) = [show c ++ "*n"]
-          coeff (n,   c) = [show c ++ "*n^" ++ show n]
+          coeff (_, c) | c < 1.0e-9 = []
+          coeff (0, c) = [printf "%.1f" c]
+          coeff (1, c) = [printf "%.1f" c ++ "*n"]
+          coeff (n, c) = [printf "%.1f" c ++ "*n^" ++ show n]
 
 callgraph :: Prog -> [Prog]
 callgraph = scSubprograms . (connects =<< flatten . mapFun (second calls))
