@@ -14,7 +14,7 @@ import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
 import Data.Maybe (listToMaybe, isJust, fromJust, mapMaybe)
 import Control.Applicative (empty)
 import Control.Arrow (first, second, (***), (&&&))
-import Control.Monad (when, forM, void)
+import Control.Monad (when, forM, void, zipWithM)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Except.Extra (unlessJust, unlessJustM)
 import Control.Monad.State (MonadState, evalStateT)
@@ -435,8 +435,8 @@ instance Elab Ex where
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
                 return $ first tyOf $ fromJust $ lookup f scp'
         let tys'' = instantiate tys' tys
-        qxs  <- traverse (uncurry injectAnno) $ zip tys' qs
-        qxs' <- traverse (uncurry injectAnno) $ zip tys' qs'
+        qxs  <- zipWithM injectAnno tys' qs
+        qxs' <- zipWithM injectAnno tys' qs'
         q  <- rezero ty'' qf'
         q' <- rezero ty'' qf'
         let ineqs = filter (uncurry (/=)) (zip tys'' tys')
@@ -449,8 +449,8 @@ instance Elab Ex where
             Just q_0   = lookup z' q
             Just q_0'  = lookup z' q'
             zs = map zeroIndex tys'
-            qxs_0  = map (fromJust . uncurry lookup) $ zip zs qxs
-            qxs_0' = map (fromJust . uncurry lookup) $ zip zs qxs'
+            qxs_0  = zipWith ((fromJust .) . lookup) zs qxs
+            qxs_0' = zipWith ((fromJust .) . lookup) zs qxs'
             qxf = situate tys' qxs
         constrain $ equate (delete z qxf) [qf]
         k1 <- costof k_ap1
@@ -474,8 +474,8 @@ instance Elab Ex where
             zs = map zeroIndex $ map snd tyds
             Just q_0  = lookup z q
             Just q_0' = lookup z q'
-            qs_0  = map (fromJust . uncurry lookup) $ zip zs qs
-            qs_0' = map (fromJust . uncurry lookup) $ zip zs qs'
+            qs_0  = zipWith ((fromJust .) . lookup) zs qs
+            qs_0' = zipWith ((fromJust .) . lookup) zs qs'
             Just qe_0  = lookup z qe
             Just qe_0' = lookup z qe'
         constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
