@@ -117,18 +117,20 @@ exchange (Consume q) = (q, 1.0)
 exchange (Supply  q) = (q, -1.0)
 
 freein :: Ty -> [String]
-freein       NatTy = []
-freein (ListTy ty) = freein ty
-freein   BooleanTy = []
-freein      UnitTy = []
-freein       SymTy = []
-freein   (Tyvar y) = [y]
+freein             NatTy = []
+freein       (ListTy ty) = freein ty
+freein (PairTy (t1, t2)) = freein t1 ++ freein t2
+freein         BooleanTy = []
+freein            UnitTy = []
+freein             SymTy = []
+freein         (Tyvar y) = [y]
 
 solve :: TyvarEnv -> (Ty, Ty) -> TyvarEnv
 solve theta (ty, ty') = compose (assoc (tysubst theta ty) (tysubst theta ty')) theta
-  where assoc (ListTy ty) (ListTy ty') = assoc ty ty'
-        assoc   (Tyvar x)          ty' = [(x, ty')]
-        assoc           _            _ = []
+  where assoc       (ListTy ty)        (ListTy ty') = assoc ty ty'
+        assoc (PairTy (t1, t2)) (PairTy (t1', t2')) = assoc t1 t1' ++ assoc t2 t2'
+        assoc         (Tyvar x)                 ty' = [(x, ty')]
+        assoc                 _                   _ = []
 
 compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
 compose theta2 theta1 = map (id &&& replace) domain
@@ -140,12 +142,13 @@ varsubst theta x = maybe (Tyvar x) id $ lookup x theta
 
 tysubst :: TyvarEnv -> Ty -> Ty
 tysubst theta = subst
-  where subst       NatTy = NatTy
-        subst (ListTy ty) = ListTy $ subst ty
-        subst   BooleanTy = BooleanTy
-        subst      UnitTy = UnitTy
-        subst       SymTy = SymTy
-        subst   (Tyvar x) = varsubst theta x
+  where subst             NatTy = NatTy
+        subst       (ListTy ty) = ListTy $ subst ty
+        subst (PairTy (t1, t2)) = PairTy (subst t1, subst t2)
+        subst         BooleanTy = BooleanTy
+        subst            UnitTy = UnitTy
+        subst             SymTy = SymTy
+        subst         (Tyvar x) = varsubst theta x
 
 class Instantiable t where
     instantiate :: [Ty] -> t -> t
@@ -163,20 +166,22 @@ instance Instantiable Ty where
     instantiate tys ty = head $ instantiate tys $ [ty]
 
 instance Instantiable FunTy where
-    instantiate tys (Arrow tys' ty') = Arrow (init tys''ty'') (last tys''ty'')
-        where tys''ty'' = instantiate tys (tys' ++ [ty'])
+    instantiate tys (Arrow ty ty') = repair $ instantiate tys $ unpair ty
+        where repair [ty, ty'] = Arrow ty ty'
+              repair (t1:tys) = let Arrow t2 ty' = repair tys in Arrow (PairTy (t1, t2)) ty'
+              unpair (PairTy (t1, t2)) = t1:unpair t2
+              unpair t = [t, ty']
 
 instance Instantiable Fun where
     instantiate tys (Fun ty x e) = Fun (instantiate tys ty) x e
     instantiate tys (Native ty a f) = Native (instantiate tys ty) a f
 
-pairify [ty] = ty
-pairify (ty:tys) = PairTy (ty, pairify tys)
-
 situate :: [Ty] -> [IxEnv a] -> IxEnv a
 situate tys ixss = foldl (unionBy ((==) `on` fst)) [] $ map (uncurry place) $ zip ptys ixss
     where place pty ixs = map (first (fromJust . placeInAt (head ptys) pty)) ixs
           ptys = map pairify $ tails tys
+          pairify [ty] = ty
+          pairify (ty:tys) = PairTy (ty, pairify tys)
 
 freshIxEnv :: MonadState Anno m => Int -> Ty -> m (IxEnv Anno)
 freshIxEnv k t = traverse (reannotate . flip (,) ()) $ indexDeg k t
@@ -190,8 +195,8 @@ freshBounds t = do
 
 freshFunBounds :: MonadState Anno m => Int -> Fun -> m (IxEnv Anno, IxEnv Anno)
 freshFunBounds k fun = do
-    let Arrow ts t' = tyOf fun
-    q  <- freshIxEnv k $ pairify ts
+    let Arrow t t' = tyOf fun
+    q  <- freshIxEnv k t
     q' <- freshIxEnv k t'
     return (q, q')
 
@@ -289,10 +294,10 @@ elabSCP = traverse (traverse elabF)
           elabF f@(fun, (pqs, _)) = do
                     mapReaderT (mapWriterT (fmap $ second $ constrainShares)) $ elabFE f
                     deg_max <- asks degree
-                    let Arrow ptys _ = tyOf fun
-                    return $ reverse $ take (deg_max + 1) $ map (sparse . map (flip (,) 1.0 . fromJust . flip lookup pqs)) $ index $ pairify ptys
+                    let Arrow pty _ = tyOf fun
+                    return $ reverse $ take (deg_max + 1) $ map (sparse . map (flip (,) 1.0 . fromJust . flip lookup pqs)) $ index pty
           elabFE :: (MonadError TypeError m, MonadState Anno m) => (Fun, (IxEnv Anno, IxEnv Anno)) -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
-          elabFE (Fun (Arrow [pty] rty) x e, (pqs, rqs)) = do
+          elabFE (Fun (Arrow pty rty) x e, (pqs, rqs)) = do
                     xqs <- rezero pty pqs
                     (ty, (q, q')) <- withReaderT (CheckE $ zip [x] [(pty, xqs)]) $ elab e
                     let ty'' = tysubst (solve [] (ty, rty)) ty
@@ -305,13 +310,13 @@ elabSCP = traverse (traverse elabF)
                         Just pqs_0 = lookup pz pqs
                     constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
                     constrain $ equate rqs [qsx']
-          elabFE (Native (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = do -- hack for cdr
+          elabFE (Native (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = do -- hack for cdr
                     let Just shs = sequence $ takeWhile isJust $ map (\(((_, i), _), (i1, i2)) -> const (i, [i1, i2]) <$> lookup i1 pqs) $ shift pty
                         shmap = map ((head *** nub . concat) . unzip) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) shs
                         ss = map (\(i, is) -> (,) <$> lookup i rqs <*> sequence (filter isJust $ map (flip lookup pqs) is)) shmap
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
                                Just (q, ps) <- ss, not $ q `elem` ps]
-          elabFE (Native (Arrow [pty@(ListTy pt)] rt) _ _, (pqs, rqs)) | pt == rt = do -- hack for car
+          elabFE (Native (Arrow pty@(ListTy pt) rt) _ _, (pqs, rqs)) | pt == rt = do -- hack for car
                     let Just shs = sequence $ takeWhile isJust $ map (\(((ir, _), _), (_, ip)) -> const (ir, ip) <$> lookup ip pqs) $ shift pty
                         z = zeroIndex pty
                         z' = zeroIndex rt
@@ -319,13 +324,13 @@ elabSCP = traverse (traverse elabF)
                         ss = map (first $ \i -> maybe [] id $ (sequence . filter isJust . map (flip lookup pqs)) =<< lookup i shmap) rqs
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Geq` 0.0 |
                                (ps, q) <- ss, not $ q `elem` ps]
-          elabFE (Native (Arrow ptys@[tyh, ListTy tyt] rty@(ListTy tyc)) _ _, (pqs, rqs)) = do -- hack for cons
+          elabFE (Native (Arrow (PairTy (tyh, ListTy tyt)) rty@(ListTy tyc)) _ _, (pqs, rqs)) = do -- hack for cons
                     let Just shs = sequence $ takeWhile isJust $ map (\((_, i), (i1, i2)) -> const (i, [i1, i2]) <$> lookup i1 rqs) $ shift rty
                         ss = map (\(i, is) -> (,) <$> lookup i pqs <*> sequence (filter isJust $ map (flip lookup rqs) is)) shs
                     constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
                                Just (q, ps) <- ss, not $ q `elem` ps]
-          elabFE (Native (Arrow tys ty') _ _, (pqs, rqs)) = do
-                    let z = zeroIndex $ pairify tys
+          elabFE (Native (Arrow ty ty') _ _, (pqs, rqs)) = do
+                    let z = zeroIndex ty
                         Just q_0  = lookup z  pqs
                         z' = zeroIndex ty'
                         Just q_0' = lookup z' rqs
@@ -371,10 +376,9 @@ instance Elab Ex where
                 return $ MonoidalMap $ fromList $ elems ss'
         share =<< reannotateShares tss
         share =<< reannotateShares fss
-        let ifty = Arrow [BooleanTy, Tyvar "a", Tyvar "a"] (Tyvar "a")
-        let Arrow tys' ty'' = instantiate tys ifty
+        let [typ, tyt, tyf, ty''] = instantiate tys [BooleanTy, Tyvar "a", Tyvar "a", Tyvar "a"]
+        let tys' = [typ, tyt, tyf]
         let tys'' = instantiate tys' tys
-        let [typ, tyt, tyf] = tys'
         qip  <- injectAnno typ qp
         qip' <- injectAnno typ qp'
         qit  <- injectAnno tyt qt
@@ -410,7 +414,7 @@ instance Elab Ex where
         when (arity f /= length es) $
             throwError $ ArityError (arity f) (length es)
         degree <- degreeof
-        (Arrow tys' ty'', (qf, qf')) <- lookupThisSCP f >>= \case
+        (Arrow ty ty'', (qf, qf')) <- lookupThisSCP f >>= \case
             Just (asc, (qa, qa')) -> do
                 cost_free <- costof (== zero)
                 let fun = instantiate tys asc
@@ -433,6 +437,9 @@ instance Elab Ex where
                 scp' <- travFun (traverse $ \f -> (,) f <$> freshFunBounds degree f) $ updateFun scp f fun
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (elabSCP scp'))
                 return $ first tyOf $ fromJust $ lookup f scp'
+        let unpair (PairTy (t1, t2)) = t1:unpair t2
+            unpair t = [t]
+            tys' = unpair ty
         let tys'' = instantiate tys' tys
         qxs  <- zipWithM injectAnno tys' qs
         qxs' <- zipWithM injectAnno tys' qs'
@@ -441,7 +448,7 @@ instance Elab Ex where
         let ineqs = filter (uncurry (/=)) (zip tys'' tys')
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
-        let z = zeroIndex $ pairify tys'
+        let z = zeroIndex ty
             Just qf_0  = lookup z qf
             z' = zeroIndex ty''
             Just qf_0' = lookup z' qf'
@@ -503,7 +510,7 @@ instance Elab Val where
 
 instance Elab List where
     elab Nil = do
-        let ty = (ListTy $ Tyvar "a")
+        let ty = ListTy $ Tyvar "a"
         (q, q') <- freshBounds ty
         return (ty, (q, q'))
     elab (Cons v vs) = do
