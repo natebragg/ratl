@@ -36,7 +36,7 @@ import Text.Parsec.Prim (
 
 reservedSyms = map embed [
     S "->",
-    S "Nat", S "Boolean", S "Unit", S "Sym",
+    S "int", S "bool", S "unit", S "sym", S "list",
     S "define", S "if", S "let",
     S "#t", S "#f"
     ]
@@ -74,8 +74,8 @@ anyItem = satisfy (const True)
 consume :: SexpParser Val
 consume = updateParserState (\st -> st {stateInput = skipNext $ stateInput st}) >> anyItem
 
-nat :: SexpParser Val
-nat = satisfy (\case Nat _ -> True; _ -> False)
+int :: SexpParser Val
+int = satisfy (\case Nat _ -> True; _ -> False)
 
 boolean :: SexpParser Val
 boolean = satisfy (\case Boolean _ -> True; _ -> False)
@@ -110,7 +110,7 @@ var = (\(Sym (S x)) -> V x) <$> identifier
   <?> "identifier"
 
 val :: SexpParser Val
-val = nat
+val = int
   <|> boolean
   <|> try (list $ reserved (S "quote") >> consume)
   <?> "value"
@@ -123,11 +123,11 @@ ex = Var <$> var
          <|> (App <$> var <*> many ex))
 
 ty :: SexpParser Ty
-ty = (reserved (S "Nat") >> return NatTy)
- <|> (reserved (S "Boolean") >> return BooleanTy)
- <|> (reserved (S "Unit") >> return UnitTy)
- <|> (reserved (S "Sym") >> return SymTy)
- <|> (list $ ListTy <$> ty)
+ty = (reserved (S "int") >> return NatTy)
+ <|> (reserved (S "bool") >> return BooleanTy)
+ <|> (reserved (S "unit") >> return UnitTy)
+ <|> (reserved (S "sym") >> return SymTy)
+ <|> (list $ reserved (S "list") >> ListTy <$> ty)
  <?> "type"
 
 funty :: SexpParser FunTy

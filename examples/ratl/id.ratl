@@ -1,8 +1,8 @@
-(define id_list ([Nat] -> [Nat]) (args)
+(define id_list ([list int] -> [list int]) (args)
     args)
 
-(define id_nat (Nat -> Nat) (args)
+(define id_nat (int -> int) (args)
     args)
 
-(define main ([Nat] -> Nat) (args)
+(define main ([list int] -> int) (args)
     (id_nat (car (id_list args))))

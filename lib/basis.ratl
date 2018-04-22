@@ -1,1 +1,1 @@
-(define not (Boolean -> Boolean) (b) (if b #f #t))
+(define not (bool -> bool) (b) (if b #f #t))

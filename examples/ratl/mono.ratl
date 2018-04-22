@@ -1,4 +1,4 @@
-(define mono_inc ([Nat] -> Boolean) (xs)
+(define mono_inc ([list int] -> bool) (xs)
     (if (not (null? xs))
         (let ((ys (cdr xs)))
              (if (not (null? ys))
@@ -8,7 +8,7 @@
                  #t))
         #t))
 
-(define mono_dec ([Nat] -> Boolean) (xs)
+(define mono_dec ([list int] -> bool) (xs)
     (if (not (null? xs))
         (let ((ys (cdr xs)))
              (if (not (null? ys))
@@ -18,7 +18,7 @@
                  #t))
         #t))
 
-(define main ([Nat] -> Boolean) (xs)
+(define main ([list int] -> bool) (xs)
     (if (mono_inc xs)
         #t
         (mono_dec xs)))

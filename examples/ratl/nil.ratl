@@ -1,5 +1,5 @@
-(define nil ([Nat] -> [Nat]) (args)
+(define nil ([list int] -> [list int]) (args)
     '[])
 
-(define main ([Nat] -> [Nat]) (args)
+(define main ([list int] -> [list int]) (args)
     (nil args))

@@ -17,11 +17,12 @@ data Ty   = NatTy
     deriving (Eq, Ord)
 
 instance Show Ty where
-    show NatTy = "Nat"
-    show (ListTy t) = "[" ++ show t ++ "]"
-    show BooleanTy = "Boolean"
-    show UnitTy = "Unit"
-    show SymTy = "Sym"
+    show NatTy = "int"
+    show (ListTy t) = "(list " ++ show t ++ ")"
+    show (PairTy (t1, t2)) = "(pair " ++ show t1 ++ " " ++ show t2 ++ ")"
+    show BooleanTy = "bool"
+    show UnitTy = "unit"
+    show SymTy = "sym"
     show (Tyvar x) = "'" ++ x
 
 varname :: Int -> String

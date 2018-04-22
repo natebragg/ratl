@@ -1,7 +1,7 @@
-(define last ([Nat] -> Nat) (vals)
+(define last ([list int] -> int) (vals)
     (if (not (null? (cdr vals)))
         (last (cdr vals))
         (car vals)))
 
-(define main ([Nat] -> Nat) (args)
+(define main ([list int] -> int) (args)
     (last args))

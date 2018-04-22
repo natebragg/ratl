@@ -1,4 +1,4 @@
-(define insert ([Nat] -> [Nat]) (xs)
+(define insert ([list int] -> [list int]) (xs)
     (let ((x (car xs))
           (zs (cdr xs)))
          (if (null? zs)
@@ -7,10 +7,10 @@
                  (cons (car zs) (insert (cons x (cdr (cdr xs)))))
                  xs))))
 
-(define insertion ([Nat] -> [Nat]) (xs)
+(define insertion ([list int] -> [list int]) (xs)
     (if (null? xs)
         xs
         (insert (cons (car xs) (insertion (cdr xs))))))
 
-(define main ([Nat] -> [Nat]) (xs)
+(define main ([list int] -> [list int]) (xs)
     (insertion xs))

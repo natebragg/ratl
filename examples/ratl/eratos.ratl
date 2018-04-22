@@ -1,9 +1,9 @@
-(define divides? ([Nat] -> Boolean) (dennum)
+(define divides? ([list int] -> bool) (dennum)
     (let ((d (car dennum))
           (n (car (cdr dennum))))
          (= n (* d (/ n d)))))
 
-(define filtercar ([Nat] -> [Nat]) (xs)
+(define filtercar ([list int] -> [list int]) (xs)
     (let ((x (car xs))
           (ys (cdr xs)))
          (if (null? ys)
@@ -13,19 +13,19 @@
                       rest
                       (cons (car ys) rest))))))
 
-(define eratos ([Nat] -> [Nat]) (xs)
+(define eratos ([list int] -> [list int]) (xs)
     (if (null? xs)
         xs
         (cons (car xs) (eratos (filtercar xs)))))
 
-(define range ([Nat] -> [Nat]) (nm)
+(define range ([list int] -> [list int]) (nm)
     (let ((n (car nm))
           (m (car (cdr nm))))
          (if (= n m)
              '[]
              (cons n (range (cons (+ n 1) (cdr nm)))))))
 
-(define main (Nat -> [Nat]) (n)
+(define main (int -> [list int]) (n)
     (if (< n 2)
         '[]
         (eratos (range (cons 2 (cons n '[]))))))

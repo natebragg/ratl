@@ -1,9 +1,9 @@
-(define all ([Boolean] -> Boolean) (args)
+(define all ([list bool] -> bool) (args)
     (if (not (null? args))
         (if (car args)
             (all (cdr args))
             #f)
         #t))
 
-(define main ([Boolean] -> Boolean) (args)
+(define main ([list bool] -> bool) (args)
     (all args))

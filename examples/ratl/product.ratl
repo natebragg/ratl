@@ -1,8 +1,8 @@
-(define product ([Nat] -> Nat) (xs)
+(define product ([list int] -> int) (xs)
     (if (null? xs)
         1
         (* (car xs)
            (product (cdr xs)))))
 
-(define main ([Nat] -> Nat) (xs)
+(define main ([list int] -> int) (xs)
     (product xs))
