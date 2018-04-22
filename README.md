@@ -92,9 +92,11 @@ application, and branching with `if`.
 
 Functions are called in prefix position, wrapped in parentheses.
 
-Builtin functions include arithmetic with `+`, `*`, and `/`, comparison with
+Builtin functions include arithmetic with `+`, `-`, `*`, and `/`, comparison with
 `<`, `>` and `=`, fetching the `car` and `cdr` of a list, prepending to a list
 with `cons`, testing a list with `null?`, and negating booleans with `not`.
+Notably, the result of subtraction cannot be negative; rather than producing an
+error, it is bounded below by zero.
 
 Literal values include the positive integers starting at zero, booleans, symbols,
 and lists.  Lists can be over integers or booleans, or over lists, lists of
@@ -121,7 +123,7 @@ For more examples, take a look under the `examples/ratl` directory.
 ## Semantics
 
 Ratl is almost useful.  It is a language that can mostly be used to create and
-consume lists.  It is limited enough that it lacks subtraction.
+consume lists and perform arithmetic.
 
 All expressions return a value.  Function bodies evaluate to the function's
 return value.  Looping is achieved via recursion.  The interpreter starts
@@ -417,8 +419,7 @@ would scale for Ratl, since MegiddoLP doesn't scale.
 ## Prior Work
 
 Ratl is based on the ideas behind the Raml project from Jan Hoffmann, et. all.
-Raml is much more powerful than Ratl.  Aside from being a language capable of
-feats such as subtraction, Raml's analysis can decide multi-variate polynomial
+Raml is much more powerful than Ratl.  Raml's analysis can decide multi-variate polynomial
 upper bounds, not just univariate, for example, taking the outer product of two
 vectors of potentially different lengths.
 

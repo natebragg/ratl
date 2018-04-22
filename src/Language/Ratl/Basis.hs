@@ -61,6 +61,7 @@ prims :: Prog
 prims = makeProg [
     -- arithmetic operations
     (V "+",     Native (Arrow [NatTy, NatTy] NatTy)                                 2 (arith (+))),
+    (V "-",     Native (Arrow [NatTy, NatTy] NatTy)                                 2 (arith (-))),
     (V "*",     Native (Arrow [NatTy, NatTy] NatTy)                                 2 (arith (*))),
     (V "/",     Native (Arrow [NatTy, NatTy] NatTy)                                 2 divide),
 
