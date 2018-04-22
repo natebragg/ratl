@@ -39,8 +39,7 @@ import Language.Ratl.Index (
     zeroIndex,
     shift,
     inject,
-    extend,
-    expand,
+    placeInAt,
     )
 import Language.Ratl.Ty (
     Ty(..),
@@ -176,7 +175,7 @@ pairify (ty:tys) = PairTy (ty, pairify tys)
 
 situate :: [Ty] -> [IxEnv a] -> IxEnv a
 situate tys ixss = foldl (unionBy ((==) `on` fst)) [] $ map (uncurry place) $ zip ptys ixss
-    where place pty ixs = map (first (fromJust . extend (head ptys) . fromJust . expand pty)) ixs
+    where place pty ixs = map (first (fromJust . placeInAt (head ptys) pty)) ixs
           ptys = map pairify $ tails tys
 
 freshIxEnv :: MonadState Anno m => Int -> Ty -> m (IxEnv Anno)
