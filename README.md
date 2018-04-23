@@ -88,7 +88,7 @@ using arrow syntax, and must have a single argument, whose name is given in
 parentheses.  The body is an expression.
 
 Expressions include recalling a variable by name, literal values, function
-application, and branching with `if`.
+application, local variables with `let`, and branching with `if`.
 
 Functions are called in prefix position, wrapped in parentheses.
 
