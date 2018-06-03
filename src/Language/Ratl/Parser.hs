@@ -7,12 +7,14 @@ module Language.Ratl.Parser (
     prog,
 ) where
 
-import Language.Ratl.Ast (
+import Language.Ratl.Val (
     Embeddable(..),
     List(..),
     Sym(..),
-    Var(..),
     Val(..),
+    )
+import Language.Ratl.Ast (
+    Var(..),
     Fun(..),
     Ex(..),
     Prog,

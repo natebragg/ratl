@@ -4,11 +4,13 @@ module Language.Ratl.Eval (
     run,
 ) where
 
-import Language.Ratl.Ast (
+import Language.Ratl.Val (
     Embeddable(..),
+    Val(..),
+    )
+import Language.Ratl.Ast (
     NativeError(..),
     Var(..),
-    Val(..),
     Fun(..),
     Ex(..),
     Prog,

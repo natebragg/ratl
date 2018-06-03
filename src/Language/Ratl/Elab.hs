@@ -47,10 +47,12 @@ import Language.Ratl.Ty (
     varnum,
     FunTy(..),
     )
-import Language.Ratl.Ast (
+import Language.Ratl.Val (
     List(..),
-    Var(..),
     Val(..),
+    )
+import Language.Ratl.Ast (
+    Var(..),
     Fun(..),
     Ex(..),
     Prog,

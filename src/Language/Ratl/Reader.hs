@@ -3,7 +3,7 @@ module Language.Ratl.Reader (
     sexps,
 ) where
 
-import Language.Ratl.Ast (
+import Language.Ratl.Val (
     Embeddable(..),
     Val(..),
     Sym(..),

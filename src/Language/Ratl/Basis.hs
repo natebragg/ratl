@@ -11,11 +11,13 @@ import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
     )
-import Language.Ratl.Ast (
+import Language.Ratl.Val (
     Embeddable(..),
-    NativeError(..),
     List(..),
     Val(..),
+    )
+import Language.Ratl.Ast (
+    NativeError(..),
     Var(..),
     Fun(..),
     Prog,

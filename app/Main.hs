@@ -21,12 +21,12 @@ import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralFo
 import Language.Ratl.Reader (sexp, sexps)
 import Language.Ratl.Parser (preorder, prog)
 import Language.Ratl.Basis (prims, basis)
+import Language.Ratl.Val (embed)
 import Language.Ratl.Ast (
     Ex(..),
     Var(V),
     Fun(..),
     Prog,
-    embed,
     lookupFun,
     mapFun,
     connects,
