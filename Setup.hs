@@ -1,12 +1,12 @@
 import Distribution.PackageDescription (PackageDescription(..))
-import Distribution.Package (packageVersion, packageName, PackageIdentifier(..), PackageName(..))
+import Distribution.Package (packageVersion, packageName, PackageIdentifier(..), PackageName, unPackageName)
 import Distribution.Simple (defaultMainWithHooks, simpleUserHooks, UserHooks(..))
-import Distribution.Simple.BuildPaths (autogenModulesDir)
-import Distribution.Simple.LocalBuildInfo (LocalBuildInfo)
+import Distribution.Simple.BuildPaths (autogenComponentModulesDir)
+import Distribution.Simple.LocalBuildInfo (LocalBuildInfo, withExeLBI)
 import Distribution.Simple.Setup (BuildFlags(..), fromFlag)
 import Distribution.Simple.Utils (createDirectoryIfMissingVerbose, rewriteFile)
 import System.FilePath ((</>), (<.>))
-import Data.Version (showVersion)
+import Distribution.Version (showVersion)
 
 main = defaultMainWithHooks packageInfoUserHooks
 
@@ -17,13 +17,15 @@ packageInfoUserHooks =
     }
 
 app_name :: PackageIdentifier -> String
-app_name packageInfo = ((\ (PackageName s) -> s) $ packageName packageInfo)
+app_name packageInfo = (unPackageName $ packageName packageInfo)
 
 genPackageInfoHook :: PackageDescription -> LocalBuildInfo -> UserHooks -> BuildFlags -> IO ()
 genPackageInfoHook pkg lbi uhs bfs= do
-    createDirectoryIfMissingVerbose (fromFlag $ buildVerbosity bfs) True (autogenModulesDir lbi)
-    let packageInfoModulePath = autogenModulesDir lbi </> cfg_name <.> "hs"
-    rewriteFile packageInfoModulePath generate
+    withExeLBI pkg lbi $ \_ clbi -> do
+        let compModDir = autogenComponentModulesDir lbi clbi
+        createDirectoryIfMissingVerbose (fromFlag $ buildVerbosity bfs) True compModDir
+        let packageInfoModulePath = compModDir </> cfg_name <.> "hs"
+        rewriteFile packageInfoModulePath generate
     buildHook simpleUserHooks pkg lbi uhs bfs
     where cfg_name = "PackageInfo"
           generate = "module " ++ cfg_name ++ " where\n" ++
