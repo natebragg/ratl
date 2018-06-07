@@ -1,6 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -8,11 +7,20 @@
 {-# LANGUAGE GADTs #-}
 
 module Language.Ratl.Val (
+    Span(..),
     Embeddable(..),
     List(Nil, Cons),
-    Sym(..),
     Val(List, Nat, Boolean, Unit, Sym),
+    LitList(LitNil, LitCons),
+    litList,
+    Lit(LitList, LitNat, LitBoolean, LitUnit, LitSym),
+    litSpan,
 ) where
+
+import Text.Parsec.Pos (SourcePos)
+
+data Span = Span SourcePos SourcePos
+          | Unknown
 
 projectionBug v = error $ "Tried to project to wrong type, which should be impossible: " ++ show v
 
@@ -30,17 +38,6 @@ instance Embeddable (f (Fix f)) => Embeddable (Fix f) where
 
 instance Show (f (Fix f)) => Show (Fix f) where
     show = show . unfix
-
-newtype Nat = N Int
-    deriving (Eq)
-
-instance Embeddable Int where
-    embed = Nat . N . max 0
-    project (Nat (N n)) = n
-    project v = projectionBug v
-
-instance Show Nat where
-    show (N n) = show n
 
 data ListRep v = NilRep | ConsRep v (ListRep v)
     deriving (Eq, Functor)
@@ -71,6 +68,31 @@ pattern Cons v xs <- ((\case
             l@(ListT (ConsRep v xs)) -> (l, Val v, ListT xs)
             l -> (l, undefined, undefined)) -> (ListT (ConsRep _ _), v, xs))
     where Cons v xs = ListT (ConsRep (unval v) (unlist xs))
+
+newtype LitList = LitListT { unsexp :: ListRep (Fix LitRep) }
+    deriving Eq
+
+{-# COMPLETE LitNil, LitCons #-}
+
+pattern LitNil = LitListT NilRep
+pattern LitCons v xs <- ((\case
+            l@(LitListT (ConsRep v xs)) -> (l, Lit v, LitListT xs)
+            l -> (l, undefined, undefined)) -> (LitListT (ConsRep _ _), v, xs))
+    where LitCons v xs = LitListT (ConsRep (unlit v) (unsexp xs))
+
+litList :: [Lit] -> LitList
+litList = LitListT . foldr (ConsRep . unlit) NilRep
+
+newtype Nat = N Int
+    deriving (Eq)
+
+instance Embeddable Int where
+    embed = Nat . N . max 0
+    project (Nat (N n)) = n
+    project v = projectionBug v
+
+instance Show Nat where
+    show (N n) = show n
 
 newtype Boolean = B Bool
     deriving (Eq)
@@ -138,3 +160,39 @@ instance Embeddable Val where
 
 instance Show Val where
     show = show . unval
+
+newtype LitRep a = LitRep { unlitrep :: (Span, ValRep a) }
+
+instance Eq a => Eq (LitRep a) where
+    (LitRep (_, a)) == (LitRep (_, b)) = a == b
+
+instance Embeddable a => Embeddable (LitRep a) where
+    embed = embed . snd . unlitrep
+    project = LitRep . (,) Unknown . project
+
+instance Show a => Show (LitRep a) where
+    show = show . snd . unlitrep
+
+newtype Lit = Lit { unlit :: (Fix LitRep) }
+    deriving Eq
+
+{-# COMPLETE LitList, LitNat, LitBoolean, LitUnit, LitSym #-}
+
+pattern LitList span xs <- ((\case
+            v@(Lit (Fix (LitRep (_, ListRep xs)))) -> (v, LitListT xs)
+            v -> (v, undefined)) -> (Lit (Fix (LitRep (span, ListRep _))), xs))
+    where LitList span xs = Lit (Fix (LitRep (span, ListRep (unsexp xs))))
+pattern LitNat span n = Lit (Fix (LitRep (span, NatRep (N n))))
+pattern LitBoolean span b = Lit (Fix (LitRep (span, BooleanRep (B b))))
+pattern LitUnit span = Lit (Fix (LitRep (span, UnitRep)))
+pattern LitSym span s = Lit (Fix (LitRep (span, SymRep (S s))))
+
+litSpan :: Lit -> Span
+litSpan = fst . unlitrep . unfix . unlit
+
+instance Embeddable Lit where
+    embed = embed . unlit
+    project = Lit . project
+
+instance Show Lit where
+    show = show . unlit

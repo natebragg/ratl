@@ -129,7 +129,7 @@ main = do
     m <- handleE $ parse (prog <* eof) fn $ preorder sm
     let p = callgraph $ prims_basis `mappend` m
     a <- if mode /= Run then return $ embed (0 :: Int) else
-        handleE $ parse (sexp <* eof) "command line" cmdline
+        handleE $ fmap embed $ parse (sexp <* eof) "command line" cmdline
     programs <- handleEx $ check deg_max p
     let mainapp a = (App (V "main") [(Val a)])
     cl_prog <- if mode /= Run then return [] else do

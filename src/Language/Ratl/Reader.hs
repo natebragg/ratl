@@ -5,12 +5,13 @@ module Language.Ratl.Reader (
 
 import Language.Ratl.Val (
     Embeddable(..),
-    Val(..),
-    Sym(..),
+    Span(Span),
+    Lit(..),
+    litList,
     )
 
 import Data.Char (isSpace)
-import Text.Parsec (try, many, (<|>), (<?>))
+import Text.Parsec (try, many, getPosition, (<|>), (<?>))
 import Text.Parsec.Char (noneOf, char)
 import Text.Parsec.String (Parser)
 import Text.Parsec.Language (LanguageDef, emptyDef)
@@ -62,25 +63,38 @@ boolean :: Parser Bool
 boolean = (reserved "#t" >> return True)
       <|> (reserved "#f" >> return False)
 
-sym :: Parser Sym
-sym = S <$> identifier
+sym :: Parser String
+sym = identifier
 
-atom :: Parser Val
-atom = embed <$> boolean
-   <|> embed <$> nat
-   <|> embed <$> sym
+spanOf :: (Span -> a -> Lit) -> Parser a -> Parser Lit
+spanOf c p = do
+    pos <- getPosition
+    result <- p
+    pos' <- getPosition
+    return $ c (Span pos pos') result
+
+atom :: Parser Lit
+atom = spanOf LitBoolean boolean
+   <|> spanOf LitNat nat
+   <|> spanOf LitSym sym
    <?> "atom"
 
-list :: Parser Val
-list = embed <$> parens (many sexp)
-   <|> embed <$> brackets (many sexp)
+list :: Parser Lit
+list = spanOf LitList (parens (litList <$> many sexp))
+   <|> spanOf LitList (brackets (litList <$> many sexp))
    <?> "list"
 
-sexp :: Parser Val
-sexp = embed <$> ((embed (S "quote") :) <$> (pure <$> (char '\'' >> sexp)))
+quoted :: Parser Lit
+quoted = spanOf LitList $ do
+    quote <- spanOf LitSym $ char '\'' >> return "quote"
+    datum <- sexp
+    return $ litList [quote, datum]
+
+sexp :: Parser Lit
+sexp = quoted
    <|> atom
    <|> list
    <?> "s-expression"
 
-sexps :: Parser Val
-sexps = whiteSpace >> embed <$> many sexp
+sexps :: Parser Lit
+sexps = whiteSpace >> spanOf LitList (litList <$> many sexp)
