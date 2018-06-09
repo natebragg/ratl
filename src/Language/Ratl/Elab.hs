@@ -12,6 +12,8 @@ import Data.Function (on)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
 import Data.Maybe (listToMaybe, isJust, fromJust, mapMaybe)
+import Data.Foldable (traverse_)
+import Data.Traversable (for)
 import Control.Applicative (empty)
 import Control.Arrow (first, second, (***), (&&&))
 import Control.Monad (when, forM, void, zipWithM)
@@ -280,7 +282,10 @@ zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 check :: (MonadError TypeError m) => Int -> [Prog] -> m ProgEnv
 check deg_max p = flip evalStateT 0 $ fmap concat $ forM p $ \scp -> do
     scp' <- travFun (traverse $ \f -> (,) f <$> freshFunBounds deg_max f) scp
-    (los, cs) <- runWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
+    cs <- execWriterT $ runReaderT (elabSCP scp') $ CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
+    los <- for scp' $ traverse $ \(fun, (pqs, _)) -> do
+        let Arrow pty _ = tyOf fun
+        return $ reverse $ take (deg_max + 1) $ map (sparse . map (flip (,) 1.0 . fromJust . flip lookup pqs)) $ index pty
     return $ map (second $ \os -> [GeneralForm Minimize o cs | o <- os]) los
 
 checkEx :: (MonadError TypeError m) => Int -> [Prog] -> Ex -> m GeneralForm
@@ -290,15 +295,9 @@ checkEx deg_max p e = flip evalStateT 0 $ do
         Just q_0 = lookup z q
     return $ GeneralForm Minimize (sparse [(q_0, 1.0)]) $ constrainShares css
 
-elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) [(Var, [LinearFunction])]
-elabSCP = traverse (traverse elabF)
-    where elabF :: (MonadError TypeError m, MonadState Anno m) => (Fun, (IxEnv Anno, IxEnv Anno)) -> ReaderT CheckF (WriterT [GeneralConstraint] m) [LinearFunction]
-          elabF f@(fun, (pqs, _)) = do
-                    mapReaderT (mapWriterT (fmap $ second $ constrainShares)) $ elabFE f
-                    deg_max <- asks degree
-                    let Arrow pty _ = tyOf fun
-                    return $ reverse $ take (deg_max + 1) $ map (sparse . map (flip (,) 1.0 . fromJust . flip lookup pqs)) $ index pty
-          elabFE :: (MonadError TypeError m, MonadState Anno m) => (Fun, (IxEnv Anno, IxEnv Anno)) -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
+elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) ()
+elabSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constrainShares)) . elabFE)
+    where elabFE :: (MonadError TypeError m, MonadState Anno m) => (Fun, (IxEnv Anno, IxEnv Anno)) -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           elabFE (Fun (Arrow pty rty) x e, (pqs, rqs)) = do
                     xqs <- rezero pty pqs
                     (ty, (q, q')) <- withReaderT (CheckE $ zip [x] [(pty, xqs)]) $ elab e
