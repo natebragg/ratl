@@ -72,7 +72,8 @@ type TyEnv a = [(Var, (Ty, IxEnv a))]
 type FunEnv a = [(Var, (Fun, (IxEnv a, IxEnv a)))]
 type SharedTys a = MonoidalMap (IxEnv a) [IxEnv a]
 type TyvarEnv = [(String, Ty)]
-type ProgEnv = [(Var, [GeneralForm])]
+type Eqn = (IxEnv Anno, [GeneralForm])
+type EqnEnv = [(Var, Eqn)]
 
 update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 update a b [] = [(a,b)]
@@ -283,23 +284,26 @@ zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 objective :: IxEnv Anno -> [Index] -> Objective
 objective qs ixs = sparse $ map (flip (,) 1 . fromJust . flip lookup qs) ixs
 
-check :: (MonadError TypeError m) => Int -> [Prog] -> m ProgEnv
+check :: (MonadError TypeError m) => Int -> [Prog] -> m EqnEnv
 check deg_max p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
     scp' <- travFun (traverse $ \f -> (,) f <$> freshFunBounds deg_max f) scp
     let checkState = CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
     cs <- execWriterT $ runReaderT (elabSCP scp') checkState
     for scp' $ traverse $ \(fun, (pqs, _)) -> do
         let Arrow pty _ = tyOf fun
-        for (reverse $ take (deg_max + 1) $ index pty) $ \ixs -> do
+        progs <- for (reverse $ take (deg_max + 1) $ index pty) $ \ixs -> do
             let obj = objective pqs ixs
             return $ GeneralForm Minimize obj cs
+        return (pqs, progs)
 
-checkEx :: (MonadError TypeError m) => Int -> [Prog] -> Ex -> m GeneralForm
+checkEx :: (MonadError TypeError m) => Int -> [Prog] -> Ex -> m Eqn
 checkEx deg_max p e = flip evalStateT 0 $ do
     let checkState = CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
     ((ty, (q, q')), css) <- runWriterT $ runReaderT (elab e) $ CheckE [] checkState
-    let obj = objective q [zeroIndex ty]
-    return $ GeneralForm Minimize obj $ constrainShares css
+    progs <- for [[zeroIndex ty]] $ \ixs -> do
+        let obj = objective q ixs
+        return $ GeneralForm Minimize obj $ constrainShares css
+    return (q, progs)
 
 elabSCP :: (MonadError TypeError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) ()
 elabSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constrainShares)) . elabFE)

@@ -130,14 +130,14 @@ main = do
     let p = callgraph $ prims_basis `mappend` m
     a <- if mode /= Run then return $ embed (0 :: Int) else
         handleE $ fmap embed $ parse (sexp <* eof) "command line" cmdline
-    programs <- handleEx $ check deg_max p
+    eqns <- handleEx $ check deg_max p
     let mainapp a = (App (V "main") [(Val a)])
-    cl_prog <- if mode /= Run then return [] else do
-        program <- handleEx $ checkEx deg_max p $ mainapp a
-        return [(V fn, [program])]
-    let module_programs = cl_prog ++ filter (isNothing . lookupFun prims_basis . fst) programs
-    forM module_programs $ \(f, program) -> do
-        let (optimums, magnitudes) = unzip $ progressive_solve program
+    cl_eqns <- if mode /= Run then return [] else do
+        eqns <- handleEx $ checkEx deg_max p $ mainapp a
+        return [(V fn, eqns)]
+    let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
+    forM module_eqns $ \(f, (ixs, eqns)) -> do
+        let (optimums, magnitudes) = unzip $ progressive_solve eqns
         let infeasible = any null optimums
         let bound = if infeasible
                     then ": Analysis was infeasible"
