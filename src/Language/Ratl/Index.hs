@@ -4,6 +4,7 @@ module Language.Ratl.Index (
   index,
   indexDeg,
   zeroIndex,
+  factor,
   shift,
   inject,
   placeInAt,
@@ -11,14 +12,19 @@ module Language.Ratl.Index (
 
 import Control.Arrow (first, second, (***), (&&&))
 import Data.Function (on)
-import Data.List (groupBy, inits)
+import Data.List (groupBy, inits, intercalate)
 import Language.Ratl.Ty (Ty(..))
 
 data Index = AIndex
            | VIndex
            | PIndex (Index, Index)
            | LIndex [Index]
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
+
+instance Show Index where
+    show (PIndex (i1, i2)) = '(' : show i1 ++ ", " ++ show i2 ++ ")"
+    show (LIndex is) = '[' : intercalate ", " (map show is) ++ "]"
+    show _ = "∗"
 
 heads :: ([a], [b]) -> (a, b)
 heads = head *** head
@@ -75,6 +81,19 @@ indexDeg k = concat . take (k + 1) . index
 
 zeroIndex :: Ty -> Index
 zeroIndex = head . head . index
+
+zero :: Index -> Index
+zero (PIndex (i1, i2)) = PIndex (zero i1, zero i2)
+zero (LIndex _) = LIndex []
+zero i = i
+
+factor :: Index -> [(Index, Int)]
+factor (PIndex (i1, i2)) = [(PIndex (i, zero i2), d) | (i, d) <- factor i1] ++
+                           [(PIndex (zero i1, i), d) | (i, d) <- factor i2]
+factor (LIndex is@(i:_)) = (LIndex [zero i], length is) :
+                           [(LIndex (reverse $ i:zs), d) | (fs, zs) <- fzs, (i, d) <- fs]
+        where fzs = map ((factor . head *** map zero) . splitAt 1 . reverse) $ tail $ inits is
+factor i = []
 
 shift :: Ty -> [(((Index, Index), Index), (Index, Index))]
 shift t@(ListTy _) = zip (zip sis pis) (zip tis lis)

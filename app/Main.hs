@@ -5,9 +5,11 @@ module Main where
 import Control.Arrow (second)
 import Control.Monad (when, forM)
 import Control.Monad.Except (runExceptT)
+import Control.Monad.State (State, get, put, runState)
 import Data.Either (lefts, rights)
 import Data.List (intercalate)
 import Data.Maybe (isNothing, fromJust)
+import Data.Tuple (swap)
 import Text.Parsec (parse, eof)
 import Text.Printf (printf)
 import Text.Read (readEither)
@@ -21,6 +23,7 @@ import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralFo
 import Language.Ratl.Reader (sexp, sexps)
 import Language.Ratl.Parser (preorder, prog)
 import Language.Ratl.Basis (prims, basis)
+import Language.Ratl.Index (Index, factor)
 import Language.Ratl.Val (embed)
 import Language.Ratl.Ast (
     Ex(..),
@@ -41,13 +44,30 @@ progressive_solve = fst . foldl accum ([], [])
     where accum (ss, cs') (GeneralForm dir obj cs) = (ss ++ [sol], (obj `Leq` snd sol):cs')
             where sol = solve $ GeneralForm dir obj (cs' ++ cs)
 
-pretty_bound :: [Double] -> String
-pretty_bound cs = if null bounds then show 0.0 else intercalate " + " bounds
-    where bounds = reverse $ concatMap coeff $ zip [0..] $ reverse cs
-          coeff (_, c) | c < 1.0e-9 = []
-          coeff (0, c) = [printf "%.1f" c]
-          coeff (1, c) = [printf "%.1f" c ++ "*n"]
-          coeff (n, c) = [printf "%.1f" c ++ "*n^" ++ show n]
+pretty_bound :: [(Index, Int)] -> [Double] -> String
+pretty_bound ixs cs = if null bounds then show 0.0 else (intercalate " + " bounds ++ explanation)
+    where (bounds, (_, vs)) = flip runState (varnames, []) $
+                                reverse <$> concat <$> traverse coeff cixs
+          cixs = fmap (fmap $ flip lookup $ map swap ixs) $ zip cs [0..]
+          explanation = if length vs <= 1 then "" else ("\n  where" ++ concat descriptions)
+          descriptions = map (\(ix, x) -> "\n    " ++ x ++ " is for index " ++ show ix) vs
+          varnames = map pure alphabet ++ concatMap (\n -> map (:'_':show n) alphabet) [2..]
+          -- the alphabet in reverse starting from n skipping o and l
+          alphabet = ['n', 'm'] ++ ['k', 'j'..'a'] ++ ['z', 'y'..'p']
+          coeff (c, _) | c < 1.0e-9 = return []
+          coeff (_, Nothing) = return []
+          coeff (c, Just ix) = mapM poly (factor ix) >>= \es ->
+                                return [printf "%.1f" c ++ concatMap ("*" ++) es]
+          poly :: (Index, Int) -> State ([String], [(Index, String)]) String
+          poly (ix, d) = do
+                let exp = if d > 1 then '^' : show d else ""
+                (xs, vs) <- get
+                case lookup ix vs of
+                    Just x -> return $ x ++ exp
+                    Nothing -> do
+                        let x = head xs
+                        put (tail xs, (ix, x):vs)
+                        return $ x ++ exp
 
 callgraph :: Prog -> [Prog]
 callgraph = scSubprograms . (connects =<< flatten . mapFun (second calls))
@@ -137,11 +157,11 @@ main = do
         return [(V fn, eqns)]
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
     forM module_eqns $ \(f, (ixs, eqns)) -> do
-        let (optimums, magnitudes) = unzip $ progressive_solve eqns
+        let (optimums, _) = unzip $ progressive_solve eqns
         let infeasible = any null optimums
         let bound = if infeasible
                     then ": Analysis was infeasible"
-                    else ": " ++ pretty_bound magnitudes
+                    else ": " ++ pretty_bound ixs (last optimums)
         putStrLn $ show f ++ bound
         return $ (f, not infeasible)
     when (mode == Run) $ do
