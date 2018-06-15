@@ -13,6 +13,11 @@ build-type:          Custom
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
+custom-setup
+  setup-depends:       base >= 4.7 && < 5
+                     , Cabal >= 1.24 && < 2.1
+                     , filepath
+
 library
   hs-source-dirs:      src
   exposed-modules:     Data.Clp.Clp
