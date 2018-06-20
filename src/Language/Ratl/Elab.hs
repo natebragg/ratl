@@ -37,12 +37,13 @@ import Language.Ratl.Anno (
     )
 import Language.Ratl.Index (
     Index,
+    poly,
     index,
     indexDeg,
     zeroIndex,
     shift,
     inject,
-    placeInAt,
+    projectionsDeg,
     )
 import Language.Ratl.Ty (
     Ty(..),
@@ -182,13 +183,6 @@ instance Instantiable Fun where
     instantiate tys (Fun ty x e) = Fun (instantiate tys ty) x e
     instantiate tys (Native ty a f) = Native (instantiate tys ty) a f
 
-situate :: [Ty] -> [IxEnv a] -> IxEnv a
-situate tys ixss = foldl (unionBy ((==) `on` fst)) [] $ map (uncurry place) $ zip ptys ixss
-    where place pty ixs = map (first (fromJust . placeInAt (head ptys) pty)) ixs
-          ptys = map pairify $ tails tys
-          pairify [ty] = ty
-          pairify (ty:tys) = PairTy (ty, pairify tys)
-
 freshIxEnv :: MonadState Anno m => Int -> Ty -> m (IxEnv Anno)
 freshIxEnv k t = traverse (reannotate . flip (,) ()) $ indexDeg k t
 
@@ -225,6 +219,9 @@ equate = relate Eql
 
 exceed :: IxEnv Anno -> [IxEnv Anno] -> [GeneralConstraint]
 exceed = relate Geq
+
+equatePoly :: IxEnv Anno -> [IxEnv (Anno, Double)] -> [GeneralConstraint]
+equatePoly i is = [sparse (exchange (Consume p):map (fmap negate) pcs) `Eql` 0.0 | (ix, p) <- i, pcs <- [mapMaybe (lookup ix) is], not $ null pcs, not $ elem p $ map fst pcs]
 
 data CheckE = CheckE {
         env :: TyEnv Anno,
@@ -468,8 +465,9 @@ instance Elab Ex where
             zs = map zeroIndex tys'
             qxs_0  = zipWith ((fromJust .) . lookup) zs qxs
             qxs_0' = zipWith ((fromJust .) . lookup) zs qxs'
-            qxf = situate tys' qxs
-        constrain $ equate (delete z qxf) [qf]
+            qxf = map (concatMap (map pure . flip mapMaybe qf . xlate)) $ projectionsDeg degree ty
+                where xlate ixs (ix, a) = (\ix' -> (ix', (a, poly ix / poly ix'))) <$> lookup ix ixs
+        constrain $ concat $ zipWith equatePoly (zipWith delete zs qxs) qxf
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno

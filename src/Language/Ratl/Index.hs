@@ -1,18 +1,20 @@
 module Language.Ratl.Index (
   Index,
   deg,
+  poly,
   index,
   indexDeg,
   zeroIndex,
   factor,
   shift,
   inject,
-  placeInAt,
+  projections,
+  projectionsDeg,
 ) where
 
 import Control.Arrow (first, second, (***), (&&&))
 import Data.Function (on)
-import Data.List (groupBy, inits, intercalate)
+import Data.List (groupBy, inits, intercalate, subsequences)
 import Language.Ratl.Ty (Ty(..))
 
 data Index = AIndex
@@ -61,6 +63,12 @@ deg AIndex = 0
 deg VIndex = 0
 deg (PIndex (i1, i2)) = deg i1 + deg i2
 deg (LIndex is) = length is + sum (map deg is)
+
+poly :: Index -> Double
+poly AIndex = 1.0
+poly VIndex = 1.0
+poly (PIndex (i1, i2)) = poly i1 * poly i2
+poly (LIndex is) = sum $ map product $ subsequences $ map poly is
 
 index :: Ty -> [[Index]]
 index (NatTy)      = [[AIndex]]
@@ -115,17 +123,31 @@ inject ty                VIndex            = Just $ zeroIndex ty
 inject ty AIndex | zeroIndex ty == AIndex  = Just AIndex
 inject _                 _                 = Nothing
 
-placeInAt :: Ty -> Ty -> Index -> Maybe Index
-placeInAt fty rty ix = inject fty =<< revix <$> (go (revty fty) . revix =<< go rty ix)
-    where revty (PairTy (t1, t2)) = rt t2 t1
-          revty                ty = ty
-          rt (PairTy (t1, t2)) t3 = rt t2 $ PairTy (t1, t3)
-          rt                t1 t3 = PairTy (t1, t3)
-          revix (PIndex (i1, i2)) = ri i2 i1
-          revix                ix = ix
-          ri (PIndex (i1, i2)) i3 = ri i2 $ PIndex (i1, i3)
-          ri                i1 i3 = PIndex (i1, i3)
-          go (PairTy (t1, t2)) (PIndex (i1, i2)) = PIndex . (,) i1 <$> go t2 i2
-          go (PairTy (t1, t2))                i1 = PIndex . (,) i1 <$> go t2 VIndex
-          go                 _ (PIndex        _) = Nothing
-          go                 _                 i = Just i
+-- Vary each position infinitely while holding everything else constant.
+--                   ,----- Per position
+--                   |,---- Per position degree
+--                   ||,--- Per exact position index
+--                   |||,-- Per overall degree
+--                   ||||,- Per full index
+--                   |||||
+--                   VVVVV  full   pos
+projections :: Ty -> [[[[[(Index, Index)]]]]]
+projections = go
+    where assoc (a, (b, c)) = ((a, b), c)
+          allpairs = (map (map (first PIndex . assoc) . uncurry diagonals) .) . diagonals
+          go :: Ty -> [[[[[(Index, Index)]]]]]
+          go (PairTy (t1, t2)) =
+            let i1s = index t1
+            in  map (map (\i1 -> map (map (flip (,) i1 . PIndex . (,) i1)) $ index t2)) i1s :
+                map (map (map (allpairs i1s))) (go t2)
+          go t = [map (map (pure . pure . (id &&& id))) $ index t]
+
+-- Vary each position up to degree k while holding everything else constant.
+--                             ,--- Per position
+--                             |,-- Per position, position degree monotonic
+--                             ||,- Per full index, overall degree monotonic
+--                             |||
+--                             VVV  full   pos
+projectionsDeg :: Int -> Ty -> [[[(Index, Index)]]]
+projectionsDeg k = map (concatMap overallDeg . take (k + 1)) . projections
+    where overallDeg = map $ concat . (takeWhile $ (<= k) . deg . fst . head)
