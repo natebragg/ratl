@@ -12,7 +12,7 @@ import Data.Function (on)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
 import Data.Maybe (listToMaybe, isJust, fromJust, mapMaybe)
-import Data.Foldable (traverse_)
+import Data.Foldable (traverse_, foldrM)
 import Data.Traversable (for)
 import Control.Applicative (empty)
 import Control.Arrow (first, second, (***), (&&&))
@@ -223,6 +223,10 @@ exceed = relate Geq
 equatePoly :: IxEnv Anno -> [IxEnv (Anno, Double)] -> [GeneralConstraint]
 equatePoly i is = [sparse (exchange (Consume p):map (fmap negate) pcs) `Eql` 0.0 | (ix, p) <- i, pcs <- [mapMaybe (lookup ix) is], not $ null pcs, not $ elem p $ map fst pcs]
 
+buildPoly :: [IxEnv a] -> [[[(Index, Index)]]] -> [[IxEnv (a, Double)]]
+buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe qs . xlate
+    where xlate ixs (ix, a) = (\ix' -> (ix', (a, poly ix / poly ix'))) <$> lookup ix ixs
+
 data CheckE = CheckE {
         env :: TyEnv Anno,
         checkF :: CheckF
@@ -318,31 +322,27 @@ elabSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
                         Just pqs_0 = lookup pz pqs
                     constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
                     constrain $ equate rqs [qsx']
-          elabFE (Native (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = do -- hack for cdr
-                    let Just shs = sequence $ takeWhile isJust $ map (\(((_, i), _), (i1, i2)) -> const (i, [i1, i2]) <$> lookup i1 pqs) $ shift pty
-                        shmap = map ((head *** nub . concat) . unzip) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) shs
-                        ss = map (\(i, is) -> (,) <$> lookup i rqs <*> sequence (filter isJust $ map (flip lookup pqs) is)) shmap
-                    constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
-                               Just (q, ps) <- ss, not $ q `elem` ps]
-          elabFE (Native (Arrow pty@(ListTy pt) rt) _ _, (pqs, rqs)) | pt == rt = do -- hack for car
-                    let Just shs = sequence $ takeWhile isJust $ map (\(((ir, _), _), (_, ip)) -> const (ir, ip) <$> lookup ip pqs) $ shift pty
-                        z = zeroIndex pty
-                        z' = zeroIndex rt
-                        shmap = map ((head *** nub) . unzip) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) $ (z', z):shs
-                        ss = map (first $ \i -> maybe [] id $ (sequence . filter isJust . map (flip lookup pqs)) =<< lookup i shmap) rqs
-                    constrain [sparse (map exchange (Supply q:map Consume ps)) `Geq` 0.0 |
-                               (ps, q) <- ss, not $ q `elem` ps]
-          elabFE (Native (Arrow (PairTy (tyh, ListTy tyt)) rty@(ListTy tyc)) _ _, (pqs, rqs)) = do -- hack for cons
-                    let Just shs = sequence $ takeWhile isJust $ map (\((_, i), (i1, i2)) -> const (i, [i1, i2]) <$> lookup i1 rqs) $ shift rty
-                        ss = map (\(i, is) -> (,) <$> lookup i pqs <*> sequence (filter isJust $ map (flip lookup rqs) is)) shs
-                    constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
-                               Just (q, ps) <- ss, not $ q `elem` ps]
+          elabFE (Native (Arrow pty@(ListTy pt)          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs [] [] pqs -- hack for car
+          elabFE (Native (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty [] rqs [] pqs -- hack for cdr
+          elabFE (Native (Arrow (PairTy (_, ListTy _)) rty@(ListTy _)) _ _, (pqs, rqs))  = consShift rty [] [] pqs rqs -- hack for cons
           elabFE (Native (Arrow ty ty') _ _, (pqs, rqs)) = do
                     let z = zeroIndex ty
                         Just q_0  = lookup z  pqs
                         z' = zeroIndex ty'
                         Just q_0' = lookup z' rqs
                     constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Geq` 0.0]
+          consShift :: (MonadError TypeError m, MonadState Anno m) => Ty -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
+          consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
+              let ty_p = PairTy (ty_h, ty_l)
+              q's_p <- withReaderT (CheckE []) $ injectAnno ty_p qs_p
+              k <- asks degree
+              let limit (i, is) = const (i, is) <$> lookup i q's_p
+                  Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
+                  ss = map (\(i, is) -> (,) <$> lookup i q's_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
+                  q's = buildPoly (repeat q's_p) $ projectionsDeg k ty_p
+              constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
+                         Just (q, ps) <- ss]
+              constrain $ concat $ zipWith equatePoly [qs_h, qs_t] q's
 
 class Elab a where
     elab :: (MonadError TypeError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (Ty, (IxEnv Anno, IxEnv Anno))
@@ -448,9 +448,14 @@ instance Elab Ex where
         let unpair (PairTy (t1, t2)) = t1:unpair t2
             unpair t = [t]
             tys' = unpair ty
+            pairinits (PairTy (t1, t2)) = t1:map (PairTy . (,) t1) (pairinits t2)
+            pairinits t = [t]
+            itys = pairinits ty
         let tys'' = instantiate tys' tys
         qxs  <- zipWithM injectAnno tys' qs
         qxs' <- zipWithM injectAnno tys' qs'
+        qt <- rezero ty   qf
+        qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv degree) [qt] $ init itys
         q  <- rezero ty'' qf'
         q' <- rezero ty'' qf'
         let ineqs = filter (uncurry (/=)) (zip tys'' tys')
@@ -465,13 +470,14 @@ instance Elab Ex where
             zs = map zeroIndex tys'
             qxs_0  = zipWith ((fromJust .) . lookup) zs qxs
             qxs_0' = zipWith ((fromJust .) . lookup) zs qxs'
-            qxf = map (concatMap (map pure . flip mapMaybe qf . xlate)) $ projectionsDeg degree ty
-                where xlate ixs (ix, a) = (\ix' -> (ix', (a, poly ix / poly ix'))) <$> lookup ix ixs
-        constrain $ concat $ zipWith equatePoly (zipWith delete zs qxs) qxf
+            qxt = buildPoly qts $ map (last . projectionsDeg degree) itys
+            tzs = map zeroIndex itys
+            qts_0  = zipWith ((fromJust .) . lookup) tzs qts
+        constrain $ concat $ zipWith equatePoly qxs qxt
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno
-        let (qs_0_args, ([q_ap_0], _)) = zipR (q_0:qxs_0') qxs_0
+        let (qs_0_args, ([q_ap_0], _)) = zipR (q_0:qxs_0') qts_0
         constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
                    (q_in, q_out) <- qs_0_args]
         constrain [sparse (map exchange [Consume q_ap_0, Supply qf_0, Supply c]) `Eql` k1]

@@ -103,13 +103,13 @@ factor (LIndex is@(i:_)) = (LIndex [zero i], length is) :
         where fzs = map ((factor . head *** map zero) . splitAt 1 . reverse) $ tail $ inits is
 factor i = []
 
-shift :: Ty -> [(((Index, Index), Index), (Index, Index))]
-shift t@(ListTy _) = zip (zip sis pis) (zip tis lis)
+shift :: Ty -> [(Index, [Index])]
+shift t@(ListTy _) = zip pis $ zipWith payfor sis lis
     where lis = concat $ tail $ index t
-          sis = map split lis
+          sis = map uncons lis
           pis = map PIndex sis
-          tis = map snd sis
-          split (LIndex (i:is)) = (i, LIndex is)
+          payfor (ih, it) il = if deg ih == 0 then [it, il] else [il]
+          uncons (LIndex (i:is)) = (i, LIndex is)
 shift _ = []
 
 -- The goal of inject is to find the type index containing the given
