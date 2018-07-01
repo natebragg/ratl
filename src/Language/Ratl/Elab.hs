@@ -330,7 +330,7 @@ elabSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
                         Just q_0  = lookup z  pqs
                         z' = zeroIndex ty'
                         Just q_0' = lookup z' rqs
-                    constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Geq` 0.0]
+                    constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` 0.0]
           consShift :: (MonadError TypeError m, MonadState Anno m) => Ty -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
               let ty_p = PairTy (ty_h, ty_l)
@@ -358,7 +358,7 @@ instance Elab Ex where
             Just q_0  = lookup z q
             Just q_0' = lookup z q'
         k <- costof k_var
-        constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Geq` k]
+        constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` k]
         return (ty, (q, q'))
     elab (Val v) = do
         (ty, (q, q')) <- elab v
@@ -366,7 +366,7 @@ instance Elab Ex where
         let z = zeroIndex ty
             Just q_0  = lookup z q
             Just q_0' = lookup z q'
-        constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Geq` k]
+        constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` k]
         return (ty, (q, q'))
     elab (If ep et ef) = do
         (tyep, (qp, qp')) <- elab ep
@@ -478,7 +478,7 @@ instance Elab Ex where
         k2 <- costof k_ap2
         c  <- freshAnno
         let (qs_0_args, ([q_ap_0], _)) = zipR (q_0:qxs_0') qts_0
-        constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
+        constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Eql` k1 |
                    (q_in, q_out) <- qs_0_args]
         constrain [sparse (map exchange [Consume q_ap_0, Supply qf_0, Supply c]) `Eql` k1]
         constrain [sparse (map exchange [Supply q_0', Consume qf_0', Consume c]) `Eql` k2]
@@ -501,7 +501,7 @@ instance Elab Ex where
             Just qe_0' = lookup z qe'
         constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
                    (q_in, q_out) <- zip (q_0:qs_0') (qs_0 ++ [qe_0])]
-        constrain [sparse (map exchange [Supply q_0', Consume qe_0']) `Geq` k2]
+        constrain [sparse (map exchange [Supply q_0', Consume qe_0']) `Eql` k2]
         return (ty, (q, q'))
 
 instance Elab Val where
