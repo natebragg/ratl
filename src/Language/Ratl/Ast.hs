@@ -1,11 +1,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE GADTs #-}
 
 module Language.Ratl.Ast (
     NativeError(..),
     Var(..),
-    Fun(..),
-    Ex(..),
+    Fun(Fun, Native),
+    Ex(Var, Val, App, If, Let),
     Prog,
     tyOf,
     makeProg,
@@ -31,6 +34,7 @@ import Data.Graph.Inductive.Extra (
     OverNodes(..),
     )
 import Data.Foldable (find, toList)
+import Data.Fix (Fix(..))
 
 
 data Var = V String
@@ -46,23 +50,64 @@ instance Show NativeError where
     show EmptyError = "Tried to access contents of empty list."
     show DivideByZeroError = "Tried to divide by zero."
 
-data Fun where
-    Fun :: FunTy -> Var -> Ex -> Fun
-    Native :: FunTy -> Int -> ([Val] -> Except NativeError Val) -> Fun
+data FunRep e where
+    FunRep :: FunTy -> Var -> e -> FunRep e
+    NativeRep :: FunTy -> Int -> ([Val] -> Except NativeError Val) -> FunRep e
 
 tyOf :: Fun -> FunTy
 tyOf (Fun ty _ _) = ty
 tyOf (Native ty _ _) = ty
 
-instance Show Fun where
+instance Show (FunRep e) where
     show _ = "(define ...)"
 
-data Ex = Var Var
-        | Val Val
-        | App Var [Ex]
-        | If Ex Ex Ex
-        | Let [(Var, Ex)] Ex
-    deriving (Show, Eq)
+newtype Fun = F { unfun :: FunRep Ex }
+
+{-# COMPLETE Fun, Native #-}
+
+pattern Fun ty x e = F (FunRep ty x e)
+pattern Native ty a f = F (NativeRep ty a f)
+
+instance Show Fun where
+    show = show . unfun
+
+data ExRep e = VarRep Var
+             | ValRep Val
+             | AppRep Var [e]
+             | IfRep e e e
+             | LetRep [(Var, e)] e
+    deriving Eq
+
+instance Show e => Show (ExRep e) where
+    show (VarRep x) = show x
+    show (ValRep v) = show v
+    show (AppRep x es) = "(" ++ unwords (show x:map show es) ++ ")"
+    show (IfRep ep et ef) = "(if " ++ show ep ++ " " ++ show et ++ " " ++ show ef ++ ")"
+    show (LetRep ds e) = "(let (" ++ unwords (map showdec ds) ++ ") " ++ show e ++ ")"
+            where showdec (x, e) = "(" ++ show x ++ " " ++ show e ++ ")"
+
+newtype Ex = Ex { unex :: (Fix ExRep) }
+    deriving Eq
+
+{-# COMPLETE Var, Val, App, If, Let #-}
+
+pattern Var x = Ex (Fix (VarRep x))
+pattern Val v = Ex (Fix (ValRep v))
+pattern App x es <- ((\case
+            ex@(Ex (Fix (AppRep _ es))) -> (ex, map Ex es)
+            ex -> (ex, undefined)) -> (Ex (Fix (AppRep x _)), es))
+    where App x es = Ex (Fix (AppRep x (map unex es)))
+pattern If ep et ef <- ((\case
+            ex@(Ex (Fix (IfRep ep et ef))) -> (ex, Ex ep, Ex et, Ex ef)
+            ex -> (ex, undefined, undefined, undefined)) -> (Ex (Fix (IfRep _ _ _)), ep, et, ef))
+    where If ep et ef = Ex (Fix (IfRep (unex ep) (unex et) (unex ef)))
+pattern Let ds e <- ((\case
+            ex@(Ex (Fix (LetRep ds e))) -> (ex, fmap (fmap Ex) ds, Ex e)
+            ex -> (ex, undefined, undefined)) -> (Ex (Fix (LetRep _ _)), ds, e))
+    where Let ds e = Ex (Fix (LetRep (fmap (fmap unex) ds) (unex e)))
+
+instance Show Ex where
+    show = show . unex
 
 newtype Prog = Prog {getProg :: Gr (Var, Fun) ()}
     deriving (Monoid)

@@ -36,6 +36,7 @@ library
                        Control.Monad.Except.Extra
                        Data.Clp.Managed
                        Data.Clp.LinearFunction
+                       Data.Fix
                        Data.Graph.Inductive.Extra
   build-depends:       base >= 4.7 && < 5
                      , bytestring

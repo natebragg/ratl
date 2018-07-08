@@ -1,5 +1,4 @@
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -18,6 +17,7 @@ module Language.Ratl.Val (
 ) where
 
 import Text.Parsec.Pos (SourcePos)
+import Data.Fix (Fix(..))
 
 data Span = Span SourcePos SourcePos
           | Unknown
@@ -28,16 +28,10 @@ class Embeddable a where
     embed :: a -> Val
     project :: Val -> a
 
-newtype Fix f = Fix { unfix :: f (Fix f) }
-
-deriving instance Eq (f (Fix f)) => Eq (Fix f)
-
 instance Embeddable (f (Fix f)) => Embeddable (Fix f) where
     embed = embed . unfix
     project = Fix . project
 
-instance Show (f (Fix f)) => Show (Fix f) where
-    show = show . unfix
 
 data ListRep v = NilRep | ConsRep v (ListRep v)
     deriving (Eq, Functor)
