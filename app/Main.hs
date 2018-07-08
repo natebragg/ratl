@@ -36,7 +36,8 @@ import Language.Ratl.Ast (
     scSubprograms,
     )
 import Language.Ratl.Eval (run)
-import Language.Ratl.Elab (check, checkEx)
+import Language.Ratl.Elab (elaborate)
+import Language.Ratl.Anno (annotate, annotateEx)
 import PackageInfo (version, appName, synopsis)
 
 progressive_solve :: [GeneralForm] -> [([Double], Double)]
@@ -141,19 +142,24 @@ main = do
     when (deg_max < 0) $ do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
-    inp <- readFile fn
+    handleE $ elaborate mempty prims
     sb <- handleE $ parse (sexps <* eof) "initial basis" basis
     b <- handleE $ parse (prog <* eof) "initial basis" $ preorder sb
     let prims_basis = prims `mappend` b
+    handleE $ elaborate prims_basis b
+    inp <- readFile fn
     sm <- handleE $ parse (sexps <* eof) fn inp
     m <- handleE $ parse (prog <* eof) fn $ preorder sm
-    let p = callgraph $ prims_basis `mappend` m
+    let prims_basis_module = prims_basis `mappend` m
+    handleE $ elaborate prims_basis_module m
+    let p = callgraph $ prims_basis_module
     a <- if mode /= Run then return $ embed (0 :: Int) else
         handleE $ fmap embed $ parse (sexp <* eof) "command line" cmdline
-    eqns <- handleEx $ check deg_max p
+    eqns <- handleEx $ annotate deg_max p
     let mainapp a = (App (V "main") [(Val a)])
     cl_eqns <- if mode /= Run then return [] else do
-        eqns <- handleEx $ checkEx deg_max p $ mainapp a
+        handleE $ elaborate prims_basis_module (mainapp a)
+        eqns <- handleEx $ annotateEx deg_max p $ mainapp a
         return [(V fn, eqns)]
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
     forM module_eqns $ \(f, (ixs, eqns)) -> do

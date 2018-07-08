@@ -2,6 +2,7 @@ module Language.Ratl.Ty (
     Ty(..),
     varname,
     varnum,
+    unpair,
     FunTy(..),
 ) where
 
@@ -32,6 +33,10 @@ varname n = if m > 0 then 'a':show m else [chr (ord 'a' + n)]
 varnum :: String -> Int
 varnum (v:ms) = (ord v - ord 'a') +
                 if not $ null ms then (ord 'z' - ord 'a') + read ms else 0
+
+unpair :: Ty -> [Ty]
+unpair (PairTy (t1, t2)) = t1:unpair t2
+unpair t = [t]
 
 data FunTy = Arrow Ty Ty
 
