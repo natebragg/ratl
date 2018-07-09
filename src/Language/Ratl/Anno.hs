@@ -54,6 +54,7 @@ import Language.Ratl.Ast (
     Ex(..),
     Prog,
     tyOf,
+    tyGet,
     lookupFun,
     updateFun,
     mapFun,
@@ -255,7 +256,7 @@ lookupThisSCP x = asks (lookup x . comp . checkF)
 runElabEx :: MonadReader CheckE m => Ex -> m Ty
 runElabEx e = do
     ee <- asks elabEnv
-    return $ either (error "runElabEx") id $ runReaderT (Elab.elab e) ee
+    return $ either (error "runElabEx") tyGet $ runReaderT (Elab.elab e) ee
 
 runElabVal :: MonadReader CheckE m => Val -> m Ty
 runElabVal v = do

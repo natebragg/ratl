@@ -32,8 +32,10 @@ import Language.Ratl.Ast (
     Var(..),
     Fun(..),
     Ex(..),
+    ExTy(..),
     Prog,
     tyOf,
+    tyGet,
     mapFun,
     travFun,
     )
@@ -115,6 +117,16 @@ instance Instantiable Fun where
     instantiate tys (Fun ty x e) = Fun (instantiate tys ty) x e
     instantiate tys (Native ty a f) = Native (instantiate tys ty) a f
 
+instance Instantiable [ExTy] where
+    instantiate = zipWith (instantiate . pure)
+
+instance Instantiable ExTy where
+    instantiate tys (VarTy ty x) = VarTy (instantiate tys ty) x
+    instantiate tys (ValTy ty v) = ValTy (instantiate tys ty) v
+    instantiate tys (IfTy ty ep et ef) = IfTy (instantiate tys ty) (instantiate tys ep) (instantiate tys et) (instantiate tys ef)
+    instantiate tys (AppTy ty f es) = AppTy (instantiate tys ty) f (map (instantiate tys) es)
+    instantiate tys (LetTy ty ds e) = LetTy (instantiate tys ty) (map (fmap (instantiate tys)) ds) (instantiate tys e)
+
 class Elab a where
     type Type a :: *
     elab :: MonadError TypeError m => a -> ReaderT Env m (Type a)
@@ -126,42 +138,53 @@ instance Elab Prog where
 instance Elab Fun where
     type Type Fun = FunTy
     elab (Fun fty@(Arrow pty rty) x e) = do
-        ty <- withReaderT (\ce -> ce {gamma = zip [x] (unpair pty)}) $ elab e
-        let ty'' = instantiate [rty] ty
+        ety <- withReaderT (\ce -> ce {gamma = zip [x] (unpair pty)}) $ elab e
+        let ety' = instantiate [rty] ety
+            ty'' = tyGet ety'
         when (rty /= ty'') $
             throwError $ TypeError $ [(rty, ty'')]
         return fty
     elab (Native fty _ _) = return fty
 
 instance Elab Ex where
-    type Type Ex = Ty
+    type Type Ex = ExTy
     elab (Var x) = do
-        unlessJustM (asks $ lookup x . gamma) $
+        ty <- unlessJustM (asks $ lookup x . gamma) $
             throwError $ NameError x
-    elab (Val v) = elab v
+        return $ VarTy ty x
+    elab (Val v) = do
+        ty <- elab v
+        return $ ValTy ty v
     elab (If ep et ef) = do
-        tys <- traverse elab [ep, et, ef]
-        let tys' = instantiate tys [BooleanTy, Tyvar "a", Tyvar "a"]
-            tys'' = instantiate tys' tys
+        etys <- traverse elab [ep, et, ef]
+        let tys = map tyGet etys
+            tys' = instantiate tys [BooleanTy, Tyvar "a", Tyvar "a"]
+            etys'@[etyp', etyt', etyf'] = instantiate tys' etys
+            tys'' = map tyGet etys'
             ineqs = filter (uncurry (/=)) (zip tys'' tys')
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
-        return $ last tys'
+        return $ IfTy (last tys') etyp' etyt' etyf'
     elab (App f es) = do
-        tys <- traverse elab es
+        etys <- traverse elab es
+        let tys = map tyGet etys
         when (arity f /= length es) $
             throwError $ ArityError (arity f) (length es)
         Arrow ty ty'' <- unlessJustM (asks $ fmap (instantiate tys) . lookup f . phi) $
             throwError $ NameError f
         let tys' = unpair ty
-            tys'' = instantiate tys' tys
+            etys' = instantiate tys' etys
+            tys'' = map tyGet etys'
             ineqs = filter (uncurry (/=)) (zip tys'' tys')
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
-        return ty''
+        return $ AppTy ty'' f etys'
     elab (Let ds e) = do
-        tyds <- traverse (traverse elab) ds
-        withReaderT (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
+        etyds <- traverse (traverse elab) ds
+        let tyds = map (fmap tyGet) etyds
+        ety <- withReaderT (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
+        let ty = tyGet ety
+        return $ LetTy ty etyds ety
 
 instance Elab Val where
     type Type Val = Ty
