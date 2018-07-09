@@ -9,8 +9,10 @@ module Language.Ratl.Ast (
     Var(..),
     Fun(Fun, Native),
     Ex(Var, Val, App, If, Let),
+    ExTy(VarTy, ValTy, AppTy, IfTy, LetTy),
     Prog,
     tyOf,
+    tyGet,
     makeProg,
     lookupFun,
     updateFun,
@@ -22,8 +24,6 @@ module Language.Ratl.Ast (
     scSubprograms,
 ) where
 
-import Language.Ratl.Val (Val)
-import Language.Ratl.Ty (FunTy)
 import Control.Arrow ((***))
 import Control.Monad.Except (Except)
 import Data.Graph.Inductive.Graph (mkGraph, insEdges)
@@ -35,6 +35,11 @@ import Data.Graph.Inductive.Extra (
     )
 import Data.Foldable (find, toList)
 import Data.Fix (Fix(..))
+import Language.Ratl.Ty (
+    FunTy,
+    Ty,
+    )
+import Language.Ratl.Val (Val)
 
 
 data Var = V String
@@ -86,7 +91,7 @@ instance Show e => Show (ExRep e) where
     show (LetRep ds e) = "(let (" ++ unwords (map showdec ds) ++ ") " ++ show e ++ ")"
             where showdec (x, e) = "(" ++ show x ++ " " ++ show e ++ ")"
 
-newtype Ex = Ex { unex :: (Fix ExRep) }
+newtype Ex = Ex { unex :: Fix ExRep }
     deriving Eq
 
 {-# COMPLETE Var, Val, App, If, Let #-}
@@ -108,6 +113,30 @@ pattern Let ds e <- ((\case
 
 instance Show Ex where
     show = show . unex
+
+newtype TyRep a = TyRep { untyrep :: (Ty, ExRep a) }
+
+newtype ExTy = ExTy { unexty :: Fix TyRep }
+
+tyGet :: ExTy -> Ty
+tyGet = fst . untyrep . unfix . unexty
+
+{-# COMPLETE VarTy, ValTy, AppTy, IfTy, LetTy #-}
+
+pattern VarTy ty x = ExTy (Fix (TyRep (ty, VarRep x)))
+pattern ValTy ty v = ExTy (Fix (TyRep (ty, ValRep v)))
+pattern AppTy ty x es <- ((\case
+            ex@(ExTy (Fix (TyRep (_, AppRep _ es)))) -> (ex, map ExTy es)
+            ex -> (ex, undefined)) -> (ExTy (Fix (TyRep (ty, AppRep x _))), es))
+    where AppTy ty x es = ExTy (Fix (TyRep (ty, AppRep x (map unexty es))))
+pattern IfTy ty ep et ef <- ((\case
+            ex@(ExTy (Fix (TyRep (_, IfRep ep et ef)))) -> (ex, ExTy ep, ExTy et, ExTy ef)
+            ex -> (ex, undefined, undefined, undefined)) -> (ExTy (Fix (TyRep (ty, IfRep _ _ _))), ep, et, ef))
+    where IfTy ty ep et ef = ExTy (Fix (TyRep (ty, IfRep (unexty ep) (unexty et) (unexty ef))))
+pattern LetTy ty ds e <- ((\case
+            ex@(ExTy (Fix (TyRep (_, LetRep ds e)))) -> (ex, map (fmap ExTy) ds, ExTy e)
+            ex -> (ex, undefined, undefined)) -> (ExTy (Fix (TyRep (ty, LetRep _ _))), ds, e))
+    where LetTy ty ds e = ExTy (Fix (TyRep (ty, LetRep (map (fmap unexty) ds) (unexty e))))
 
 newtype Prog = Prog {getProg :: Gr (Var, Fun) ()}
     deriving (Monoid)
