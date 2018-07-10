@@ -7,7 +7,6 @@ module Language.Ratl.Index (
   zeroIndex,
   factor,
   shift,
-  inject,
   projections,
   projectionsDeg,
 ) where
@@ -18,15 +17,14 @@ import Data.List (groupBy, inits, intercalate, subsequences)
 import Language.Ratl.Ty (Ty(..))
 
 data Index = AIndex
-           | VIndex
            | PIndex (Index, Index)
            | LIndex [Index]
     deriving (Eq, Ord)
 
 instance Show Index where
+    show AIndex = "∗"
     show (PIndex (i1, i2)) = '(' : show i1 ++ ", " ++ show i2 ++ ")"
     show (LIndex is) = '[' : intercalate ", " (map show is) ++ "]"
-    show _ = "∗"
 
 heads :: ([a], [b]) -> (a, b)
 heads = head *** head
@@ -60,13 +58,11 @@ choices (is:cs) = [i:cs' | i <- is, cs' <- choices cs]
 
 deg :: Index -> Int
 deg AIndex = 0
-deg VIndex = 0
 deg (PIndex (i1, i2)) = deg i1 + deg i2
 deg (LIndex is) = length is + sum (map deg is)
 
 poly :: Index -> Double
 poly AIndex = 1.0
-poly VIndex = 1.0
 poly (PIndex (i1, i2)) = poly i1 * poly i2
 poly (LIndex is) = sum $ map product $ subsequences $ map poly is
 
@@ -75,7 +71,7 @@ index (NatTy)      = [[AIndex]]
 index (BooleanTy)  = [[AIndex]]
 index (UnitTy)     = [[AIndex]]
 index (SymTy)      = [[AIndex]]
-index (Tyvar _)    = [[VIndex]]
+index (Tyvar _)    = [[AIndex]]
 index (PairTy ts)  = do
     ds <- groupBy ((==) `on` deg . PIndex . heads) $
           uncurry (diagonals `on` index) ts
@@ -91,9 +87,9 @@ zeroIndex :: Ty -> Index
 zeroIndex = head . head . index
 
 zero :: Index -> Index
+zero AIndex = AIndex
 zero (PIndex (i1, i2)) = PIndex (zero i1, zero i2)
 zero (LIndex _) = LIndex []
-zero i = i
 
 factor :: Index -> [(Index, Int)]
 factor (PIndex (i1, i2)) = [(PIndex (i, zero i2), d) | (i, d) <- factor i1] ++
@@ -101,7 +97,7 @@ factor (PIndex (i1, i2)) = [(PIndex (i, zero i2), d) | (i, d) <- factor i1] ++
 factor (LIndex is@(i:_)) = (LIndex [zero i], length is) :
                            [(LIndex (reverse $ i:zs), d) | (fs, zs) <- fzs, (i, d) <- fs]
         where fzs = map ((factor . head *** map zero) . splitAt 1 . reverse) $ tail $ inits is
-factor i = []
+factor _ = []
 
 shift :: Ty -> [(Index, [Index])]
 shift t@(ListTy _) = zip pis $ zipWith payfor sis lis
@@ -111,17 +107,6 @@ shift t@(ListTy _) = zip pis $ zipWith payfor sis lis
           payfor (ih, it) il = if deg ih == 0 then [it, il] else [il]
           uncons (LIndex (i:is)) = (i, LIndex is)
 shift _ = []
-
--- The goal of inject is to find the type index containing the given
--- index with every other position set to the inner type's zero index.
--- The core precondition is that the index must be in the projection
--- of the type's index set.
-inject :: Ty -> Index -> Maybe Index
-inject (PairTy (t1, t2)) (PIndex (i1, i2)) = (PIndex .) . (,) <$> inject t1 i1 <*> inject t2 i2
-inject (ListTy t)        (LIndex is)       = LIndex <$> traverse (inject t) is
-inject ty                VIndex            = Just $ zeroIndex ty
-inject ty AIndex | zeroIndex ty == AIndex  = Just AIndex
-inject _                 _                 = Nothing
 
 -- Vary each position infinitely while holding everything else constant.
 --                   ,----- Per position

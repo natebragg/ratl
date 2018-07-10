@@ -36,7 +36,6 @@ import Language.Ratl.Index (
     indexDeg,
     zeroIndex,
     shift,
-    inject,
     projectionsDeg,
     )
 import Language.Ratl.Ty (
@@ -198,12 +197,6 @@ rezero qs = do
     q_0' <- freshAnno
     return $ updateZero q_0' qs
 
-injectAnno :: (MonadReader CheckE m, MonadError AnnoError m, MonadState Anno m) => Ty -> IxEnv Anno -> m (IxEnv Anno)
-injectAnno t qs = do
-    qs' <- traverse (\(ix, q) -> flip (,) q <$> inject t ix `unlessJust` throwError (ProjectionError t ix)) qs
-    k <- degreeof
-    traverse (\ix -> (,) ix <$> lookup ix qs' `unlessJust` freshAnno) $ indexDeg k t
-
 -- Constraint Helpers
 
 relate :: (LinearFunction -> Double -> GeneralConstraint) -> IxEnv Anno -> [IxEnv Anno] -> [GeneralConstraint]
@@ -304,8 +297,8 @@ annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
           consShift :: (MonadError AnnoError m, MonadState Anno m) => Ty -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
               let ty_p = PairTy (ty_h, ty_l)
-              q's_p <- withReaderT (CheckE []) $ injectAnno ty_p qs_p
               k <- asks degree
+              q's_p <- if null qs_p then freshIxEnv k ty_p else return qs_p
               let limit (i, is) = const (i, is) <$> lookup i q's_p
                   Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
                   ss = map (\(i, is) -> (,) <$> lookup i q's_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
