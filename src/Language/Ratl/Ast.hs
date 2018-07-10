@@ -116,10 +116,10 @@ instance Show Ex where
 
 newtype TyRep a = TyRep { untyrep :: (Ty, ExRep a) }
 
-newtype ExTy = ExTy { unexty :: Fix TyRep }
+instance Show a => Show (TyRep a) where
+    show = show . snd . untyrep
 
-tyGet :: ExTy -> Ty
-tyGet = fst . untyrep . unfix . unexty
+newtype ExTy = ExTy { unexty :: Fix TyRep }
 
 {-# COMPLETE VarTy, ValTy, AppTy, IfTy, LetTy #-}
 
@@ -137,6 +137,12 @@ pattern LetTy ty ds e <- ((\case
             ex@(ExTy (Fix (TyRep (_, LetRep ds e)))) -> (ex, map (fmap ExTy) ds, ExTy e)
             ex -> (ex, undefined, undefined)) -> (ExTy (Fix (TyRep (ty, LetRep _ _))), ds, e))
     where LetTy ty ds e = ExTy (Fix (TyRep (ty, LetRep (map (fmap unexty) ds) (unexty e))))
+
+instance Show ExTy where
+    show = show . unexty
+
+tyGet :: ExTy -> Ty
+tyGet = fst . untyrep . unfix . unexty
 
 newtype Prog = Prog {getProg :: Gr (Var, Fun) ()}
     deriving (Monoid)
