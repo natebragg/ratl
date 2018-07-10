@@ -244,11 +244,6 @@ degreeof = asks (degree . checkF)
 lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (Fun, (IxEnv Anno, IxEnv Anno)))
 lookupThisSCP x = asks (lookup x . comp . checkF)
 
--- Type Helpers
-
-runElabEx :: MonadReader Elab.Env m => Ex -> m ExTy
-runElabEx e = asks (either (error "runElabEx") id . runReaderT (Elab.elab e))
-
 -- The Engine
 
 annotate :: (MonadError AnnoError m) => Int -> [Prog] -> m EqnEnv
@@ -263,12 +258,11 @@ annotate deg_max p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
             return $ GeneralForm Minimize obj cs
         return (pqs, progs)
 
-annotateEx :: (MonadError AnnoError m) => Int -> [Prog] -> Ex -> m Eqn
+annotateEx :: (MonadError AnnoError m) => Int -> [Prog] -> ExTy -> m Eqn
 annotateEx deg_max p e = flip evalStateT 0 $ do
     let checkState = CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
-    ety <- runReaderT (runElabEx e) (Elab.Env [] [])
-    let ty = tyGet ety
-    ((q, q'), css) <- runWriterT $ runReaderT (anno ety) (CheckE [] checkState)
+    let ty = tyGet e
+    ((q, q'), css) <- runWriterT $ runReaderT (anno e) (CheckE [] checkState)
     progs <- for [[zeroIndex ty]] $ \ixs -> do
         let obj = objective q ixs
         return $ GeneralForm Minimize obj $ constrainShares css
@@ -280,7 +274,7 @@ annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
           annoFE (Fun (Arrow pty rty) x e, (pqs, rqs)) = do
                     xqs <- rezero pqs
                     phi <- asks (concatMap (mapFun (second tyOf)) . scps)
-                    ety <- runReaderT (runElabEx e) (Elab.Env (zip [x] (unpair pty)) phi)
+                    ety <- runReaderT (asks (either (error "elab bug") id . runReaderT (Elab.elab e))) (Elab.Env (zip [x] (unpair pty)) phi)
                     let ety' = Elab.instantiate [rty] ety
                     (q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno ety'
                     let q_0   = lookupZero q

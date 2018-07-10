@@ -210,5 +210,5 @@ instance Elab List where
             t -> throwError $ TypeError [(ListTy vty, t)]
         return ty
 
-elaborate :: (Elab a, MonadError TypeError m) => Prog -> a -> m ()
-elaborate p a = void $ runReaderT (elab a) (Env {phi = mapFun (second tyOf) p, gamma = []})
+elaborate :: (Elab a, MonadError TypeError m) => Prog -> a -> m (Type a)
+elaborate p a = runReaderT (elab a) (Env {phi = mapFun (second tyOf) p, gamma = []})

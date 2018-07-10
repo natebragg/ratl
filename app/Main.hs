@@ -158,8 +158,8 @@ main = do
     eqns <- handleEx $ annotate deg_max p
     let mainapp a = (App (V "main") [(Val a)])
     cl_eqns <- if mode /= Run then return [] else do
-        handleE $ elaborate prims_basis_module (mainapp a)
-        eqns <- handleEx $ annotateEx deg_max p $ mainapp a
+        e <- handleE $ elaborate prims_basis_module (mainapp a)
+        eqns <- handleEx $ annotateEx deg_max p e
         return [(V fn, eqns)]
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
     forM module_eqns $ \(f, (ixs, eqns)) -> do
