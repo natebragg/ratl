@@ -7,11 +7,13 @@ module Language.Ratl.Elab (
     elaborate,
     elab,
     instantiate,
+    solve,
 ) where
 
 import Data.Foldable (traverse_)
-import Data.List (intersect, intercalate, union, nub, foldl')
-import Control.Arrow (second, (&&&))
+import Data.Function (on)
+import Data.List (intersect, intercalate, union, unionBy, nub, foldl')
+import Control.Arrow (second)
 import Control.Monad (when, void)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Except.Extra (unlessJustM)
@@ -68,64 +70,52 @@ freein            UnitTy = []
 freein             SymTy = []
 freein         (Tyvar y) = [y]
 
-solve :: TyvarEnv -> (Ty, Ty) -> TyvarEnv
-solve theta (ty, ty') = compose (assoc (tysubst theta ty) (tysubst theta ty')) theta
-  where assoc       (ListTy ty)        (ListTy ty') = assoc ty ty'
-        assoc (PairTy (t1, t2)) (PairTy (t1', t2')) = assoc t1 t1' ++ assoc t2 t2'
-        assoc         (Tyvar x)                 ty' = [(x, ty')]
-        assoc                 _                   _ = []
-
-compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
-compose theta2 theta1 = map (id &&& replace) domain
-  where domain  = union (map fst theta2) (map fst theta1)
-        replace = tysubst theta2 . varsubst theta1
-
-varsubst :: TyvarEnv -> String -> Ty
-varsubst theta x = maybe (Tyvar x) id $ lookup x theta
-
-tysubst :: TyvarEnv -> Ty -> Ty
-tysubst theta = subst
-  where subst             NatTy = NatTy
-        subst       (ListTy ty) = ListTy $ subst ty
-        subst (PairTy (t1, t2)) = PairTy (subst t1, subst t2)
-        subst         BooleanTy = BooleanTy
-        subst            UnitTy = UnitTy
-        subst             SymTy = SymTy
-        subst         (Tyvar x) = varsubst theta x
+solve :: [Ty] -> [Ty] -> TyvarEnv
+solve tys tys' = compose varenv renames
+    where varenv = foldl' build [] $ zip tys'' tys
+          tys'' = instantiate renames tys'
+          renames = zip (map varname $ intersect frees bound) (map (Tyvar . varname) [next_var..])
+          next_var = 1 + (maximum $ union frees bound)
+          frees = nub $ map varnum $ concatMap freein tys
+          bound = nub $ map varnum $ concatMap freein tys'
+          compose theta2 theta1 = unionBy ((==) `on` fst) (instantiate theta2 theta1) theta2
+          build theta (ty, ty') = compose (assoc (instantiate theta ty) (instantiate theta ty')) theta
+          assoc       (ListTy ty)        (ListTy ty') = assoc ty ty'
+          assoc (PairTy (t1, t2)) (PairTy (t1', t2')) = assoc t1 t1' ++ assoc t2 t2'
+          assoc         (Tyvar x)                 ty' = [(x, ty')]
+          assoc                 _                   _ = []
 
 class Instantiable t where
-    instantiate :: [Ty] -> t -> t
+    instantiate :: TyvarEnv -> t -> t
 
-instance Instantiable [Ty] where
-    instantiate tys tys' = map (tysubst varenv) tys''
-        where varenv = foldl' solve [] $ zip tys'' tys
-              tys'' = map (tysubst env) tys'
-                where env = zip (map varname $ intersect frees bound) (map (Tyvar . varname) [next_var..])
-                      next_var = 1 + (maximum $ union frees bound)
-                      frees = nub $ map varnum $ concatMap freein tys
-                      bound = nub $ map varnum $ concatMap freein tys'
+instance (Functor f, Instantiable a) => Instantiable (f a) where
+    instantiate theta = fmap (instantiate theta)
 
 instance Instantiable Ty where
-    instantiate tys ty = head $ instantiate tys $ [ty]
+    instantiate theta = subst
+      where subst             NatTy = NatTy
+            subst       (ListTy ty) = ListTy $ subst ty
+            subst (PairTy (t1, t2)) = PairTy (subst t1, subst t2)
+            subst         BooleanTy = BooleanTy
+            subst            UnitTy = UnitTy
+            subst             SymTy = SymTy
+            subst         (Tyvar x) = varsubst x
+            varsubst x = maybe (Tyvar x) id $ lookup x theta
 
 instance Instantiable FunTy where
-    instantiate tys (Arrow ty ty') = repair $ instantiate tys $ unpair ty ++ [ty']
-        where repair [ty, ty'] = Arrow ty ty'
-              repair (t1:tys) = let Arrow t2 ty' = repair tys in Arrow (PairTy (t1, t2)) ty'
+    instantiate theta (Arrow ty ty') = Arrow (instantiate theta ty) (instantiate theta ty')
 
 instance Instantiable Fun where
-    instantiate tys (Fun ty x e) = Fun (instantiate tys ty) x e
-    instantiate tys (Native ty a f) = Native (instantiate tys ty) a f
+    instantiate theta (Fun ty x e) = Fun (instantiate theta ty) x e
+    instantiate theta (Native ty a f) = Native (instantiate theta ty) a f
 
-instance Instantiable [ExTy] where
-    instantiate = zipWith (instantiate . pure)
 
 instance Instantiable ExTy where
-    instantiate tys (VarTy ty x) = VarTy (instantiate tys ty) x
-    instantiate tys (ValTy ty v) = ValTy (instantiate tys ty) v
-    instantiate tys (IfTy ty ep et ef) = IfTy (instantiate tys ty) (instantiate tys ep) (instantiate tys et) (instantiate tys ef)
-    instantiate tys (AppTy ty f es) = AppTy (instantiate tys ty) f (map (instantiate tys) es)
-    instantiate tys (LetTy ty ds e) = LetTy (instantiate tys ty) (map (fmap (instantiate tys)) ds) (instantiate tys e)
+    instantiate theta (VarTy ty x) = VarTy (instantiate theta ty) x
+    instantiate theta (ValTy ty v) = ValTy (instantiate theta ty) v
+    instantiate theta (IfTy ty ep et ef) = IfTy (instantiate theta ty) (instantiate theta ep) (instantiate theta et) (instantiate theta ef)
+    instantiate theta (AppTy ty f es) = AppTy (instantiate theta ty) f (map (instantiate theta) es)
+    instantiate theta (LetTy ty ds e) = LetTy (instantiate theta ty) (map (fmap (instantiate theta)) ds) (instantiate theta e)
 
 class Elab a where
     type Type a :: *
@@ -139,7 +129,8 @@ instance Elab Fun where
     type Type Fun = FunTy
     elab (Fun fty@(Arrow pty rty) x e) = do
         ety <- withReaderT (\ce -> ce {gamma = zip [x] (unpair pty)}) $ elab e
-        let ety' = instantiate [rty] ety
+        let theta = solve [rty] [tyGet ety]
+            ety' = instantiate theta ety
             ty'' = tyGet ety'
         when (rty /= ty'') $
             throwError $ TypeError $ [(rty, ty'')]
@@ -157,25 +148,30 @@ instance Elab Ex where
         return $ ValTy ty v
     elab (If ep et ef) = do
         etys <- traverse elab [ep, et, ef]
-        let tys = map tyGet etys
-            tys' = instantiate tys [BooleanTy, Tyvar "a", Tyvar "a"]
-            etys'@[etyp', etyt', etyf'] = instantiate tys' etys
-            tys'' = map tyGet etys'
-            ineqs = filter (uncurry (/=)) (zip tys'' tys')
+        let ifty   = [BooleanTy, Tyvar "a", Tyvar "a"]
+            theta1 = solve (map tyGet etys) ifty
+            tys    = instantiate theta1 ifty
+            theta2 = solve tys (map tyGet etys)
+            etys'@[etyp', etyt', etyf'] = instantiate theta2 etys
+            tys'   = map tyGet etys'
+            ineqs  = filter (uncurry (/=)) (zip tys' tys)
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
         return $ IfTy (last tys') etyp' etyt' etyf'
     elab (App f es) = do
         etys <- traverse elab es
-        let tys = map tyGet etys
         when (arity f /= length es) $
             throwError $ ArityError (arity f) (length es)
-        Arrow ty ty'' <- unlessJustM (asks $ fmap (instantiate tys) . lookup f . phi) $
+        Arrow ty ty' <- unlessJustM (asks $ lookup f . phi) $
             throwError $ NameError f
-        let tys' = unpair ty
-            etys' = instantiate tys' etys
-            tys'' = map tyGet etys'
-            ineqs = filter (uncurry (/=)) (zip tys'' tys')
+        let appty  = unpair ty
+            theta1 = solve (map tyGet etys) (appty ++ [ty'])
+            tys    = instantiate theta1 appty
+            ty''   = instantiate theta1 ty'
+            theta2 = solve tys (map tyGet etys)
+            etys'  = instantiate theta2 etys
+            tys'   = map tyGet etys'
+            ineqs  = filter (uncurry (/=)) (zip tys' tys)
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
         return $ AppTy ty'' f etys'
@@ -202,8 +198,10 @@ instance Elab List where
         lty <- elab vs
         ty <- case lty of
             ListTy lty' ->
-                let lty'' = instantiate [vty] lty'
-                    vty'' = instantiate [lty'] vty
+                let theta1 = solve [vty] [lty']
+                    lty''  = instantiate theta1 lty'
+                    theta2 = solve [lty'] [vty]
+                    vty''  = instantiate theta2 vty
                 in if lty'' == vty''
                    then return $ ListTy lty''
                    else throwError $ TypeError [(vty'', lty'')]

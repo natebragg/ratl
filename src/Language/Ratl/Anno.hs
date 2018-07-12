@@ -64,6 +64,7 @@ import qualified Language.Ratl.Elab as Elab (
     Env(..),
     elab,
     instantiate,
+    solve,
     )
 
 
@@ -275,7 +276,8 @@ annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
                     xqs <- rezero pqs
                     phi <- asks (concatMap (mapFun (second tyOf)) . scps)
                     ety <- runReaderT (asks (either (error "elab bug") id . runReaderT (Elab.elab e))) (Elab.Env (zip [x] (unpair pty)) phi)
-                    let ety' = Elab.instantiate [rty] ety
+                    let theta = Elab.solve [rty] [tyGet ety]
+                        ety' = Elab.instantiate theta ety
                     (q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno ety'
                     let q_0   = lookupZero q
                         pqs_0 = lookupZero pqs
@@ -361,7 +363,9 @@ instance Annotate ExTy where
         (Arrow ty _, (qf, qf')) <- lookupThisSCP f >>= \case
             Just (asc, (qa, qa')) -> do
                 cost_free <- costof (== zero)
-                let fun = Elab.instantiate tys asc
+                let Arrow ty ty' = tyOf asc
+                    theta = Elab.solve tys (unpair ty ++ [ty'])
+                    fun = Elab.instantiate theta asc
                 if degree <= 1 || cost_free then
                     return (tyOf fun, (qa, qa'))
                 else do
@@ -376,7 +380,10 @@ instance Annotate ExTy where
                     return (tyOf fun, (qf, qf'))
             Nothing -> do
                 scp <- lookupSCP f
-                let fun = Elab.instantiate tys $ fromJust $ lookupFun scp f
+                let asc = fromJust $ lookupFun scp f
+                    Arrow ty ty' = tyOf asc
+                    theta = Elab.solve tys (unpair ty ++ [ty'])
+                    fun = Elab.instantiate theta asc
                 scp' <- travFun (traverse $ \f -> (,) f <$> freshFunBounds degree f) $ updateFun scp f fun
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (annoSCP scp'))
                 return $ first tyOf $ fromJust $ lookup f scp'
