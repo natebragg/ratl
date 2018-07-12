@@ -10,7 +10,6 @@ module Language.Ratl.Elab (
     solve,
 ) where
 
-import Data.Foldable (traverse_)
 import Data.Function (on)
 import Data.List (intersect, intercalate, union, unionBy, nub, foldl')
 import Control.Arrow (second)
@@ -33,9 +32,11 @@ import Language.Ratl.Val (
 import Language.Ratl.Ast (
     Var(..),
     Fun(..),
+    TypedFun(..),
     Ex(..),
     ExTy(..),
     Prog,
+    TypedProg,
     tyOf,
     tyGet,
     mapFun,
@@ -109,6 +110,9 @@ instance Instantiable Fun where
     instantiate theta (Fun ty x e) = Fun (instantiate theta ty) x e
     instantiate theta (Native ty a f) = Native (instantiate theta ty) a f
 
+instance Instantiable TypedFun where
+    instantiate theta (TypedFun ty x e) = TypedFun (instantiate theta ty) x (instantiate theta e)
+    instantiate theta (TypedNative ty a f) = TypedNative (instantiate theta ty) a f
 
 instance Instantiable ExTy where
     instantiate theta (VarTy ty x) = VarTy (instantiate theta ty) x
@@ -122,11 +126,11 @@ class Elab a where
     elab :: MonadError TypeError m => a -> ReaderT Env m (Type a)
 
 instance Elab Prog where
-    type Type Prog = ()
-    elab = void . travFun (traverse_ elab)
+    type Type Prog = TypedProg
+    elab = travFun (traverse elab)
 
 instance Elab Fun where
-    type Type Fun = FunTy
+    type Type Fun = TypedFun
     elab (Fun fty@(Arrow pty rty) x e) = do
         ety <- withReaderT (\ce -> ce {gamma = zip [x] (unpair pty)}) $ elab e
         let theta = solve [rty] [tyGet ety]
@@ -134,8 +138,9 @@ instance Elab Fun where
             ty'' = tyGet ety'
         when (rty /= ty'') $
             throwError $ TypeError $ [(rty, ty'')]
-        return fty
-    elab (Native fty _ _) = return fty
+        return $ TypedFun fty x ety'
+    elab (Native fty a f) =
+        return $ TypedNative fty a f
 
 instance Elab Ex where
     type Type Ex = ExTy

@@ -49,20 +49,13 @@ import Language.Ratl.Val (
     )
 import Language.Ratl.Ast (
     Var(..),
-    Fun(..),
-    Ex(..),
+    TypedFun(..),
     ExTy(..),
-    Prog,
+    TypedProg,
     tyOf,
     tyGet,
-    lookupFun,
-    updateFun,
-    mapFun,
-    travFun,
     )
 import qualified Language.Ratl.Elab as Elab (
-    Env(..),
-    elab,
     instantiate,
     solve,
     )
@@ -72,7 +65,7 @@ type Anno = Int
 
 type IxEnv a = [(Index, a)]
 type VarEnv a = [(Var, IxEnv a)]
-type FunEnv a = [(Var, (Fun, (IxEnv a, IxEnv a)))]
+type FunEnv a = [(Var, (TypedFun, (IxEnv a, IxEnv a)))]
 type SharedTys a = MonoidalMap (IxEnv a) [IxEnv a]
 type Eqn = (IxEnv Anno, [GeneralForm])
 type EqnEnv = [(Var, Eqn)]
@@ -123,7 +116,7 @@ data CheckE = CheckE {
 
 data CheckF = CheckF {
         degree :: Int,
-        scps :: [Prog],
+        scps :: [TypedProg],
         comp :: FunEnv Anno,
         cost :: Cost
     }
@@ -186,7 +179,7 @@ freshBounds t = do
     q' <- rezero q
     return (q, q')
 
-freshFunBounds :: MonadState Anno m => Int -> Fun -> m (IxEnv Anno, IxEnv Anno)
+freshFunBounds :: MonadState Anno m => Int -> TypedFun -> m (IxEnv Anno, IxEnv Anno)
 freshFunBounds k fun = do
     let Arrow t t' = tyOf fun
     q  <- freshIxEnv k t
@@ -221,8 +214,8 @@ objective qs ixs = sparse $ map (flip (,) 1 . fromJust . flip lookup qs) ixs
 
 -- Reader/Writer/State Helpers
 
-lookupSCP :: MonadReader CheckE m => Var -> m Prog
-lookupSCP x = asks (head . filter (isJust . flip lookupFun x) . scps . checkF)
+lookupSCP :: MonadReader CheckE m => Var -> m TypedProg
+lookupSCP x = asks (head . filter (isJust . lookup x) . scps . checkF)
 
 share :: (Monoid a, MonadWriter (a, SharedTys b) m) => SharedTys b -> m ()
 share m = tell (mempty, m)
@@ -242,14 +235,14 @@ costof k = asks (k . cost . checkF)
 degreeof :: MonadReader CheckE m => m Int
 degreeof = asks (degree . checkF)
 
-lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (Fun, (IxEnv Anno, IxEnv Anno)))
+lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (TypedFun, (IxEnv Anno, IxEnv Anno)))
 lookupThisSCP x = asks (lookup x . comp . checkF)
 
 -- The Engine
 
-annotate :: (MonadError AnnoError m) => Int -> [Prog] -> m EqnEnv
+annotate :: (MonadError AnnoError m) => Int -> [TypedProg] -> m EqnEnv
 annotate deg_max p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
-    scp' <- travFun (traverse $ \f -> (,) f <$> freshFunBounds deg_max f) scp
+    scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds deg_max f) scp
     let checkState = CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
     cs <- execWriterT $ runReaderT (annoSCP scp') checkState
     for scp' $ traverse $ \(fun, (pqs, _)) -> do
@@ -259,7 +252,7 @@ annotate deg_max p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
             return $ GeneralForm Minimize obj cs
         return (pqs, progs)
 
-annotateEx :: (MonadError AnnoError m) => Int -> [Prog] -> ExTy -> m Eqn
+annotateEx :: (MonadError AnnoError m) => Int -> [TypedProg] -> ExTy -> m Eqn
 annotateEx deg_max p e = flip evalStateT 0 $ do
     let checkState = CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
     let ty = tyGet e
@@ -271,22 +264,18 @@ annotateEx deg_max p e = flip evalStateT 0 $ do
 
 annoSCP :: (MonadError AnnoError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) ()
 annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constrainShares)) . annoFE)
-    where annoFE :: (MonadError AnnoError m, MonadState Anno m) => (Fun, (IxEnv Anno, IxEnv Anno)) -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
-          annoFE (Fun (Arrow pty rty) x e, (pqs, rqs)) = do
+    where annoFE :: (MonadError AnnoError m, MonadState Anno m) => (TypedFun, (IxEnv Anno, IxEnv Anno)) -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
+          annoFE (TypedFun (Arrow pty rty) x e, (pqs, rqs)) = do
                     xqs <- rezero pqs
-                    phi <- asks (concatMap (mapFun (second tyOf)) . scps)
-                    ety <- runReaderT (asks (either (error "elab bug") id . runReaderT (Elab.elab e))) (Elab.Env (zip [x] (unpair pty)) phi)
-                    let theta = Elab.solve [rty] [tyGet ety]
-                        ety' = Elab.instantiate theta ety
-                    (q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno ety'
+                    (q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno e
                     let q_0   = lookupZero q
                         pqs_0 = lookupZero pqs
                     constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
                     constrain $ equate rqs [q']
-          annoFE (Native (Arrow pty@(ListTy pt)          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs [] [] pqs -- hack for car
-          annoFE (Native (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty [] rqs [] pqs -- hack for cdr
-          annoFE (Native (Arrow (PairTy (_, ListTy _)) rty@(ListTy _)) _ _, (pqs, rqs))  = consShift rty [] [] pqs rqs -- hack for cons
-          annoFE (Native (Arrow ty ty') _ _, (pqs, rqs)) = do
+          annoFE (TypedNative (Arrow pty@(ListTy pt)          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs [] [] pqs -- hack for car
+          annoFE (TypedNative (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty [] rqs [] pqs -- hack for cdr
+          annoFE (TypedNative (Arrow (PairTy (_, ListTy _)) rty@(ListTy _)) _ _, (pqs, rqs))  = consShift rty [] [] pqs rqs -- hack for cons
+          annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
                     let q_0  = lookupZero pqs
                         q_0' = lookupZero rqs
                     constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` 0.0]
@@ -380,11 +369,11 @@ instance Annotate ExTy where
                     return (tyOf fun, (qf, qf'))
             Nothing -> do
                 scp <- lookupSCP f
-                let asc = fromJust $ lookupFun scp f
+                let asc = fromJust $ lookup f scp
                     Arrow ty ty' = tyOf asc
                     theta = Elab.solve tys (unpair ty ++ [ty'])
                     fun = Elab.instantiate theta asc
-                scp' <- travFun (traverse $ \f -> (,) f <$> freshFunBounds degree f) $ updateFun scp f fun
+                scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds degree f) $ update f fun scp
                 constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (annoSCP scp'))
                 return $ first tyOf $ fromJust $ lookup f scp'
         let pairinits (PairTy (t1, t2)) = t1:map (PairTy . (,) t1) (pairinits t2)

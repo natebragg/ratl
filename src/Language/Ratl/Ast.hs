@@ -8,9 +8,11 @@ module Language.Ratl.Ast (
     NativeError(..),
     Var(..),
     Fun(Fun, Native),
+    TypedFun(TypedFun, TypedNative),
     Ex(Var, Val, App, If, Let),
     ExTy(VarTy, ValTy, AppTy, IfTy, LetTy),
     Prog,
+    TypedProg,
     tyOf,
     tyGet,
     makeProg,
@@ -55,13 +57,12 @@ instance Show NativeError where
     show EmptyError = "Tried to access contents of empty list."
     show DivideByZeroError = "Tried to divide by zero."
 
+class Typed t where
+    tyOf :: t -> FunTy
+
 data FunRep e where
     FunRep :: FunTy -> Var -> e -> FunRep e
     NativeRep :: FunTy -> Int -> ([Val] -> Except NativeError Val) -> FunRep e
-
-tyOf :: Fun -> FunTy
-tyOf (Fun ty _ _) = ty
-tyOf (Native ty _ _) = ty
 
 instance Show (FunRep e) where
     show _ = "(define ...)"
@@ -75,6 +76,24 @@ pattern Native ty a f = F (NativeRep ty a f)
 
 instance Show Fun where
     show = show . unfun
+
+instance Typed Fun where
+    tyOf (Fun ty _ _) = ty
+    tyOf (Native ty _ _) = ty
+
+newtype TypedFun = TypedF { untypedfun :: FunRep ExTy }
+
+{-# COMPLETE TypedFun, TypedNative #-}
+
+pattern TypedFun ty x e = TypedF (FunRep ty x e)
+pattern TypedNative ty a f = TypedF (NativeRep ty a f)
+
+instance Show TypedFun where
+    show = show . untypedfun
+
+instance Typed TypedFun where
+    tyOf (TypedFun ty _ _) = ty
+    tyOf (TypedNative ty _ _) = ty
 
 data ExRep e = VarRep Var
              | ValRep Val
@@ -178,3 +197,5 @@ connects vs (Prog fs) = Prog $ insEdges (concatMap firstEdge vs) fs
 
 scSubprograms :: Prog -> [Prog]
 scSubprograms = map Prog . scSubgraphs . getProg
+
+type TypedProg = [(Var, TypedFun)]
