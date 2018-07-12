@@ -266,19 +266,19 @@ annoSCP :: (MonadError AnnoError m, MonadState Anno m) => FunEnv Anno -> ReaderT
 annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constrainShares)) . annoFE)
     where annoFE :: (MonadError AnnoError m, MonadState Anno m) => (TypedFun, (IxEnv Anno, IxEnv Anno)) -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           annoFE (TypedFun (Arrow pty rty) x e, (pqs, rqs)) = do
-                    xqs <- rezero pqs
-                    (q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno e
-                    let q_0   = lookupZero q
-                        pqs_0 = lookupZero pqs
-                    constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
-                    constrain $ equate rqs [q']
+              xqs <- rezero pqs
+              (q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno e
+              let q_0   = lookupZero q
+                  pqs_0 = lookupZero pqs
+              constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
+              constrain $ equate rqs [q']
           annoFE (TypedNative (Arrow pty@(ListTy pt)          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs [] [] pqs -- hack for car
           annoFE (TypedNative (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty [] rqs [] pqs -- hack for cdr
           annoFE (TypedNative (Arrow (PairTy (_, ListTy _)) rty@(ListTy _)) _ _, (pqs, rqs))  = consShift rty [] [] pqs rqs -- hack for cons
           annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
-                    let q_0  = lookupZero pqs
-                        q_0' = lookupZero rqs
-                    constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` 0.0]
+              let q_0  = lookupZero pqs
+                  q_0' = lookupZero rqs
+              constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` 0.0]
           consShift :: (MonadError AnnoError m, MonadState Anno m) => Ty -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
               let ty_p = PairTy (ty_h, ty_l)
