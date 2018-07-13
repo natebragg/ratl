@@ -7,7 +7,7 @@ module Language.Ratl.Anno (
     annotateEx
 ) where
 
-import Data.List (union, find)
+import Data.List (transpose, union, find)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
 import Data.Maybe (isJust, fromJust, mapMaybe)
@@ -379,6 +379,14 @@ instance Annotate ExTy where
         let pairinits (PairTy (t1, t2)) = t1:map (PairTy . (,) t1) (pairinits t2)
             pairinits t = [t]
             itys = pairinits ty
+            pis = map (transpose . last . projectionsDeg degree) itys
+            ips = map (map (map (\(a, b) -> (b, a)))) pis
+        (qxs, qxs') <- withReaderT (\ce -> ce { checkF = (checkF ce) {cost = zero}}) $ unzip <$> do
+            let flippedZipWithM a b c f = zipWithM f a (zip b c)
+            let ess = zipWith (map . const) es ips
+            flippedZipWithM ess qs qs' $ \es (qx_0, qx'_0) -> do
+                (qxs_j, qx's_j) <- unzip <$> mapM anno (tail es)
+                return $ (qx_0:qxs_j, qx'_0:qx's_j)
         qt <- rezero qf
         qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv degree) [qt] $ init itys
         q  <- rezero qf'
@@ -387,18 +395,21 @@ instance Annotate ExTy where
             qf_0' = lookupZero qf'
             q_0   = lookupZero q
             q_0'  = lookupZero q'
-            qs_0  = map lookupZero qs
-            qs_0' = map lookupZero qs'
-            qxt   = buildPoly qts $ map (last . projectionsDeg degree) itys
+            qxs_0 = map (map lookupZero) qxs
+            qxrs' = zipWith reifyqs qxs' ips
+                where reifyqs = (concat .) . zipWith makefull
+                      makefull q ip = mapMaybe (\(ix, p) -> flip (,) p <$> lookup ix ip) q
+            qxrs'_0 = map lookupZero qxrs'
             qts_0 = map lookupZero qts
-        constrain $ concat $ zipWith equatePoly qs qxt
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno
-        let (qs_0_args, ([q_ap_0], _)) = zipR (q_0:qs_0') qts_0
+        constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Eql` 0.0 |
+                   (q_in, q_out) <- concat $ zipWith zip qxs_0 $ [q_0]:map (map snd) qts]
+        constrain $ concat $ zipWith equate qxrs' $ map (pure . deleteZero) qts
         constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Eql` k1 |
-                   (q_in, q_out) <- qs_0_args]
-        constrain [sparse (map exchange [Consume q_ap_0, Supply qf_0, Supply c]) `Eql` k1]
+                   (q_in, q_out) <- zip qxrs'_0 qts_0]
+        constrain [sparse (map exchange [Consume (last qts_0), Supply qf_0, Supply c]) `Eql` k1]
         constrain [sparse (map exchange [Supply q_0', Consume qf_0', Consume c]) `Eql` k2]
         return (q, q')
     anno (LetTy _ ds e) = do
