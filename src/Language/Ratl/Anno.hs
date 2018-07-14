@@ -50,7 +50,7 @@ import Language.Ratl.Val (
 import Language.Ratl.Ast (
     Var(..),
     TypedFun(..),
-    ExTy(..),
+    TypedEx(..),
     TypedProg,
     tyOf,
     tyGet,
@@ -252,7 +252,7 @@ annotate deg_max p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
             return $ GeneralForm Minimize obj cs
         return (pqs, progs)
 
-annotateEx :: (MonadError AnnoError m) => Int -> [TypedProg] -> ExTy -> m Eqn
+annotateEx :: (MonadError AnnoError m) => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx deg_max p e = flip evalStateT 0 $ do
     let checkState = CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
     let ty = tyGet e
@@ -295,8 +295,8 @@ annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
 class Annotate a where
     anno :: (MonadError AnnoError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (IxEnv Anno, IxEnv Anno)
 
-instance Annotate ExTy where
-    anno (VarTy _ x) = do
+instance Annotate TypedEx where
+    anno (TypedVar _ x) = do
         qx <- gamma x
         q  <- traverse reannotate qx
         q' <- rezero q
@@ -306,14 +306,14 @@ instance Annotate ExTy where
         k <- costof k_var
         constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` k]
         return (q, q')
-    anno (ValTy ty v) = do
+    anno (TypedVal ty v) = do
         (q, q') <- freshBounds ty
         k <- costof k_val
         let q_0  = lookupZero q
             q_0' = lookupZero q'
         constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` k]
         return (q, q')
-    anno (IfTy ty ep et ef) = do
+    anno (TypedIf ty ep et ef) = do
         (qp, qp') <- anno ep
         ((qt, qt'), (tcs, tss)) <- mapReaderT runWriterT $ anno et
         ((qf, qf'), (fcs, fss)) <- mapReaderT runWriterT $ anno ef
@@ -345,7 +345,7 @@ instance Annotate ExTy where
                    sparse [exchange $ Consume qt_0', exchange $ Supply q_0'] `Geq` kc,
                    sparse [exchange $ Consume qf_0', exchange $ Supply q_0'] `Geq` kc]
         return (q, q')
-    anno (AppTy _ f es) = do
+    anno (TypedApp _ f es) = do
         (qs, qs') <- unzip <$> traverse anno es
         degree <- degreeof
         let tys = map tyGet es
@@ -412,7 +412,7 @@ instance Annotate ExTy where
         constrain [sparse (map exchange [Consume (last qts_0), Supply qf_0, Supply c]) `Eql` k1]
         constrain [sparse (map exchange [Supply q_0', Consume qf_0', Consume c]) `Eql` k2]
         return (q, q')
-    anno (LetTy _ ds e) = do
+    anno (TypedLet _ ds e) = do
         (xs, (qs, qs')) <- second unzip <$> unzip <$> traverse (traverse anno) ds
         qxs <- traverse rezero qs
         (qe, qe') <- withReaderT (\ce -> ce {env = reverse (zip xs qxs) ++ env ce}) $ anno e

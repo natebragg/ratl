@@ -34,7 +34,7 @@ import Language.Ratl.Ast (
     Fun(..),
     TypedFun(..),
     Ex(..),
-    ExTy(..),
+    TypedEx(..),
     Prog,
     TypedProg,
     tyOf,
@@ -114,12 +114,12 @@ instance Instantiable TypedFun where
     instantiate theta (TypedFun ty x e) = TypedFun (instantiate theta ty) x (instantiate theta e)
     instantiate theta (TypedNative ty a f) = TypedNative (instantiate theta ty) a f
 
-instance Instantiable ExTy where
-    instantiate theta (VarTy ty x) = VarTy (instantiate theta ty) x
-    instantiate theta (ValTy ty v) = ValTy (instantiate theta ty) v
-    instantiate theta (IfTy ty ep et ef) = IfTy (instantiate theta ty) (instantiate theta ep) (instantiate theta et) (instantiate theta ef)
-    instantiate theta (AppTy ty f es) = AppTy (instantiate theta ty) f (map (instantiate theta) es)
-    instantiate theta (LetTy ty ds e) = LetTy (instantiate theta ty) (map (fmap (instantiate theta)) ds) (instantiate theta e)
+instance Instantiable TypedEx where
+    instantiate theta (TypedVar ty x) = TypedVar (instantiate theta ty) x
+    instantiate theta (TypedVal ty v) = TypedVal (instantiate theta ty) v
+    instantiate theta (TypedIf ty ep et ef) = TypedIf (instantiate theta ty) (instantiate theta ep) (instantiate theta et) (instantiate theta ef)
+    instantiate theta (TypedApp ty f es) = TypedApp (instantiate theta ty) f (map (instantiate theta) es)
+    instantiate theta (TypedLet ty ds e) = TypedLet (instantiate theta ty) (map (fmap (instantiate theta)) ds) (instantiate theta e)
 
 class Elab a where
     type Type a :: *
@@ -143,14 +143,14 @@ instance Elab Fun where
         return $ TypedNative fty a f
 
 instance Elab Ex where
-    type Type Ex = ExTy
+    type Type Ex = TypedEx
     elab (Var x) = do
         ty <- unlessJustM (asks $ lookup x . gamma) $
             throwError $ NameError x
-        return $ VarTy ty x
+        return $ TypedVar ty x
     elab (Val v) = do
         ty <- elab v
-        return $ ValTy ty v
+        return $ TypedVal ty v
     elab (If ep et ef) = do
         etys <- traverse elab [ep, et, ef]
         let ifty   = [BooleanTy, Tyvar "a", Tyvar "a"]
@@ -162,7 +162,7 @@ instance Elab Ex where
             ineqs  = filter (uncurry (/=)) (zip tys' tys)
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
-        return $ IfTy (last tys') etyp' etyt' etyf'
+        return $ TypedIf (last tys') etyp' etyt' etyf'
     elab (App f es) = do
         etys <- traverse elab es
         when (arity f /= length es) $
@@ -179,13 +179,13 @@ instance Elab Ex where
             ineqs  = filter (uncurry (/=)) (zip tys' tys)
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
-        return $ AppTy ty'' f etys'
+        return $ TypedApp ty'' f etys'
     elab (Let ds e) = do
         etyds <- traverse (traverse elab) ds
         let tyds = map (fmap tyGet) etyds
         ety <- withReaderT (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
         let ty = tyGet ety
-        return $ LetTy ty etyds ety
+        return $ TypedLet ty etyds ety
 
 instance Elab Val where
     type Type Val = Ty
