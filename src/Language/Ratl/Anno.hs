@@ -10,6 +10,7 @@ module Language.Ratl.Anno (
 import Data.List (transpose, union, find)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
+import Data.Mapping (Mapping(lookupBy, updateBy, deleteBy, lookup, update))
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Foldable (traverse_, foldrM)
 import Data.Traversable (for)
@@ -20,6 +21,7 @@ import Control.Monad.Except.Extra (unlessJust)
 import Control.Monad.State (MonadState, evalStateT, get, put)
 import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, mapReaderT, ReaderT, asks)
 import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, mapWriterT, WriterT, tell)
+import Prelude hiding (lookup)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.LinearFunction (LinearFunction, sparse)
@@ -128,14 +130,6 @@ instance Show AnnoError where
 
 -- General Helpers
 
-updateBy :: (a -> Bool) -> b -> [(a, b)] -> [(a, b)]
-updateBy f b [] = error "BUG: update failure"
-updateBy f b ((a,_):abs) | f a = (a,b):abs
-updateBy f b (ab:abs) = ab:updateBy f b abs
-
-update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
-update a = updateBy (a ==)
-
 assoc :: (a, (b, c)) -> ((a, b), c)
 assoc (a, (b, c)) = ((a, b), c)
 
@@ -150,10 +144,10 @@ isZero :: Index -> Bool
 isZero = (0 ==) . deg
 
 lookupZero :: IxEnv a -> a
-lookupZero = snd . fromJust . find (isZero . fst)
+lookupZero = fromJust . lookupBy isZero
 
 deleteZero :: IxEnv a -> IxEnv a
-deleteZero ixs = filter (not . isZero . fst) ixs
+deleteZero = deleteBy isZero
 
 updateZero :: a -> IxEnv a -> IxEnv a
 updateZero = updateBy isZero
