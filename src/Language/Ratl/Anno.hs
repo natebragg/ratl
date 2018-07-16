@@ -65,11 +65,11 @@ import qualified Language.Ratl.Elab as Elab (
 
 type Anno = Int
 
-type IxEnv a = [(Index, a)]
-type VarEnv a = [(Var, IxEnv a)]
-type FunEnv a = [(Var, (TypedFun, (IxEnv a, IxEnv a)))]
-type SharedTys a = MonoidalMap (IxEnv a) [IxEnv a]
-type Eqn = (IxEnv Anno, [GeneralForm])
+type IxEnv = [(Index, Anno)]
+type VarEnv = [(Var, IxEnv)]
+type FunEnv = [(Var, (TypedFun, (IxEnv, IxEnv)))]
+type SharedTys = MonoidalMap IxEnv [IxEnv]
+type Eqn = ([(Index, Anno)], [GeneralForm])
 type EqnEnv = [(Var, Eqn)]
 
 data Cost = Cost { k_var,
@@ -112,14 +112,14 @@ exchange (Consume q) = (q, 1.0)
 exchange (Supply  q) = (q, -1.0)
 
 data CheckE = CheckE {
-        env :: VarEnv Anno,
+        env :: VarEnv,
         checkF :: CheckF
     }
 
 data CheckF = CheckF {
         degree :: Int,
         scps :: [TypedProg],
-        comp :: FunEnv Anno,
+        comp :: FunEnv,
         cost :: Cost
     }
 
@@ -143,13 +143,13 @@ zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 isZero :: Index -> Bool
 isZero = (0 ==) . deg
 
-lookupZero :: IxEnv a -> a
+lookupZero :: IxEnv -> Anno
 lookupZero = fromJust . lookupBy isZero
 
-deleteZero :: IxEnv a -> IxEnv a
+deleteZero :: IxEnv -> IxEnv
 deleteZero = deleteBy isZero
 
-updateZero :: a -> IxEnv a -> IxEnv a
+updateZero :: Anno -> IxEnv -> IxEnv
 updateZero = updateBy isZero
 
 -- Annotation Helpers
@@ -163,47 +163,47 @@ freshAnno = do
     put (q + 1)
     return q
 
-freshIxEnv :: MonadState Anno m => Int -> Ty -> m (IxEnv Anno)
+freshIxEnv :: MonadState Anno m => Int -> Ty -> m IxEnv
 freshIxEnv k t = traverse (reannotate . flip (,) ()) $ indexDeg k t
 
-freshBounds :: (MonadReader CheckE m, MonadState Anno m) => Ty -> m (IxEnv Anno, IxEnv Anno)
+freshBounds :: (MonadReader CheckE m, MonadState Anno m) => Ty -> m (IxEnv, IxEnv)
 freshBounds t = do
     k <- degreeof
     q  <- freshIxEnv k t
     q' <- rezero q
     return (q, q')
 
-freshFunBounds :: MonadState Anno m => Int -> TypedFun -> m (IxEnv Anno, IxEnv Anno)
+freshFunBounds :: MonadState Anno m => Int -> TypedFun -> m (IxEnv, IxEnv)
 freshFunBounds k fun = do
     let Arrow t t' = tyOf fun
     q  <- freshIxEnv k t
     q' <- freshIxEnv k t'
     return (q, q')
 
-rezero :: MonadState Anno m => IxEnv Anno -> m (IxEnv Anno)
+rezero :: MonadState Anno m => IxEnv -> m IxEnv
 rezero qs = do
     q_0' <- freshAnno
     return $ updateZero q_0' qs
 
 -- Constraint Helpers
 
-relate :: (LinearFunction -> Double -> GeneralConstraint) -> IxEnv Anno -> [IxEnv Anno] -> [GeneralConstraint]
+relate :: (LinearFunction -> Double -> GeneralConstraint) -> IxEnv -> [IxEnv] -> [GeneralConstraint]
 relate c i is = [sparse (map exchange (Consume p:map Supply ps)) `c` 0.0 | (ix, p) <- i, ps <- [mapMaybe (lookup ix) is], not $ null ps, not $ elem p ps]
 
-equate :: IxEnv Anno -> [IxEnv Anno] -> [GeneralConstraint]
+equate :: IxEnv -> [IxEnv] -> [GeneralConstraint]
 equate = relate Eql
 
-exceed :: IxEnv Anno -> [IxEnv Anno] -> [GeneralConstraint]
+exceed :: IxEnv -> [IxEnv] -> [GeneralConstraint]
 exceed = relate Geq
 
-equatePoly :: IxEnv Anno -> [IxEnv (Anno, Double)] -> [GeneralConstraint]
+equatePoly :: IxEnv -> [[(Index, (Anno, Double))]] -> [GeneralConstraint]
 equatePoly i is = [sparse (exchange (Consume p):map (fmap negate) pcs) `Eql` 0.0 | (ix, p) <- i, pcs <- [mapMaybe (lookup ix) is], not $ null pcs, not $ elem p $ map fst pcs]
 
-buildPoly :: [IxEnv a] -> [[[(Index, Index)]]] -> [[IxEnv (a, Double)]]
+buildPoly :: [IxEnv] -> [[[(Index, Index)]]] -> [[[(Index, (Anno, Double))]]]
 buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe qs . xlate
     where xlate ixs (ix, a) = (\ix' -> (ix', (a, poly ix / poly ix'))) <$> lookup ix ixs
 
-objective :: IxEnv Anno -> [Index] -> Objective
+objective :: IxEnv -> [Index] -> Objective
 objective qs ixs = sparse $ map (flip (,) 1 . fromJust . flip lookup qs) ixs
 
 -- Reader/Writer/State Helpers
@@ -211,16 +211,16 @@ objective qs ixs = sparse $ map (flip (,) 1 . fromJust . flip lookup qs) ixs
 lookupSCP :: MonadReader CheckE m => Var -> m TypedProg
 lookupSCP x = asks (head . filter (isJust . lookup x) . scps . checkF)
 
-share :: (Monoid a, MonadWriter (a, SharedTys b) m) => SharedTys b -> m ()
+share :: (Monoid a, MonadWriter (a, SharedTys) m) => SharedTys -> m ()
 share m = tell (mempty, m)
 
 constrain :: (Monoid b, MonadWriter ([GeneralConstraint], b) m) => [GeneralConstraint] -> m ()
 constrain c = tell (c, mempty)
 
-constrainShares :: ([GeneralConstraint], SharedTys Anno) -> [GeneralConstraint]
+constrainShares :: ([GeneralConstraint], SharedTys) -> [GeneralConstraint]
 constrainShares = uncurry (++) . second (foldMapWithKey equate . getMonoidalMap)
 
-gamma :: MonadReader CheckE m => Var -> m (IxEnv Anno)
+gamma :: MonadReader CheckE m => Var -> m IxEnv
 gamma x = asks (fromJust . lookup x . env)
 
 costof :: MonadReader CheckE m => (Cost -> a) -> m a
@@ -229,7 +229,7 @@ costof k = asks (k . cost . checkF)
 degreeof :: MonadReader CheckE m => m Int
 degreeof = asks (degree . checkF)
 
-lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (TypedFun, (IxEnv Anno, IxEnv Anno)))
+lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (TypedFun, (IxEnv, IxEnv)))
 lookupThisSCP x = asks (lookup x . comp . checkF)
 
 -- The Engine
@@ -256,9 +256,9 @@ annotateEx deg_max p e = flip evalStateT 0 $ do
         return $ GeneralForm Minimize obj $ constrainShares css
     return (q, progs)
 
-annoSCP :: (MonadError AnnoError m, MonadState Anno m) => FunEnv Anno -> ReaderT CheckF (WriterT [GeneralConstraint] m) ()
+annoSCP :: (MonadError AnnoError m, MonadState Anno m) => FunEnv -> ReaderT CheckF (WriterT [GeneralConstraint] m) ()
 annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constrainShares)) . annoFE)
-    where annoFE :: (MonadError AnnoError m, MonadState Anno m) => (TypedFun, (IxEnv Anno, IxEnv Anno)) -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
+    where annoFE :: (MonadError AnnoError m, MonadState Anno m) => (TypedFun, (IxEnv, IxEnv)) -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys) m) ()
           annoFE (TypedFun (Arrow pty rty) x e, (pqs, rqs)) = do
               xqs <- rezero pqs
               (q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno e
@@ -273,7 +273,7 @@ annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
               let q_0  = lookupZero pqs
                   q_0' = lookupZero rqs
               constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` 0.0]
-          consShift :: (MonadError AnnoError m, MonadState Anno m) => Ty -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> IxEnv Anno -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys Anno) m) ()
+          consShift :: (MonadError AnnoError m, MonadState Anno m) => Ty -> IxEnv -> IxEnv -> IxEnv -> IxEnv -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys) m) ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
               let ty_p = PairTy (ty_h, ty_l)
               k <- asks degree
@@ -287,7 +287,7 @@ annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
               constrain $ concat $ zipWith equatePoly [qs_h, qs_t] q's
 
 class Annotate a where
-    anno :: (MonadError AnnoError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys Anno) m) (IxEnv Anno, IxEnv Anno)
+    anno :: (MonadError AnnoError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys) m) (IxEnv, IxEnv)
 
 instance Annotate TypedEx where
     anno (TypedVar _ x) = do
