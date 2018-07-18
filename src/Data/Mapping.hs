@@ -31,11 +31,11 @@ instance Mapping [(k, v)] k v where
               go (_:kvs) = go kvs
     updateBy f v = go
         where go [] = []
-              go ((k,_):kvs) | f k = (k,v):kvs
+              go ((k,_):kvs) | f k = (k,v):go kvs
               go (kv:kvs) = kv:go kvs
     deleteBy f = go
         where go [] = []
-              go ((k,_):kvs) | f k = kvs
+              go ((k,_):kvs) | f k = go kvs
               go (kv:kvs) = kv:go kvs
 
     fromList = id
