@@ -14,8 +14,11 @@ class Mapping m k v | m -> k v where
     deleteBy :: (k -> Bool) -> m -> m      
 
     fromList :: [(k, v)] -> m
+    elements :: m -> [(k, v)]
     keys :: m -> [k]
+    keys = map fst . elements
     values :: m -> [v]
+    values = map snd . elements
 
     lookup :: Eq k => k -> m -> Maybe v
     lookup = lookupBy . (==)
@@ -39,5 +42,4 @@ instance Mapping [(k, v)] k v where
               go (kv:kvs) = kv:go kvs
 
     fromList = id
-    keys = map fst
-    values = map snd
+    elements = id

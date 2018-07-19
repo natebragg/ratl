@@ -1,7 +1,7 @@
 module Data.Clp.Program (
     LinearProgram(..),
     Objective,
-    GeneralConstraint(..),
+    GeneralConstraint(..), (<=$), (==$), (>=$),
     GeneralForm(..),
     StandardConstraint(..),
     StandardForm(..),
@@ -24,6 +24,14 @@ data GeneralConstraint = Leq LinearFunction Double
                        | Eql LinearFunction Double
                        | Geq LinearFunction Double
     deriving Show
+
+(<=$) = Leq
+(==$) = Eql
+(>=$) = Geq
+
+infix 4 <=$
+infix 4 ==$
+infix 4 >=$
 
 lf :: GeneralConstraint -> LinearFunction
 lf (Leq f _) = f

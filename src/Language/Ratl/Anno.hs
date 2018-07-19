@@ -10,12 +10,13 @@ module Language.Ratl.Anno (
 import Data.List (transpose, union, find)
 import Data.Map (foldMapWithKey, traverseWithKey, elems, fromList, toList, mapKeys)
 import Data.Map.Monoidal (MonoidalMap(..), singleton, keys)
-import Data.Mapping (Mapping(lookupBy, updateBy, deleteBy, lookup, update))
+import Data.Mapping (Mapping(lookupBy, updateBy, deleteBy, lookup, update, elements, values))
+import qualified Data.Mapping as Mapping (fromList)
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Foldable (traverse_, foldrM)
 import Data.Traversable (for)
 import Control.Arrow (first, second)
-import Control.Monad (zipWithM)
+import Control.Monad (zipWithM, mfilter)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Except.Extra (unlessJust)
 import Control.Monad.State (MonadState, evalStateT, get, put)
@@ -24,9 +25,15 @@ import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, mapWriterT, W
 import Prelude hiding (lookup)
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
-import Data.Clp.LinearFunction (LinearFunction, sparse)
+import Data.Clp.LinearFunction (
+    (|*), (|+|), (|-|),
+    LinearFunction,
+    LinearFunFamily,
+    sparse,
+    coefficients,
+    )
 import Data.Clp.Program (
-    GeneralConstraint(..),
+    GeneralConstraint, (==$), (>=$),
     GeneralForm(..),
     Objective,
     )
@@ -65,7 +72,7 @@ import qualified Language.Ratl.Elab as Elab (
 
 type Anno = Int
 
-type IxEnv = [(Index, Anno)]
+type IxEnv = LinearFunFamily Index
 type VarEnv = [(Var, IxEnv)]
 type FunEnv = [(Var, (TypedFun, (IxEnv, IxEnv)))]
 type SharedTys = MonoidalMap IxEnv [IxEnv]
@@ -105,12 +112,6 @@ zero = Cost {
         k_lt2 = 0.0
     }
 
-data Resource = Consume Anno | Supply Anno
-
-exchange :: Resource -> (Anno, Double)
-exchange (Consume q) = (q, 1.0)
-exchange (Supply  q) = (q, -1.0)
-
 data CheckE = CheckE {
         env :: VarEnv,
         checkF :: CheckF
@@ -143,28 +144,28 @@ zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
 isZero :: Index -> Bool
 isZero = (0 ==) . deg
 
-lookupZero :: IxEnv -> Anno
-lookupZero = fromJust . lookupBy isZero
+coerceZero :: IxEnv -> LinearFunction
+coerceZero = fromJust . lookupBy isZero
 
-deleteZero :: IxEnv -> IxEnv
-deleteZero = deleteBy isZero
+filterZero :: IxEnv -> IxEnv
+filterZero = deleteBy (not . isZero)
 
-updateZero :: Anno -> IxEnv -> IxEnv
+updateZero :: LinearFunction -> IxEnv -> IxEnv
 updateZero = updateBy isZero
+
+indexmap :: IxEnv -> [(Index, Anno)]
+indexmap = map (second (\lf -> (\[a] -> a) $ fst $ coefficients lf)) . elements
 
 -- Annotation Helpers
 
-reannotate :: (Traversable t, MonadState Anno m) => t a -> m (t Anno)
-reannotate = traverse $ const freshAnno
-
-freshAnno :: MonadState Anno m => m Anno
+freshAnno :: MonadState Anno m => m LinearFunction
 freshAnno = do
     q <- get
     put (q + 1)
-    return q
+    return $ sparse [(q, 1)]
 
 freshIxEnv :: MonadState Anno m => Int -> Ty -> m IxEnv
-freshIxEnv k t = traverse (reannotate . flip (,) ()) $ indexDeg k t
+freshIxEnv k t = Mapping.fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
 
 freshBounds :: (MonadReader CheckE m, MonadState Anno m) => Ty -> m (IxEnv, IxEnv)
 freshBounds t = do
@@ -185,26 +186,32 @@ rezero qs = do
     q_0' <- freshAnno
     return $ updateZero q_0' qs
 
+reannotate :: MonadState Anno m => IxEnv -> m IxEnv
+reannotate ixs = Mapping.fromList <$> traverse (traverse $ const freshAnno) (elements ixs)
+
 -- Constraint Helpers
 
-relate :: (LinearFunction -> Double -> GeneralConstraint) -> IxEnv -> [IxEnv] -> [GeneralConstraint]
-relate c i is = [sparse (map exchange (Consume p:map Supply ps)) `c` 0.0 | (ix, p) <- i, ps <- [mapMaybe (lookup ix) is], not $ null ps, not $ elem p ps]
-
-equate :: IxEnv -> [IxEnv] -> [GeneralConstraint]
-equate = relate Eql
-
-exceed :: IxEnv -> [IxEnv] -> [GeneralConstraint]
-exceed = relate Geq
-
-equatePoly :: IxEnv -> [[(Index, (Anno, Double))]] -> [GeneralConstraint]
-equatePoly i is = [sparse (exchange (Consume p):map (fmap negate) pcs) `Eql` 0.0 | (ix, p) <- i, pcs <- [mapMaybe (lookup ix) is], not $ null pcs, not $ elem p $ map fst pcs]
-
-buildPoly :: [IxEnv] -> [[[(Index, Index)]]] -> [[[(Index, (Anno, Double))]]]
-buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe qs . xlate
-    where xlate ixs (ix, a) = (\ix' -> (ix', (a, poly ix / poly ix'))) <$> lookup ix ixs
+buildPoly :: [IxEnv] -> [[[(Index, Index)]]] -> [[[(Index, LinearFunction)]]]
+buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe (elements qs) . xlate
+    where xlate ixs (ix, lf) = (\ix' -> (ix', lf |* (poly ix / poly ix'))) <$> lookup ix ixs
 
 objective :: IxEnv -> [Index] -> Objective
-objective qs ixs = sparse $ map (flip (,) 1 . fromJust . flip lookup qs) ixs
+objective qs ixs = foldr1 (|+|) $ map (fromJust . flip lookup qs) ixs
+
+nonEmptyConstraints c ixs k =
+    case (mfilter (any (/= 0)) $          lookupBy isZero ixs,
+           filter (any (/= 0)) $ values $ deleteBy isZero ixs) of
+        (Just z, nz) -> (z `c` k):map (`c` 0) nz
+        (     _, nz) ->           map (`c` 0) nz
+
+(==*) :: LinearFunFamily Index -> Double -> [GeneralConstraint]
+(==*) = nonEmptyConstraints (==$)
+
+(>=*) :: LinearFunFamily Index -> Double -> [GeneralConstraint]
+(>=*) = nonEmptyConstraints (>=$)
+
+infix 4 ==*
+infix 4 >=*
 
 -- Reader/Writer/State Helpers
 
@@ -219,6 +226,7 @@ constrain c = tell (c, mempty)
 
 constrainShares :: ([GeneralConstraint], SharedTys) -> [GeneralConstraint]
 constrainShares = uncurry (++) . second (foldMapWithKey equate . getMonoidalMap)
+    where equate i is = (foldl (|-|) i is ==* 0)
 
 gamma :: MonadReader CheckE m => Var -> m IxEnv
 gamma x = asks (fromJust . lookup x . env)
@@ -244,7 +252,7 @@ annotate deg_max p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
         progs <- for (reverse $ take (deg_max + 1) $ index pty) $ \ixs -> do
             let obj = objective pqs ixs
             return $ GeneralForm Minimize obj cs
-        return (pqs, progs)
+        return (indexmap pqs, progs)
 
 annotateEx :: (MonadError AnnoError m) => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx deg_max p e = flip evalStateT 0 $ do
@@ -254,7 +262,7 @@ annotateEx deg_max p e = flip evalStateT 0 $ do
     progs <- for [[zeroIndex ty]] $ \ixs -> do
         let obj = objective q ixs
         return $ GeneralForm Minimize obj $ constrainShares css
-    return (q, progs)
+    return (indexmap q, progs)
 
 annoSCP :: (MonadError AnnoError m, MonadState Anno m) => FunEnv -> ReaderT CheckF (WriterT [GeneralConstraint] m) ()
 annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constrainShares)) . annoFE)
@@ -262,29 +270,28 @@ annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constra
           annoFE (TypedFun (Arrow pty rty) x e, (pqs, rqs)) = do
               xqs <- rezero pqs
               (q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno e
-              let q_0   = lookupZero q
-                  pqs_0 = lookupZero pqs
-              constrain [sparse (map exchange [Consume pqs_0, Supply q_0]) `Eql` 0.0]
-              constrain $ equate rqs [q']
-          annoFE (TypedNative (Arrow pty@(ListTy pt)          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs [] [] pqs -- hack for car
-          annoFE (TypedNative (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty [] rqs [] pqs -- hack for cdr
-          annoFE (TypedNative (Arrow (PairTy (_, ListTy _)) rty@(ListTy _)) _ _, (pqs, rqs))  = consShift rty [] [] pqs rqs -- hack for cons
+              constrain $ [coerceZero pqs |-| coerceZero q ==$ 0]
+              constrain $ rqs |-| q' ==* 0
+          annoFE (TypedNative (Arrow pty@(ListTy pt)          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs lz lz pqs -- hack for car
+          annoFE (TypedNative (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty lz rqs lz pqs -- hack for cdr
+          annoFE (TypedNative (Arrow (PairTy (_, ListTy _)) rty@(ListTy _)) _ _, (pqs, rqs))  = consShift rty lz lz pqs rqs -- hack for cons
           annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
-              let q_0  = lookupZero pqs
-                  q_0' = lookupZero rqs
-              constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` 0.0]
+              constrain $ [coerceZero pqs |-| coerceZero rqs ==$ 0]
+          lz :: IxEnv
+          lz = Mapping.fromList []
           consShift :: (MonadError AnnoError m, MonadState Anno m) => Ty -> IxEnv -> IxEnv -> IxEnv -> IxEnv -> ReaderT CheckF (WriterT ([GeneralConstraint], SharedTys) m) ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
               let ty_p = PairTy (ty_h, ty_l)
               k <- asks degree
-              q's_p <- if null qs_p then freshIxEnv k ty_p else return qs_p
+              q's_p <- if null (values qs_p) then freshIxEnv k ty_p else return qs_p
               let limit (i, is) = const (i, is) <$> lookup i q's_p
                   Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
                   ss = map (\(i, is) -> (,) <$> lookup i q's_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
                   q's = buildPoly (repeat q's_p) $ projectionsDeg k ty_p
-              constrain [sparse (map exchange (Supply q:map Consume ps)) `Eql` 0.0 |
+              constrain [foldl (|+|) (q |* (-1)) ps ==$ 0 |
                          Just (q, ps) <- ss]
-              constrain $ concat $ zipWith equatePoly [qs_h, qs_t] q's
+              constrain [foldl (|-|) p pcs ==$ 0 |
+                         (q_in, q_out) <- zip [qs_h, qs_t] q's, (ix, p) <- elements q_in, pcs <- [mapMaybe (lookup ix) q_out], not $ null pcs]
 
 class Annotate a where
     anno :: (MonadError AnnoError m, MonadState Anno m) => a -> ReaderT CheckE (WriterT ([GeneralConstraint], SharedTys) m) (IxEnv, IxEnv)
@@ -292,20 +299,16 @@ class Annotate a where
 instance Annotate TypedEx where
     anno (TypedVar _ x) = do
         qx <- gamma x
-        q  <- traverse reannotate qx
+        q  <- reannotate qx
         q' <- rezero q
         share $ singleton qx [q]
-        let q_0  = lookupZero q
-            q_0' = lookupZero q'
         k <- costof k_var
-        constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` k]
+        constrain $ q |-| q' ==* k
         return (q, q')
     anno (TypedVal ty v) = do
         (q, q') <- freshBounds ty
         k <- costof k_val
-        let q_0  = lookupZero q
-            q_0' = lookupZero q'
-        constrain [sparse [exchange $ Consume q_0, exchange $ Supply q_0'] `Eql` k]
+        constrain $ q |-| q' ==* k
         return (q, q')
     anno (TypedIf ty ep et ef) = do
         (qp, qp') <- anno ep
@@ -313,31 +316,22 @@ instance Annotate TypedEx where
         ((qf, qf'), (fcs, fss)) <- mapReaderT runWriterT $ anno ef
         constrain tcs
         constrain fcs
-        sharemap <- traverse (fmap <$> (,) <*> traverse reannotate) $ union (keys tss) (keys fss)
+        sharemap <- traverse (fmap <$> (,) <*> reannotate) $ union (keys tss) (keys fss)
         share $ MonoidalMap $ fromList $ map (second pure) sharemap
         let reannotateShares ss = do
-                ss' <- traverseWithKey (flip (fmap . flip (,)) . traverse reannotate) $
+                ss' <- traverseWithKey (flip (fmap . flip (,)) . reannotate) $
                         mapKeys (fromJust . flip lookup sharemap) $ getMonoidalMap ss
-                constrain $ concatMap (uncurry exceed . second (pure . fst)) $ toList ss'
+                constrain $ concat [s |-| s' >=* 0 | (s, (s', _)) <- toList ss']
                 return $ MonoidalMap $ fromList $ elems ss'
         share =<< reannotateShares tss
         share =<< reannotateShares fss
         (q, q') <- freshBounds ty
         [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
-        let q_0   = lookupZero q
-            q_0'  = lookupZero q'
-            qp_0  = lookupZero qp
-            qp_0' = lookupZero qp'
-            qt_0  = lookupZero qt
-            qt_0' = lookupZero qt'
-            qf_0  = lookupZero qf
-            qf_0' = lookupZero qf'
-        constrain $ exceed (deleteZero qt) [q] ++ exceed (deleteZero qf) [q]
-        constrain [sparse [exchange $ Consume q_0,   exchange $ Supply qp_0] `Geq` kp,
-                   sparse [exchange $ Consume qp_0', exchange $ Supply qt_0] `Geq` kt,
-                   sparse [exchange $ Consume qp_0', exchange $ Supply qf_0] `Geq` kf,
-                   sparse [exchange $ Consume qt_0', exchange $ Supply q_0'] `Geq` kc,
-                   sparse [exchange $ Consume qf_0', exchange $ Supply q_0'] `Geq` kc]
+        constrain [coerceZero q   |-| coerceZero qp >=$ kp]
+        constrain [coerceZero qp' |-| coerceZero qt >=$ kt]
+        constrain [coerceZero qp' |-| coerceZero qf >=$ kf]
+        constrain $ qt' |-| q' >=* kc
+        constrain $ qf' |-| q' >=* kc
         return (q, q')
     anno (TypedApp _ f es) = do
         (qs, qs') <- unzip <$> traverse anno es
@@ -357,8 +351,8 @@ instance Annotate TypedEx where
                     -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
                     cfscp <- traverse (traverse $ \(f, _) -> (,) f <$> freshFunBounds (degree - 1) f) $ update f (fun, (qf, qf')) scp
                     let Just (_, (qcf, qcf')) = lookup f cfscp
-                    constrain $ equate qf  [qa,  qcf]
-                    constrain $ equate qf' [qa', qcf']
+                    constrain $ qf  |-| qa  |-| qcf  ==* 0
+                    constrain $ qf' |-| qa' |-| qcf' ==* 0
                     constrain =<< withReaderT (\ce -> (checkF ce) {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (annoSCP cfscp))
                     return (tyOf fun, (qf, qf'))
             Nothing -> do
@@ -385,26 +379,17 @@ instance Annotate TypedEx where
         qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv degree) [qt] $ init itys
         q  <- rezero qf'
         q' <- rezero qf'
-        let qf_0  = lookupZero qf
-            qf_0' = lookupZero qf'
-            q_0   = lookupZero q
-            q_0'  = lookupZero q'
-            qxs_0 = map (map lookupZero) qxs
-            qxrs' = zipWith reifyqs qxs' ips
-                where reifyqs = (concat .) . zipWith makefull
-                      makefull q ip = mapMaybe (\(ix, p) -> flip (,) p <$> lookup ix ip) q
-            qxrs'_0 = map lookupZero qxrs'
-            qts_0 = map lookupZero qts
+        let qxrs' = zipWith reifyqs qxs' ips
+                where reifyqs = (foldl1 (|+|) .) . zipWith makefull
+                      makefull q ip = Mapping.fromList $ mapMaybe (\(ix, p) -> flip (,) p <$> lookup ix ip) $ elements q
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno
-        constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Eql` 0.0 |
-                   (q_in, q_out) <- concat $ zipWith zip qxs_0 $ [q_0]:map (map snd) qts]
-        constrain $ concat $ zipWith equate qxrs' $ map (pure . deleteZero) qts
-        constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Eql` k1 |
-                   (q_in, q_out) <- zip qxrs'_0 qts_0]
-        constrain [sparse (map exchange [Consume (last qts_0), Supply qf_0, Supply c]) `Eql` k1]
-        constrain [sparse (map exchange [Supply q_0', Consume qf_0', Consume c]) `Eql` k2]
+        constrain [q_in |-| q_out ==$ 0.0 |
+                   (q_in, q_out) <- concat $ zipWith zip (map (map coerceZero) qxs) $ [coerceZero q]:map values qts]
+        constrain $ concat [q_in |-| q_out ==* k1 | (q_in, q_out) <- zip qxrs' qts]
+        constrain [(coerceZero $ last qts) |-| coerceZero qf |-| c ==$ k1]
+        constrain [c |+| coerceZero qf' |-| coerceZero q' ==$ k2]
         return (q, q')
     anno (TypedLet _ ds e) = do
         (xs, (qs, qs')) <- second unzip <$> unzip <$> traverse (traverse anno) ds
@@ -414,13 +399,7 @@ instance Annotate TypedEx where
         q' <- rezero qe'
         k1 <- costof k_lt1
         k2 <- costof k_lt2
-        let q_0   = lookupZero q
-            q_0'  = lookupZero q'
-            qs_0  = map lookupZero qs
-            qs_0' = map lookupZero qs'
-            qe_0  = lookupZero qe
-            qe_0' = lookupZero qe'
-        constrain [sparse [exchange $ Consume q_in, exchange $ Supply q_out] `Geq` k1 |
-                   (q_in, q_out) <- zip (q_0:qs_0') (qs_0 ++ [qe_0])]
-        constrain [sparse (map exchange [Supply q_0', Consume qe_0']) `Eql` k2]
+        constrain [coerceZero q_in |-| coerceZero q_out >=$ k1 |
+                   (q_in, q_out) <- zip (q:qs') (qs ++ [qe])]
+        constrain $ filterZero qe' |-| filterZero q' ==* k2
         return (q, q')
