@@ -129,16 +129,6 @@ data AnnoError = ProjectionError Ty Index
 instance Show AnnoError where
     show (ProjectionError t i) = "Index " ++ show i ++ " does not appear to be a projection of type " ++ show t ++ "."
 
--- General Helpers
-
-assoc :: (a, (b, c)) -> ((a, b), c)
-assoc (a, (b, c)) = ((a, b), c)
-
-zipR :: [a] -> [b] -> ([(a,b)], ([a], [b]))
-zipR     []     bs = ([], ([], bs))
-zipR     as     [] = ([], (as, []))
-zipR (a:as) (b:bs) = first ((a,b) :) $ zipR as bs
-
 -- IxEnv Helpers
 
 isZero :: Index -> Bool
@@ -152,9 +142,6 @@ filterZero = deleteBy (not . isZero)
 
 updateZero :: LinearFunction -> IxEnv -> IxEnv
 updateZero = updateBy isZero
-
-indexmap :: IxEnv -> [(Index, Anno)]
-indexmap = map (second (\lf -> (\[a] -> a) $ fst $ coefficients lf)) . elements
 
 -- Annotation Helpers
 
@@ -194,9 +181,6 @@ reannotate ixs = Mapping.fromList <$> traverse (traverse $ const freshAnno) (ele
 buildPoly :: [IxEnv] -> [[[(Index, Index)]]] -> [[[(Index, LinearFunction)]]]
 buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe (elements qs) . xlate
     where xlate ixs (ix, lf) = (\ix' -> (ix', lf |* (poly ix / poly ix'))) <$> lookup ix ixs
-
-objective :: IxEnv -> [Index] -> Objective
-objective qs ixs = foldr1 (|+|) $ map (fromJust . flip lookup qs) ixs
 
 nonEmptyConstraints c ixs k =
     case (mfilter (any (/= 0)) $          lookupBy isZero ixs,
@@ -241,28 +225,6 @@ lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (TypedFun, (IxEnv, IxEn
 lookupThisSCP x = asks (lookup x . comp . checkF)
 
 -- The Engine
-
-annotate :: (MonadError AnnoError m) => Int -> [TypedProg] -> m EqnEnv
-annotate deg_max p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
-    scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds deg_max f) scp
-    let checkState = CheckF {degree = deg_max, scps = p, comp = scp', cost = constant}
-    cs <- execWriterT $ runReaderT (annoSCP scp') checkState
-    for scp' $ traverse $ \(fun, (pqs, _)) -> do
-        let Arrow pty _ = tyOf fun
-        progs <- for (reverse $ take (deg_max + 1) $ index pty) $ \ixs -> do
-            let obj = objective pqs ixs
-            return $ GeneralForm Minimize obj cs
-        return (indexmap pqs, progs)
-
-annotateEx :: (MonadError AnnoError m) => Int -> [TypedProg] -> TypedEx -> m Eqn
-annotateEx deg_max p e = flip evalStateT 0 $ do
-    let checkState = CheckF {degree = deg_max, scps = p, comp = mempty, cost = constant}
-    let ty = tyGet e
-    ((q, q'), css) <- runWriterT $ runReaderT (anno e) (CheckE [] checkState)
-    progs <- for [[zeroIndex ty]] $ \ixs -> do
-        let obj = objective q ixs
-        return $ GeneralForm Minimize obj $ constrainShares css
-    return (indexmap q, progs)
 
 annoSCP :: (MonadError AnnoError m, MonadState Anno m) => FunEnv -> ReaderT CheckF (WriterT [GeneralConstraint] m) ()
 annoSCP = traverse_ (traverse_ $ mapReaderT (mapWriterT (fmap $ second $ constrainShares)) . annoFE)
@@ -403,3 +365,27 @@ instance Annotate TypedEx where
                    (q_in, q_out) <- zip (q:qs') (qs ++ [qe])]
         constrain $ filterZero qe' |-| filterZero q' ==* k2
         return (q, q')
+
+makeEqn :: Int -> IxEnv -> [GeneralConstraint] -> Ty -> Eqn
+makeEqn k q cs ty =
+    let objective = foldr1 (|+|) . map (fromJust . flip lookup q)
+        program = flip (GeneralForm Minimize) cs . objective
+        progs = reverse $ take (k + 1) $ map program $ index ty
+        resource = (\[a] -> a) . fst . coefficients
+        indexmap = map (fmap resource) $ elements q
+    in (indexmap, progs)
+
+annotate :: MonadError AnnoError m => Int -> [TypedProg] -> m EqnEnv
+annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
+    scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds k f) scp
+    let checkState = CheckF {degree = k, scps = p, comp = scp', cost = constant}
+    cs <- execWriterT $ runReaderT (annoSCP scp') checkState
+    for scp' $ traverse $ \(fun, (pqs, _)) -> do
+        let Arrow pty _ = tyOf fun
+        return $ makeEqn k pqs cs pty
+
+annotateEx :: MonadError AnnoError m => Int -> [TypedProg] -> TypedEx -> m Eqn
+annotateEx k p e = flip evalStateT 0 $ do
+    let checkState = CheckF {degree = k, scps = p, comp = mempty, cost = constant}
+    ((q, q'), css) <- runWriterT $ runReaderT (anno e) (CheckE [] checkState)
+    return $ makeEqn 0 q (constrainShares css) (tyGet e)
