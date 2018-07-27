@@ -16,7 +16,7 @@ import Control.Arrow (first, second)
 import Control.Monad (zipWithM, mfilter)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.State (MonadState, evalStateT, get, put)
-import Control.Monad.Reader (MonadReader, runReaderT, withReaderT, mapReaderT, ReaderT, asks)
+import Control.Monad.Reader (MonadReader, runReaderT, asks, local)
 import Control.Monad.Writer (MonadWriter, runWriterT, execWriterT, tell)
 import Prelude hiding (lookup)
 
@@ -105,12 +105,7 @@ zero = Cost {
         k_lt2 = 0.0
     }
 
-data CheckE = CheckE {
-        env :: VarEnv,
-        checkF :: CheckF
-    }
-
-data CheckF = CheckF {
+data AnnoState = AnnoState {
         degree :: Int,
         scps :: [TypedProg],
         comp :: FunEnv,
@@ -147,7 +142,7 @@ freshAnno = do
 freshIxEnv :: MonadState Anno m => Int -> Ty -> m IxEnv
 freshIxEnv k t = fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
 
-freshBounds :: (MonadReader CheckE m, MonadState Anno m) => Ty -> m (IxEnv, IxEnv)
+freshBounds :: (MonadReader AnnoState m, MonadState Anno m) => Ty -> m (IxEnv, IxEnv)
 freshBounds t = do
     k <- degreeof
     q  <- freshIxEnv k t
@@ -225,32 +220,29 @@ shareBind fvas fvbs = do
 
 -- Reader/Writer/State Helpers
 
-lookupSCP :: MonadReader CheckE m => Var -> m TypedProg
-lookupSCP x = asks (head . filter (isJust . lookup x) . scps . checkF)
+lookupSCP :: MonadReader AnnoState m => Var -> m TypedProg
+lookupSCP x = asks (head . filter (isJust . lookup x) . scps)
 
 constrain :: MonadWriter [GeneralConstraint] m => [GeneralConstraint] -> m ()
 constrain = tell
 
-gamma :: MonadReader CheckE m => Var -> m IxEnv
-gamma x = asks (fromJust . lookup x . env)
+costof :: MonadReader AnnoState m => (Cost -> a) -> m a
+costof k = asks (k . cost)
 
-costof :: MonadReader CheckE m => (Cost -> a) -> m a
-costof k = asks (k . cost . checkF)
+degreeof :: MonadReader AnnoState m => m Int
+degreeof = asks degree
 
-degreeof :: MonadReader CheckE m => m Int
-degreeof = asks (degree . checkF)
-
-lookupThisSCP :: MonadReader CheckE m => Var -> m (Maybe (TypedFun, (IxEnv, IxEnv)))
-lookupThisSCP x = asks (lookup x . comp . checkF)
+lookupThisSCP :: MonadReader AnnoState m => Var -> m (Maybe (TypedFun, (IxEnv, IxEnv)))
+lookupThisSCP x = asks (lookup x . comp)
 
 -- The Engine
 
-annoSCP :: (MonadError AnnoError m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => FunEnv -> ReaderT CheckF m ()
+annoSCP :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => FunEnv -> m ()
 annoSCP = traverse_ (traverse_ annoFE)
-    where annoFE :: (MonadError AnnoError m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => (TypedFun, (IxEnv, IxEnv)) -> ReaderT CheckF m ()
+    where annoFE :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => (TypedFun, (IxEnv, IxEnv)) -> m ()
           annoFE (TypedFun (Arrow pty rty) x e, (pqs, rqs)) = do
               xqs <- rezero pqs
-              (fvs, q, q') <- withReaderT (CheckE (zip [x] [xqs])) $ anno e
+              (fvs, q, q') <- anno e
               shareBind (zip [x] [xqs]) fvs
               constrain $ [coerceZero pqs |-| coerceZero q ==$ 0]
               constrain $ rqs |-| q' ==* 0
@@ -261,10 +253,10 @@ annoSCP = traverse_ (traverse_ annoFE)
               constrain $ [coerceZero pqs |-| coerceZero rqs ==$ 0]
           lz :: IxEnv
           lz = fromList []
-          consShift :: (MonadError AnnoError m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => Ty -> IxEnv -> IxEnv -> IxEnv -> IxEnv -> ReaderT CheckF m ()
+          consShift :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => Ty -> IxEnv -> IxEnv -> IxEnv -> IxEnv -> m ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
               let ty_p = PairTy (ty_h, ty_l)
-              k <- asks degree
+              k <- degreeof
               q's_p <- if null (values qs_p) then freshIxEnv k ty_p else return qs_p
               let limit (i, is) = const (i, is) <$> lookup i q's_p
                   Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
@@ -276,7 +268,7 @@ annoSCP = traverse_ (traverse_ annoFE)
                          (q_in, q_out) <- zip [qs_h, qs_t] q's, (ix, p) <- elements q_in, pcs <- [mapMaybe (lookup ix) q_out], not $ null pcs]
 
 class Annotate a where
-    anno :: (MonadError AnnoError m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => a -> ReaderT CheckE m (VarEnv, IxEnv, IxEnv)
+    anno :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => a -> m (VarEnv, IxEnv, IxEnv)
 
 instance Annotate TypedEx where
     anno (TypedVar ty x) = do
@@ -315,14 +307,14 @@ instance Annotate TypedEx where
                 if degree <= 1 || cost_free then
                     return (tyOf fun, (qa, qa'))
                 else do
-                    scp <- asks (comp . checkF)
+                    scp <- asks comp
                     (qf, qf') <- freshFunBounds degree fun
                     -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
                     cfscp <- traverse (traverse $ \(f, _) -> (,) f <$> freshFunBounds (degree - 1) f) $ update f (fun, (qf, qf')) scp
                     let Just (_, (qcf, qcf')) = lookup f cfscp
                     constrain $ qf  |-| qa  |-| qcf  ==* 0
                     constrain $ qf' |-| qa' |-| qcf' ==* 0
-                    constrain =<< withReaderT (\ce -> (checkF ce) {degree = degree - 1, comp = cfscp, cost = zero}) (mapReaderT execWriterT (annoSCP cfscp))
+                    local (\cf -> cf {degree = degree - 1, comp = cfscp, cost = zero}) $ annoSCP cfscp
                     return (tyOf fun, (qf, qf'))
             Nothing -> do
                 scp <- lookupSCP f
@@ -331,14 +323,14 @@ instance Annotate TypedEx where
                     theta = Elab.solve tys (unpair ty ++ [ty'])
                     fun = Elab.instantiate theta asc
                 scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds degree f) $ update f fun scp
-                constrain =<< withReaderT (\ce -> (checkF ce) {comp = scp'}) (mapReaderT execWriterT (annoSCP scp'))
+                local (\cf -> cf {comp = scp'}) $ annoSCP scp'
                 return $ first tyOf $ fromJust $ lookup f scp'
         let pairinits (PairTy (t1, t2)) = t1:map (PairTy . (,) t1) (pairinits t2)
             pairinits t = [t]
             itys = pairinits ty
             pis = map (transpose . last . projectionsDeg degree) itys
             ips = map (map (map (\(a, b) -> (b, a)))) pis
-        (fvxs, qxs, qxs') <- withReaderT (\ce -> ce { checkF = (checkF ce) {cost = zero}}) $ unzip3 <$> do
+        (fvxs, qxs, qxs') <- local (\cf -> cf {cost = zero}) $ unzip3 <$> do
             let flippedZipWithM a b c f = zipWithM f a (zip b c)
             let ess = zipWith (map . const) es ips
             flippedZipWithM ess qs qs' $ \es (qx_0, qx'_0) -> do
@@ -365,7 +357,7 @@ instance Annotate TypedEx where
     anno (TypedLet _ ds e) = do
         (xs, (fvds, qs, qs')) <- second unzip3 <$> unzip <$> traverse (traverse anno) ds
         qxs <- traverse rezero qs
-        (fves, qe, qe') <- withReaderT (\ce -> ce {env = reverse (zip xs qxs) ++ env ce}) $ anno e
+        (fves, qe, qe') <- anno e
         fves' <- shareBind (zip xs qxs) fves
         fvs <- foldrM share fves' fvds
         q  <- rezero qe
@@ -389,7 +381,7 @@ makeEqn k q cs ty =
 annotate :: MonadError AnnoError m => Int -> [TypedProg] -> m EqnEnv
 annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
     scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds k f) scp
-    let checkState = CheckF {degree = k, scps = p, comp = scp', cost = constant}
+    let checkState = AnnoState {degree = k, scps = p, comp = scp', cost = constant}
     cs <- execWriterT $ runReaderT (annoSCP scp') checkState
     for scp' $ traverse $ \(fun, (pqs, _)) -> do
         let Arrow pty _ = tyOf fun
@@ -397,6 +389,6 @@ annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
 
 annotateEx :: MonadError AnnoError m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = flip evalStateT 0 $ do
-    let checkState = CheckF {degree = k, scps = p, comp = mempty, cost = constant}
-    (([], q, q'), cs) <- runWriterT $ runReaderT (anno e) (CheckE [] checkState)
+    let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
+    (([], q, q'), cs) <- runWriterT $ runReaderT (anno e) checkState
     return $ makeEqn 0 q cs (tyGet e)
