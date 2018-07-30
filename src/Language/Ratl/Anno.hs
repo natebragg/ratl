@@ -200,14 +200,15 @@ share fvas fvbs = do
 
 shareSubtype :: (MonadWriter [GeneralConstraint] m, MonadState Anno m) => VarEnv -> VarEnv -> m VarEnv
 shareSubtype fvas fvbs = do
-    let vs = union (keys fvas) (keys fvbs)
-    vqs <- for vs $ \v -> do
-        qc <- reannotate $ head $ mapMaybe (lookup v) [fvas, fvbs]
+    let vs = intersect (keys fvas) (keys fvbs)
+    combined <- for vs $ \v -> do
+        let Just qa = lookup v fvas
+            Just qb = lookup v fvbs
+        qc <- reannotate qa
+        constrain $ qc |-| qa >=* 0
+        constrain $ qc |-| qb >=* 0
         return (v, qc)
-    for [fvas, fvbs] $ \fvs -> for fvs $ \(v, q) -> do
-        let Just qc = lookup v vqs
-        constrain $ qc |-| q >=* 0
-    return vqs
+    return $ combined ++ foldr delete (fvas ++ fvbs) vs
 
 shareBind :: (MonadWriter [GeneralConstraint] m, MonadState Anno m) => VarEnv -> VarEnv -> m VarEnv
 shareBind fvas fvbs = do
