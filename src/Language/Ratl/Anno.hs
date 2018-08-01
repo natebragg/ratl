@@ -171,8 +171,8 @@ buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe (elements qs) 
     where xlate ixs (ix, lf) = (\ix' -> (ix', lf |* (poly ix / poly ix'))) <$> lookup ix ixs
 
 nonEmptyConstraints c ixs k =
-    case (mfilter (any (/= 0)) $          lookupBy isZero ixs,
-           filter (any (/= 0)) $ values $ deleteBy isZero ixs) of
+    case (mfilter (not . null) $          lookupBy isZero ixs,
+           filter (not . null) $ values $ deleteBy isZero ixs) of
         (Just z, nz) -> (z `c` k):map (`c` 0) nz
         (     _, nz) ->           map (`c` 0) nz
 
