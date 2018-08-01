@@ -6,7 +6,7 @@
 module Data.Clp.LinearFunction (
     Linear((|*), (|+|)), (|-|),
     LinearFunction,
-    LinearFunFamily(..),
+    LinearFunFamily,
     dense,
     sparse,
     unpack,
@@ -31,8 +31,10 @@ infixl 6 |-|
 
 type LinearFunction = LinFunc Int Double
 
+-- For efficiency, it's a critical invariant that LinFuncs are normalized.
+-- Never construct with LinFunc, only sparse (or for debugging, dense).
 data LinFunc i a where
-    LinFunc :: (Ord i, Enum i, Num a) => [(i, a)] -> LinFunc i a
+    LinFunc :: (Ord i, Enum i, Eq a, Num a) => [(i, a)] -> LinFunc i a
 
 deriving instance (Show i, Show a) => Show (LinFunc i a)
 deriving instance (Ord i, Ord a) => Ord (LinFunc i a)
@@ -52,8 +54,8 @@ instance Foldable (LinFunc i) where
     elem a (LinFunc cs) = any ((a ==) . snd) cs
 
 instance Linear (LinFunc i) where
-    (LinFunc f) |* n = LinFunc $ fmap (fmap (* n)) f
-    (LinFunc f) |+| (LinFunc f') = LinFunc $ merge (sortOn fst f) (sortOn fst f')
+    (LinFunc f) |* n = sparse $ fmap (fmap (* n)) f
+    (LinFunc f) |+| (LinFunc f') = sparse $ merge (sortOn fst f) (sortOn fst f')
         where merge  f [] = f
               merge [] f' = f'
               merge f@(ia@(i, a):ias) f'@(ia'@(i', a'):ia's) =
@@ -62,13 +64,13 @@ instance Linear (LinFunc i) where
                     EQ -> (i, a + a'):merge ias ia's
                     GT -> ia':merge f ia's
 
-dense :: (Ord i, Enum i, Num a) => [a] -> LinFunc i a
-dense = LinFunc . zip (enumFrom $ toEnum 0)
+dense :: (Ord i, Enum i, Eq a, Num a) => [a] -> LinFunc i a
+dense = sparse . zip (enumFrom $ toEnum 0)
 
-sparse :: (Ord i, Enum i, Num a) => [(i, a)] -> LinFunc i a
-sparse = LinFunc
+sparse :: (Ord i, Enum i, Eq a, Num a) => [(i, a)] -> LinFunc i a
+sparse = LinFunc . filter ((/= 0) . snd)
 
-unpack :: (Ord i, Enum i, Num a) => [(i, a)] -> [a]
+unpack :: (Ord i, Enum i, Eq a, Num a) => [(i, a)] -> [a]
 unpack = toList . sparse
 
 coefficients :: LinFunc i a -> ([i], [a])
