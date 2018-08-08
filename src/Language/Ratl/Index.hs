@@ -9,11 +9,12 @@ module Language.Ratl.Index (
   shift,
   projections,
   projectionsDeg,
+  shareCoef,
 ) where
 
 import Control.Arrow (first, second, (***), (&&&))
 import Data.Function (on)
-import Data.List (groupBy, inits, intercalate, subsequences)
+import Data.List (sortBy, groupBy, inits, tails, intercalate, subsequences)
 import Language.Ratl.Ty (Ty(..))
 
 data Index = AIndex
@@ -136,3 +137,21 @@ projections = go
 projectionsDeg :: Int -> Ty -> [[[(Index, Index)]]]
 projectionsDeg k = map (concatMap overallDeg . take (k + 1)) . projections
     where overallDeg = map $ concat . (takeWhile $ (<= k) . deg . fst . head)
+
+shareCoef :: Num a => Index -> Index -> [(Index, a)]
+shareCoef = go
+    where go AIndex AIndex = unitCoef AIndex
+          go (PIndex (i1, i2)) (PIndex (i1', i2')) =
+            [(PIndex (i1, i2), n1 * n2) | ((i1, n1), (i2, n2)) <- diagonals (go i1 i1') (go i2 i2')]
+          go (LIndex xs) (LIndex ys) =
+            map ((head *** sum) . unzip) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) $
+                concatMap (map ((LIndex *** product) . unzip) . choices) $ interleave xs ys
+          unitCoef a = [(a, 1)]
+          interleave as [] = [map unitCoef as]
+          interleave [] bs = [map unitCoef bs]
+          interleave as bs = head $ foldr row (map pure $ tails bs') as
+              where bs' = map unitCoef bs
+                    col (this_cell, b) cell_right = (this_cell ++ map (b:) cell_right)
+                    row a row_below = scanr col (last this_row) $ zip this_row bs'
+                      where this_row = zipWith (++) (map (map (unitCoef a:)) row_below)
+                                                    (zipWith (map . (:)) (map (go a) bs) (tail row_below) ++ [[]])
