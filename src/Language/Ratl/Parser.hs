@@ -141,7 +141,7 @@ funty = do
     t1 <- ty
     reserved "->"
     t2 <- ty
-    return $ Arrow t1 t2
+    return $ Arrow [t1] t2
 
 fun :: SexpParser (Var, Fun)
 fun = (list $ reserved "define" >>

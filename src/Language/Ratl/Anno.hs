@@ -43,7 +43,6 @@ import Language.Ratl.Index (
     )
 import Language.Ratl.Ty (
     Ty(..),
-    unpair,
     FunTy(..),
     )
 import Language.Ratl.Val (
@@ -152,7 +151,7 @@ freshBounds t = do
 freshFunBounds :: MonadState Anno m => Int -> TypedFun -> m (IxEnv, IxEnv)
 freshFunBounds k fun = do
     let Arrow t t' = tyOf fun
-    q  <- freshIxEnv k t
+    q  <- freshIxEnv k $ foldr1 (curry PairTy) t
     q' <- freshIxEnv k t'
     return (q, q')
 
@@ -247,9 +246,9 @@ annoSCP = traverse_ (traverse_ annoFE)
               shareBind (zip [x] [xqs]) fvs
               constrain $ [coerceZero pqs |-| coerceZero q ==$ 0]
               constrain $ rqs |-| q' ==* 0
-          annoFE (TypedNative (Arrow pty@(ListTy pt)          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs lz lz pqs -- hack for car
-          annoFE (TypedNative (Arrow pty@(ListTy pt) (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty lz rqs lz pqs -- hack for cdr
-          annoFE (TypedNative (Arrow (PairTy (_, ListTy _)) rty@(ListTy _)) _ _, (pqs, rqs))  = consShift rty lz lz pqs rqs -- hack for cons
+          annoFE (TypedNative (Arrow [pty@(ListTy pt)]          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs lz lz pqs -- hack for car
+          annoFE (TypedNative (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty lz rqs lz pqs -- hack for cdr
+          annoFE (TypedNative (Arrow [_, ListTy _]  rty@(ListTy _)) _ _, (pqs, rqs))            = consShift rty lz lz pqs rqs -- hack for cons
           annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
               constrain $ [coerceZero pqs |-| coerceZero rqs ==$ 0]
           lz :: IxEnv
@@ -303,7 +302,7 @@ instance Annotate TypedEx where
             Just (asc, (qa, qa')) -> do
                 cost_free <- costof (== zero)
                 let Arrow ty ty' = tyOf asc
-                    theta = Elab.solve tys (unpair ty ++ [ty'])
+                    theta = Elab.solve tys (ty ++ [ty'])
                     fun = Elab.instantiate theta asc
                 if degree <= 1 || cost_free then
                     return (tyOf fun, (qa, qa'))
@@ -321,13 +320,13 @@ instance Annotate TypedEx where
                 scp <- lookupSCP f
                 let asc = fromJust $ lookup f scp
                     Arrow ty ty' = tyOf asc
-                    theta = Elab.solve tys (unpair ty ++ [ty'])
+                    theta = Elab.solve tys (ty ++ [ty'])
                     fun = Elab.instantiate theta asc
                 scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds degree f) $ update f fun scp
                 local (\cf -> cf {comp = scp'}) $ annoSCP scp'
                 return $ first tyOf $ fromJust $ lookup f scp'
-        let pairinits (PairTy (t1, t2)) = t1:map (PairTy . (,) t1) (pairinits t2)
-            pairinits t = [t]
+        let pairinits [t] = [t]
+            pairinits (t1:t2) = t1:map (PairTy . (,) t1) (pairinits t2)
             itys = pairinits ty
             pis = map (transpose . last . projectionsDeg degree) itys
             ips = map (map (map (\(a, b) -> (b, a)))) pis
@@ -386,7 +385,7 @@ annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
     cs <- execWriterT $ runReaderT (annoSCP scp') checkState
     for scp' $ traverse $ \(fun, (pqs, _)) -> do
         let Arrow pty _ = tyOf fun
-        return $ makeEqn k pqs cs pty
+        return $ makeEqn k pqs cs $ foldr1 (curry PairTy) pty
 
 annotateEx :: MonadError AnnoError m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = flip evalStateT 0 $ do

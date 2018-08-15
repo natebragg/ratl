@@ -22,7 +22,6 @@ import Language.Ratl.Ty (
     Ty(..),
     varname,
     varnum,
-    unpair,
     FunTy(..),
     )
 import Language.Ratl.Val (
@@ -118,8 +117,8 @@ instance Instantiable TypedEx where
     instantiate theta (TypedVar ty x) = TypedVar (instantiate theta ty) x
     instantiate theta (TypedVal ty v) = TypedVal (instantiate theta ty) v
     instantiate theta (TypedIf ty ep et ef) = TypedIf (instantiate theta ty) (instantiate theta ep) (instantiate theta et) (instantiate theta ef)
-    instantiate theta (TypedApp ty f es) = TypedApp (instantiate theta ty) f (map (instantiate theta) es)
-    instantiate theta (TypedLet ty ds e) = TypedLet (instantiate theta ty) (map (fmap (instantiate theta)) ds) (instantiate theta e)
+    instantiate theta (TypedApp ty f es) = TypedApp (instantiate theta ty) f (instantiate theta es)
+    instantiate theta (TypedLet ty ds e) = TypedLet (instantiate theta ty) (instantiate theta ds) (instantiate theta e)
 
 class Elab a where
     type Type a :: *
@@ -132,7 +131,7 @@ instance Elab Prog where
 instance Elab Fun where
     type Type Fun = TypedFun
     elab (Fun fty@(Arrow pty rty) x e) = do
-        ety <- withReaderT (\ce -> ce {gamma = zip [x] (unpair pty)}) $ elab e
+        ety <- withReaderT (\ce -> ce {gamma = zip [x] pty}) $ elab e
         let theta = solve [rty] [tyGet ety]
             ety' = instantiate theta ety
             ty'' = tyGet ety'
@@ -169,9 +168,8 @@ instance Elab Ex where
             throwError $ ArityError (arity f) (length es)
         Arrow ty ty' <- unlessJustM (asks $ lookup f . phi) $
             throwError $ NameError f
-        let appty  = unpair ty
-            theta1 = solve (map tyGet etys) (appty ++ [ty'])
-            tys    = instantiate theta1 appty
+        let theta1 = solve (map tyGet etys) (ty ++ [ty'])
+            tys    = instantiate theta1 ty
             ty''   = instantiate theta1 ty'
             theta2 = solve tys (map tyGet etys)
             etys'  = instantiate theta2 etys
