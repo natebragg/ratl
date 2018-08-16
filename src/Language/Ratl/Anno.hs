@@ -8,7 +8,7 @@ module Language.Ratl.Anno (
 ) where
 
 import Data.List (transpose, intersect, union)
-import Data.Mapping (Mapping(lookupBy, updateBy, deleteBy, lookup, update, delete, fromList, elements, keys, values))
+import Data.Mapping (Mapping(..))
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Foldable (traverse_, foldrM)
 import Data.Traversable (for)
@@ -329,10 +329,9 @@ instance Annotate TypedEx where
             pairinits (t1:t2) = t1:map (PairTy . (,) t1) (pairinits t2)
             itys = pairinits ty
             pis = map (transpose . last . projectionsDeg degree) itys
-            ips = map (map (map (\(a, b) -> (b, a)))) pis
         (fvxs, qxs, qxs') <- local (\cf -> cf {cost = zero}) $ unzip3 <$> do
             let flippedZipWithM a b c f = zipWithM f a (zip b c)
-            let ess = zipWith (map . const) es ips
+            let ess = zipWith (map . const) es pis
             flippedZipWithM ess qs qs' $ \es (qx_0, qx'_0) -> do
                 (fvxs_js, qxs_j, qx's_j) <- unzip3 <$> mapM anno (tail es)
                 fvxs_j <- foldrM share [] fvxs_js
@@ -341,9 +340,7 @@ instance Annotate TypedEx where
         qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv degree) [qt] $ init itys
         q  <- rezero qf'
         q' <- rezero qf'
-        let qxrs' = zipWith reifyqs qxs' ips
-                where reifyqs = (foldl1 (|+|) .) . zipWith makefull
-                      makefull q ip = fromList $ mapMaybe (\(ix, p) -> flip (,) p <$> lookup ix ip) $ elements q
+        let qxrs' = map (foldl1 (|+|)) $ zipWith (zipWith (<<<)) qxs' pis
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno

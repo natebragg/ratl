@@ -20,6 +20,9 @@ class Mapping m k v | m -> k v where
     values :: m -> [v]
     values = map snd . elements
 
+    (<<<) :: (Eq v, Mapping m2 v v2, Mapping m3 k v2) => m2 -> m -> m3
+    m2 <<< m = fromList [(k, v2) | (k, v) <- elements m, Just v2 <- [lookup v m2]]
+
     lookup :: Eq k => k -> m -> Maybe v
     lookup = lookupBy . (==)
     update :: Eq k => k -> v -> m -> m
