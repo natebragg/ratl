@@ -1,4 +1,9 @@
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module Language.Ratl.Index (
+  Indexable,
   Index,
   deg,
   poly,
@@ -17,6 +22,13 @@ import Data.Function (on)
 import Data.List (sortBy, groupBy, inits, tails, intercalate, subsequences)
 import Language.Ratl.Ty (Ty(..))
 
+class Indexable i t | i -> t where
+    deg :: i -> Int
+    poly :: i -> Double
+    index :: t -> [[i]]
+    zero :: i -> i
+    factor :: i -> [(i, Int)]
+
 data Index = AIndex
            | PIndex (Index, Index)
            | LIndex [Index]
@@ -26,6 +38,39 @@ instance Show Index where
     show AIndex = "∗"
     show (PIndex (i1, i2)) = '(' : show i1 ++ ", " ++ show i2 ++ ")"
     show (LIndex is) = '[' : intercalate ", " (map show is) ++ "]"
+
+instance Indexable Index Ty where
+    deg AIndex = 0
+    deg (PIndex (i1, i2)) = deg i1 + deg i2
+    deg (LIndex is) = length is + sum (map deg is)
+
+    poly AIndex = 1.0
+    poly (PIndex (i1, i2)) = poly i1 * poly i2
+    poly (LIndex is) = sum $ map product $ subsequences $ map poly is
+
+    index (NatTy)      = [[AIndex]]
+    index (BooleanTy)  = [[AIndex]]
+    index (UnitTy)     = [[AIndex]]
+    index (SymTy)      = [[AIndex]]
+    index (Tyvar _)    = [[AIndex]]
+    index (PairTy ts)  = do
+        ds <- groupBy ((==) `on` deg . PIndex . heads) $
+              uncurry (diagonals `on` index) ts
+        return $ ds >>= \(d1, d2) -> curry PIndex <$> d1 <*> d2
+    index (ListTy t) = do
+        cs <- combos (index t)
+        return $ LIndex <$> (choices =<< cs)
+
+    zero AIndex = AIndex
+    zero (PIndex (i1, i2)) = PIndex (zero i1, zero i2)
+    zero (LIndex _) = LIndex []
+
+    factor (PIndex (i1, i2)) = [(PIndex (i, zero i2), d) | (i, d) <- factor i1] ++
+                               [(PIndex (zero i1, i), d) | (i, d) <- factor i2]
+    factor (LIndex is@(i:_)) = (LIndex [zero i], length is) :
+                               [(LIndex (reverse $ i:zs), d) | (fs, zs) <- fzs, (i, d) <- fs]
+            where fzs = map ((factor . head *** map zero) . splitAt 1 . reverse) $ tail $ inits is
+    factor _ = []
 
 heads :: ([a], [b]) -> (a, b)
 heads = head *** head
@@ -57,48 +102,11 @@ choices :: [[a]] -> [[a]]
 choices [] = [[]]
 choices (is:cs) = [i:cs' | i <- is, cs' <- choices cs]
 
-deg :: Index -> Int
-deg AIndex = 0
-deg (PIndex (i1, i2)) = deg i1 + deg i2
-deg (LIndex is) = length is + sum (map deg is)
-
-poly :: Index -> Double
-poly AIndex = 1.0
-poly (PIndex (i1, i2)) = poly i1 * poly i2
-poly (LIndex is) = sum $ map product $ subsequences $ map poly is
-
-index :: Ty -> [[Index]]
-index (NatTy)      = [[AIndex]]
-index (BooleanTy)  = [[AIndex]]
-index (UnitTy)     = [[AIndex]]
-index (SymTy)      = [[AIndex]]
-index (Tyvar _)    = [[AIndex]]
-index (PairTy ts)  = do
-    ds <- groupBy ((==) `on` deg . PIndex . heads) $
-          uncurry (diagonals `on` index) ts
-    return $ ds >>= \(d1, d2) -> curry PIndex <$> d1 <*> d2
-index (ListTy t) = do
-    cs <- combos (index t)
-    return $ LIndex <$> (choices =<< cs)
-
-indexDeg :: Int -> Ty -> [Index]
+indexDeg :: Indexable i t => Int -> t -> [i]
 indexDeg k = concat . take (k + 1) . index
 
-zeroIndex :: Ty -> Index
+zeroIndex :: Indexable i t => t -> i
 zeroIndex = head . head . index
-
-zero :: Index -> Index
-zero AIndex = AIndex
-zero (PIndex (i1, i2)) = PIndex (zero i1, zero i2)
-zero (LIndex _) = LIndex []
-
-factor :: Index -> [(Index, Int)]
-factor (PIndex (i1, i2)) = [(PIndex (i, zero i2), d) | (i, d) <- factor i1] ++
-                           [(PIndex (zero i1, i), d) | (i, d) <- factor i2]
-factor (LIndex is@(i:_)) = (LIndex [zero i], length is) :
-                           [(LIndex (reverse $ i:zs), d) | (fs, zs) <- fzs, (i, d) <- fs]
-        where fzs = map ((factor . head *** map zero) . splitAt 1 . reverse) $ tail $ inits is
-factor _ = []
 
 shift :: Ty -> [(Index, [Index])]
 shift t@(ListTy _) = zip pis $ zipWith payfor sis lis
