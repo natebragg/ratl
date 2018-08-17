@@ -23,7 +23,7 @@ import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralFo
 import Language.Ratl.Reader (sexp, sexps)
 import Language.Ratl.Parser (preorder, prog)
 import Language.Ratl.Basis (prims, basis)
-import Language.Ratl.Index (Index, factor)
+import Language.Ratl.Index (ContextIndex, factor)
 import Language.Ratl.Val (embed)
 import Language.Ratl.Ast (
     Ex(..),
@@ -45,7 +45,7 @@ progressive_solve = fst . foldl accum ([], [])
     where accum (ss, cs') (GeneralForm dir obj cs) = (ss ++ [sol], (obj `Leq` snd sol):cs')
             where sol = solve $ GeneralForm dir obj (cs' ++ cs)
 
-pretty_bound :: [(Index, Int)] -> [Double] -> String
+pretty_bound :: [(ContextIndex, Int)] -> [Double] -> String
 pretty_bound ixs cs = if null bounds then show 0.0 else (intercalate " + " bounds ++ explanation)
     where (bounds, (_, vs)) = flip runState (varnames, []) $
                                 reverse <$> concat <$> traverse coeff cixs
@@ -59,7 +59,7 @@ pretty_bound ixs cs = if null bounds then show 0.0 else (intercalate " + " bound
           coeff (_, Nothing) = return []
           coeff (c, Just ix) = mapM poly (factor ix) >>= \es ->
                                 return [printf "%.1f" c ++ concatMap ("*" ++) es]
-          poly :: (Index, Int) -> State ([String], [(Index, String)]) String
+          poly :: (ContextIndex, Int) -> State ([String], [(ContextIndex, String)]) String
           poly (ix, d) = do
                 let exp = if d > 1 then '^' : show d else ""
                 (xs, vs) <- get

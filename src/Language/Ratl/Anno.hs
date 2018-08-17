@@ -7,7 +7,7 @@ module Language.Ratl.Anno (
     annotateEx
 ) where
 
-import Data.List (transpose, intersect, union)
+import Data.List (transpose, intersect, union, inits)
 import Data.Mapping (Mapping(..))
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Foldable (traverse_, foldrM)
@@ -33,7 +33,9 @@ import Data.Clp.Program (
     GeneralForm(..),
     )
 import Language.Ratl.Index (
+    Indexable,
     Index,
+    ContextIndex,
     poly,
     deg,
     index,
@@ -66,9 +68,10 @@ import qualified Language.Ratl.Elab as Elab (
 type Anno = Int
 
 type IxEnv = LinearFunFamily Index
+type CIxEnv = LinearFunFamily ContextIndex
 type VarEnv = [(Var, IxEnv)]
-type FunEnv = [(Var, (TypedFun, (IxEnv, IxEnv)))]
-type Eqn = ([(Index, Anno)], [GeneralForm])
+type FunEnv = [(Var, (TypedFun, (CIxEnv, IxEnv)))]
+type Eqn = ([(ContextIndex, Anno)], [GeneralForm])
 type EqnEnv = [(Var, Eqn)]
 
 data Cost = Cost { k_var,
@@ -118,16 +121,16 @@ instance Show AnnoError where
 
 -- IxEnv Helpers
 
-isZero :: Index -> Bool
+isZero :: Indexable i t => i -> Bool
 isZero = (0 ==) . deg
 
-coerceZero :: IxEnv -> LinearFunction
+coerceZero :: Indexable i t => LinearFunFamily i -> LinearFunction
 coerceZero = fromJust . lookupBy isZero
 
-filterZero :: IxEnv -> IxEnv
+filterZero :: Indexable i t => LinearFunFamily i -> LinearFunFamily i
 filterZero = deleteBy (not . isZero)
 
-updateZero :: LinearFunction -> IxEnv -> IxEnv
+updateZero :: Indexable i t => LinearFunction -> LinearFunFamily i -> LinearFunFamily i
 updateZero = updateBy isZero
 
 -- Annotation Helpers
@@ -138,7 +141,7 @@ freshAnno = do
     put (q + 1)
     return $ sparse [(q, 1)]
 
-freshIxEnv :: MonadState Anno m => Int -> Ty -> m IxEnv
+freshIxEnv :: (MonadState Anno m, Indexable i t) => Int -> t -> m (LinearFunFamily i)
 freshIxEnv k t = fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
 
 freshBounds :: (MonadReader AnnoState m, MonadState Anno m) => Ty -> m (IxEnv, IxEnv)
@@ -148,14 +151,14 @@ freshBounds t = do
     q' <- rezero q
     return (q, q')
 
-freshFunBounds :: MonadState Anno m => Int -> TypedFun -> m (IxEnv, IxEnv)
+freshFunBounds :: MonadState Anno m => Int -> TypedFun -> m (CIxEnv, IxEnv)
 freshFunBounds k fun = do
     let Arrow t t' = tyOf fun
-    q  <- freshIxEnv k $ foldr1 (curry PairTy) t
+    q  <- freshIxEnv k t
     q' <- freshIxEnv k t'
     return (q, q')
 
-rezero :: MonadState Anno m => IxEnv -> m IxEnv
+rezero :: (MonadState Anno m, Indexable i t) => LinearFunFamily i -> m (LinearFunFamily i)
 rezero qs = do
     q_0' <- freshAnno
     return $ updateZero q_0' qs
@@ -165,7 +168,7 @@ reannotate ixs = fromList <$> traverse (traverse $ const freshAnno) (elements ix
 
 -- Constraint Helpers
 
-buildPoly :: [IxEnv] -> [[[(Index, Index)]]] -> [[[(Index, LinearFunction)]]]
+buildPoly :: [CIxEnv] -> [[[(ContextIndex, Index)]]] -> [[[(Index, LinearFunction)]]]
 buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe (elements qs) . xlate
     where xlate ixs (ix, lf) = (\ix' -> (ix', lf |* (poly ix / poly ix'))) <$> lookup ix ixs
 
@@ -175,10 +178,10 @@ nonEmptyConstraints c ixs k =
         (Just z, nz) -> (z `c` k):map (`c` 0) nz
         (     _, nz) ->           map (`c` 0) nz
 
-(==*) :: LinearFunFamily Index -> Double -> [GeneralConstraint]
+(==*) :: Indexable i t => LinearFunFamily i -> Double -> [GeneralConstraint]
 (==*) = nonEmptyConstraints (==$)
 
-(>=*) :: LinearFunFamily Index -> Double -> [GeneralConstraint]
+(>=*) :: Indexable i t => LinearFunFamily i -> Double -> [GeneralConstraint]
 (>=*) = nonEmptyConstraints (>=$)
 
 infix 4 ==*
@@ -218,6 +221,9 @@ shareBind fvas fvbs = do
         constrain $ qa |-| qb ==* 0
     return $ foldr delete fvbs vs
 
+to_ctx :: Int -> Ty -> IxEnv -> CIxEnv
+to_ctx k ty q = q <<< concat (concat $ projectionsDeg k [ty])
+
 -- Reader/Writer/State Helpers
 
 lookupSCP :: MonadReader AnnoState m => Var -> m TypedProg
@@ -232,30 +238,31 @@ costof k = asks (k . cost)
 degreeof :: MonadReader AnnoState m => m Int
 degreeof = asks degree
 
-lookupThisSCP :: MonadReader AnnoState m => Var -> m (Maybe (TypedFun, (IxEnv, IxEnv)))
+lookupThisSCP :: MonadReader AnnoState m => Var -> m (Maybe (TypedFun, (CIxEnv, IxEnv)))
 lookupThisSCP x = asks (lookup x . comp)
 
 -- The Engine
 
 annoSCP :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => FunEnv -> m ()
 annoSCP = traverse_ (traverse_ annoFE)
-    where annoFE :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => (TypedFun, (IxEnv, IxEnv)) -> m ()
+    where annoFE :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => (TypedFun, (CIxEnv, IxEnv)) -> m ()
           annoFE (TypedFun (Arrow pty rty) x e, (pqs, rqs)) = do
               xqs <- rezero pqs
               (fvs, q, q') <- anno e
-              shareBind (zip [x] [xqs]) fvs
+              k <- degreeof
+              shareBind (zip [x] [xqs <<< map (\(a,b) -> (b,a)) (concat $ concat $ projectionsDeg k pty)]) fvs
               constrain $ [coerceZero pqs |-| coerceZero q ==$ 0]
               constrain $ rqs |-| q' ==* 0
           annoFE (TypedNative (Arrow [pty@(ListTy pt)]          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs lz lz pqs -- hack for car
           annoFE (TypedNative (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty lz rqs lz pqs -- hack for cdr
-          annoFE (TypedNative (Arrow [_, ListTy _]  rty@(ListTy _)) _ _, (pqs, rqs))            = consShift rty lz lz pqs rqs -- hack for cons
+          annoFE (TypedNative (Arrow [_, ListTy _]  rty@(ListTy _)) _ _, (pqs, rqs))            = consShift rty lz lz pqs =<< (to_ctx <$> degreeof <*> pure rty <*> pure rqs) -- hack for cons
           annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
               constrain $ [coerceZero pqs |-| coerceZero rqs ==$ 0]
-          lz :: IxEnv
+          lz :: LinearFunFamily i
           lz = fromList []
-          consShift :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => Ty -> IxEnv -> IxEnv -> IxEnv -> IxEnv -> m ()
+          consShift :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => Ty -> IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
-              let ty_p = PairTy (ty_h, ty_l)
+              let ty_p = [ty_h, ty_l]
               k <- degreeof
               q's_p <- if null (values qs_p) then freshIxEnv k ty_p else return qs_p
               let limit (i, is) = const (i, is) <$> lookup i q's_p
@@ -325,9 +332,7 @@ instance Annotate TypedEx where
                 scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds degree f) $ update f fun scp
                 local (\cf -> cf {comp = scp'}) $ annoSCP scp'
                 return $ first tyOf $ fromJust $ lookup f scp'
-        let pairinits [t] = [t]
-            pairinits (t1:t2) = t1:map (PairTy . (,) t1) (pairinits t2)
-            itys = pairinits ty
+        let itys = tail $ inits ty
             pis = map (transpose . last . projectionsDeg degree) itys
         (fvxs, qxs, qxs') <- local (\cf -> cf {cost = zero}) $ unzip3 <$> do
             let flippedZipWithM a b c f = zipWithM f a (zip b c)
@@ -366,7 +371,7 @@ instance Annotate TypedEx where
         constrain $ filterZero qe' |-| filterZero q' ==* k2
         return (fvs, q, q')
 
-makeEqn :: Int -> IxEnv -> [GeneralConstraint] -> Ty -> Eqn
+makeEqn :: Int -> CIxEnv -> [GeneralConstraint] -> [Ty] -> Eqn
 makeEqn k q cs ty =
     let objective = foldr1 (|+|) . map (fromJust . flip lookup q)
         program = flip (GeneralForm Minimize) cs . objective
@@ -382,10 +387,10 @@ annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
     cs <- execWriterT $ runReaderT (annoSCP scp') checkState
     for scp' $ traverse $ \(fun, (pqs, _)) -> do
         let Arrow pty _ = tyOf fun
-        return $ makeEqn k pqs cs $ foldr1 (curry PairTy) pty
+        return $ makeEqn k pqs cs pty
 
 annotateEx :: MonadError AnnoError m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = flip evalStateT 0 $ do
     let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
     (([], q, q'), cs) <- runWriterT $ runReaderT (anno e) checkState
-    return $ makeEqn 0 q cs (tyGet e)
+    return $ makeEqn 0 (to_ctx k (tyGet e) q) cs [tyGet e]

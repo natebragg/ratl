@@ -5,6 +5,7 @@
 module Language.Ratl.Index (
   Indexable,
   Index,
+  ContextIndex,
   deg,
   poly,
   index,
@@ -20,6 +21,7 @@ module Language.Ratl.Index (
 import Control.Arrow (first, second, (***), (&&&))
 import Data.Function (on)
 import Data.List (sortBy, groupBy, inits, tails, intercalate, subsequences)
+import Data.Semigroup (Semigroup(..))
 import Language.Ratl.Ty (Ty(..))
 
 class Indexable i t | i -> t where
@@ -72,6 +74,34 @@ instance Indexable Index Ty where
             where fzs = map ((factor . head *** map zero) . splitAt 1 . reverse) $ tail $ inits is
     factor _ = []
 
+data ContextIndex = CIndex [Index]
+    deriving (Eq, Ord)
+
+instance Show ContextIndex where
+    show (CIndex is) = '{' : intercalate ", " (map show is) ++ "}"
+
+instance Semigroup ContextIndex where
+    CIndex is <> CIndex js = CIndex (is <> js)
+
+instance Monoid ContextIndex where
+    mempty = CIndex []
+    mappend = (<>)
+
+instance Indexable ContextIndex [Ty] where
+    deg (CIndex is) = sum $ map deg is
+
+    poly (CIndex is) = product $ map poly is
+
+    index = fmap (fmap $ CIndex . unpair) . index . foldr (curry PairTy) UnitTy
+        where unpair (PIndex (i1, i2)) = i1:unpair i2
+              unpair _ = []
+
+    zero (CIndex is) = CIndex (map zero is)
+
+    factor (CIndex is) = map (first CIndex) $ go (map factor is) (map zero is)
+        where go [] [] = []
+              go (f:fs) (z:zs) = map (first (:zs)) f ++ map (first (z:)) (go fs zs)
+
 heads :: ([a], [b]) -> (a, b)
 heads = head *** head
 
@@ -108,41 +138,40 @@ indexDeg k = concat . take (k + 1) . index
 zeroIndex :: Indexable i t => t -> i
 zeroIndex = head . head . index
 
-shift :: Ty -> [(Index, [Index])]
-shift t@(ListTy _) = zip pis $ zipWith payfor sis lis
-    where lis = concat $ tail $ index t
-          sis = map uncons lis
-          pis = map PIndex sis
-          payfor (ih, it) il = if deg ih == 0 then [it, il] else [il]
-          uncons (LIndex (i:is)) = (i, LIndex is)
+shift :: Ty -> [(ContextIndex, [ContextIndex])]
+shift t@(ListTy _) = map go $ concat $ tail $ index [t]
+    where go jl@(CIndex [LIndex (j:l)]) =
+            case (deg j, CIndex [j], CIndex [LIndex l]) of
+                (0, j, l) -> (j <> l, [jl, l])
+                (_, j, l) -> (j <> l, [jl])
 shift _ = []
 
 -- Vary each position infinitely while holding everything else constant.
---                   ,----- Per position
---                   |,---- Per position degree
---                   ||,--- Per exact position index
---                   |||,-- Per overall degree
---                   ||||,- Per full index
---                   |||||
---                   VVVVV  full   pos
-projections :: Ty -> [[[[[(Index, Index)]]]]]
+--                     ,----- Per position
+--                     |,---- Per position degree
+--                     ||,--- Per exact position index
+--                     |||,-- Per overall degree
+--                     ||||,- Per full index
+--                     |||||
+--                     VVVVV full          pos
+projections :: [Ty] -> [[[[[(ContextIndex, Index)]]]]]
 projections = go
     where assoc (a, (b, c)) = ((a, b), c)
-          allpairs = (map (map (first PIndex . assoc) . uncurry diagonals) .) . diagonals
-          go :: Ty -> [[[[[(Index, Index)]]]]]
-          go (PairTy (t1, t2)) =
+          allpairs = (map (map (first (uncurry $ (<>) . CIndex . pure) . assoc) . uncurry diagonals) .) . diagonals
+          go :: [Ty] -> [[[[[(ContextIndex, Index)]]]]]
+          go [t] = [map (map (pure . pure . (CIndex . pure &&& id))) $ index t]
+          go (t1:t2) =
             let i1s = index t1
-            in  map (map (\i1 -> map (map (flip (,) i1 . PIndex . (,) i1)) $ index t2)) i1s :
+            in  map (map (\i1 -> map (map (flip (,) i1 . (CIndex [i1] <>))) $ index t2)) i1s :
                 map (map (map (allpairs i1s))) (go t2)
-          go t = [map (map (pure . pure . (id &&& id))) $ index t]
 
 -- Vary each position up to degree k while holding everything else constant.
---                             ,--- Per position
---                             |,-- Per position, position degree monotonic
---                             ||,- Per full index, overall degree monotonic
---                             |||
---                             VVV  full   pos
-projectionsDeg :: Int -> Ty -> [[[(Index, Index)]]]
+--                               ,--- Per position
+--                               |,-- Per position, position degree monotonic
+--                               ||,- Per full index, overall degree monotonic
+--                               |||
+--                               VVV full          pos
+projectionsDeg :: Int -> [Ty] -> [[[(ContextIndex, Index)]]]
 projectionsDeg k = map (concatMap overallDeg . take (k + 1)) . projections
     where overallDeg = map $ concat . (takeWhile $ (<= k) . deg . fst . head)
 
