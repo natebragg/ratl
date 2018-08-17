@@ -302,7 +302,7 @@ instance Annotate TypedEx where
         constrain $ qf' |-| q' >=* kc
         return (fvs, q, q')
     anno (TypedApp _ f es) = do
-        (fves, qs, qs') <- unzip3 <$> traverse anno es
+        fvqes <- traverse anno es
         degree <- degreeof
         let tys = map tyGet es
         (Arrow ty _, (qf, qf')) <- lookupThisSCP f >>= \case
@@ -335,11 +335,10 @@ instance Annotate TypedEx where
         let itys = tail $ inits ty
             pis = map (transpose . last . projectionsDeg degree) itys
         (fvxs, qxs, qxs') <- local (\cf -> cf {cost = zero}) $ unzip3 <$> do
-            let flippedZipWithM a b c f = zipWithM f a (zip b c)
             let ess = zipWith (map . const) es pis
-            flippedZipWithM ess qs qs' $ \es (qx_0, qx'_0) -> do
+            flip (flip zipWithM ess) fvqes $ \es (fv_0, qx_0, qx'_0) -> do
                 (fvxs_js, qxs_j, qx's_j) <- unzip3 <$> mapM anno (tail es)
-                fvxs_j <- foldrM share [] fvxs_js
+                fvxs_j <- foldrM share fv_0 fvxs_js
                 return $ (fvxs_j, qx_0:qxs_j, qx'_0:qx's_j)
         qt <- rezero qf
         qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv degree) [qt] $ init itys
@@ -354,7 +353,7 @@ instance Annotate TypedEx where
         constrain $ concat [q_in |-| q_out ==* k1 | (q_in, q_out) <- zip qxrs' qts]
         constrain [(coerceZero $ last qts) |-| coerceZero qf |-| c ==$ k1]
         constrain [c |+| coerceZero qf' |-| coerceZero q' ==$ k2]
-        fvs <- foldrM share [] $ fves ++ fvxs
+        fvs <- foldrM share [] fvxs
         return (fvs, q, q')
     anno (TypedLet _ ds e) = do
         (xs, (fvds, qs, qs')) <- second unzip3 <$> unzip <$> traverse (traverse anno) ds
