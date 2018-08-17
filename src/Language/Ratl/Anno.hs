@@ -124,13 +124,13 @@ instance Show AnnoError where
 isZero :: Indexable i t => i -> Bool
 isZero = (0 ==) . deg
 
-coerceZero :: Indexable i t => LinearFunFamily i -> LinearFunction
+coerceZero :: (Indexable i t, Mapping q i LinearFunction) => q -> LinearFunction
 coerceZero = fromJust . lookupBy isZero
 
-filterZero :: Indexable i t => LinearFunFamily i -> LinearFunFamily i
+filterZero :: (Indexable i t, Mapping q i LinearFunction) => q -> q
 filterZero = deleteBy (not . isZero)
 
-updateZero :: Indexable i t => LinearFunction -> LinearFunFamily i -> LinearFunFamily i
+updateZero :: (Indexable i t, Mapping q i LinearFunction) => LinearFunction -> q -> q
 updateZero = updateBy isZero
 
 -- Annotation Helpers
@@ -141,7 +141,7 @@ freshAnno = do
     put (q + 1)
     return $ sparse [(q, 1)]
 
-freshIxEnv :: (MonadState Anno m, Indexable i t) => Int -> t -> m (LinearFunFamily i)
+freshIxEnv :: (MonadState Anno m, Indexable i t, Mapping q i LinearFunction) => Int -> t -> m q
 freshIxEnv k t = fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
 
 freshBounds :: (MonadReader AnnoState m, MonadState Anno m) => Ty -> m (IxEnv, IxEnv)
@@ -158,7 +158,7 @@ freshFunBounds k fun = do
     q' <- freshIxEnv k t'
     return (q, q')
 
-rezero :: (MonadState Anno m, Indexable i t) => LinearFunFamily i -> m (LinearFunFamily i)
+rezero :: (MonadState Anno m, Indexable i t, Mapping q i LinearFunction) => q -> m q
 rezero qs = do
     q_0' <- freshAnno
     return $ updateZero q_0' qs
@@ -178,10 +178,10 @@ nonEmptyConstraints c ixs k =
         (Just z, nz) -> (z `c` k):map (`c` 0) nz
         (     _, nz) ->           map (`c` 0) nz
 
-(==*) :: Indexable i t => LinearFunFamily i -> Double -> [GeneralConstraint]
+(==*) :: (Indexable i t, Mapping q i LinearFunction) => q -> Double -> [GeneralConstraint]
 (==*) = nonEmptyConstraints (==$)
 
-(>=*) :: Indexable i t => LinearFunFamily i -> Double -> [GeneralConstraint]
+(>=*) :: (Indexable i t, Mapping q i LinearFunction) => q -> Double -> [GeneralConstraint]
 (>=*) = nonEmptyConstraints (>=$)
 
 infix 4 ==*
@@ -258,7 +258,7 @@ annoSCP = traverse_ (traverse_ annoFE)
           annoFE (TypedNative (Arrow [_, ListTy _]  rty@(ListTy _)) _ _, (pqs, rqs))            = consShift rty lz lz pqs =<< (to_ctx <$> degreeof <*> pure rty <*> pure rqs) -- hack for cons
           annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
               constrain $ [coerceZero pqs |-| coerceZero rqs ==$ 0]
-          lz :: LinearFunFamily i
+          lz :: Mapping i k v => i
           lz = fromList []
           consShift :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => Ty -> IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
