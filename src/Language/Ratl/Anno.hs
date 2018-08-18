@@ -335,22 +335,20 @@ instance Annotate TypedEx where
         let itys = tail $ inits ty
             pis = map (transpose . last . projectionsDeg degree) itys
         (fvxs, qxs, qxs') <- local (\cf -> cf {cost = zero}) $ unzip3 <$> do
-            let ess = zipWith (map . const) es pis
-            flip (flip zipWithM ess) fvqes $ \es (fv_0, qx_0, qx'_0) -> do
-                (fvxs_js, qxs_j, qx's_j) <- unzip3 <$> mapM anno (tail es)
+            flip (flip zipWithM (zip es pis)) fvqes $ \(e, pi) (fv_0, qx_0, qx'_0) -> do
+                (fvxs_js, qxs_j, qx's_j) <- unzip3 <$> mapM anno (tail $ map (const e) pi)
                 fvxs_j <- foldrM share fv_0 fvxs_js
-                return $ (fvxs_j, qx_0:qxs_j, qx'_0:qx's_j)
+                return $ (fvxs_j, qx_0:qxs_j, foldl1 (|+|) $ zipWith (<<<) (qx'_0:qx's_j) pi)
         qt <- rezero qf
         qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv degree) [qt] $ init itys
         q  <- rezero qf'
         q' <- rezero qf'
-        let qxrs' = map (foldl1 (|+|)) $ zipWith (zipWith (<<<)) qxs' pis
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno
         constrain [q_in |-| q_out ==$ 0.0 |
                    (q_in, q_out) <- concat $ zipWith zip (map (map coerceZero) qxs) $ [coerceZero q]:map values qts]
-        constrain $ concat [q_in |-| q_out ==* k1 | (q_in, q_out) <- zip qxrs' qts]
+        constrain $ concat [q_in |-| q_out ==* k1 | (q_in, q_out) <- zip qxs' qts]
         constrain [(coerceZero $ last qts) |-| coerceZero qf |-| c ==$ k1]
         constrain [c |+| coerceZero qf' |-| coerceZero q' ==$ k2]
         fvs <- foldrM share [] fvxs
