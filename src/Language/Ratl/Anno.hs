@@ -141,21 +141,30 @@ freshAnno = do
     put (q + 1)
     return $ sparse [(q, 1)]
 
-freshIxEnv :: (MonadState Anno m, Indexable i t, Mapping q i LinearFunction) => Int -> t -> m q
-freshIxEnv k t = fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
+freshIxEnvDeg :: (MonadState Anno m, Indexable i t, Mapping q i LinearFunction) => Int -> t -> m q
+freshIxEnvDeg k t = fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
+
+freshIxEnv :: (MonadReader AnnoState m, MonadState Anno m, Indexable i t, Mapping q i LinearFunction) => t -> m q
+freshIxEnv t = degreeof >>= flip freshIxEnvDeg t
 
 freshBounds :: (MonadReader AnnoState m, MonadState Anno m) => Ty -> m (IxEnv, IxEnv)
 freshBounds t = do
-    k <- degreeof
-    q  <- freshIxEnv k t
+    q  <- freshIxEnv t
     q' <- rezero q
     return (q, q')
 
-freshFunBounds :: MonadState Anno m => Int -> TypedFun -> m (CIxEnv, IxEnv)
-freshFunBounds k fun = do
+freshFunBoundsDeg :: MonadState Anno m => Int -> TypedFun -> m (CIxEnv, IxEnv)
+freshFunBoundsDeg k fun = do
     let Arrow t t' = tyOf fun
-    q  <- freshIxEnv k t
-    q' <- freshIxEnv k t'
+    q  <- freshIxEnvDeg k t
+    q' <- freshIxEnvDeg k t'
+    return (q, q')
+
+freshFunBounds :: (MonadReader AnnoState m, MonadState Anno m) => TypedFun -> m (CIxEnv, IxEnv)
+freshFunBounds fun = do
+    let Arrow t t' = tyOf fun
+    q  <- freshIxEnv t
+    q' <- freshIxEnv t'
     return (q, q')
 
 rezero :: (MonadState Anno m, Indexable i t, Mapping q i LinearFunction) => q -> m q
@@ -264,7 +273,7 @@ annoSCP = traverse_ (traverse_ annoFE)
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
               let ty_p = [ty_h, ty_l]
               k <- degreeof
-              q's_p <- if null (values qs_p) then freshIxEnv k ty_p else return qs_p
+              q's_p <- if null (values qs_p) then freshIxEnv ty_p else return qs_p
               let limit (i, is) = const (i, is) <$> lookup i q's_p
                   Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
                   ss = map (\(i, is) -> (,) <$> lookup i q's_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
@@ -315,9 +324,9 @@ instance Annotate TypedEx where
                     return (tyOf fun, (qa, qa'))
                 else do
                     scp <- asks comp
-                    (qf, qf') <- freshFunBounds degree fun
+                    (qf, qf') <- freshFunBounds fun
                     -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
-                    cfscp <- traverse (traverse $ \(f, _) -> (,) f <$> freshFunBounds (degree - 1) f) $ update f (fun, (qf, qf')) scp
+                    cfscp <- traverse (traverse $ \(f, _) -> (,) f <$> freshFunBoundsDeg (degree - 1) f) $ update f (fun, (qf, qf')) scp
                     let Just (_, (qcf, qcf')) = lookup f cfscp
                     constrain $ qf  |-| qa  |-| qcf  ==* 0
                     constrain $ qf' |-| qa' |-| qcf' ==* 0
@@ -329,7 +338,7 @@ instance Annotate TypedEx where
                     Arrow ty ty' = tyOf asc
                     theta = Elab.solve tys (ty ++ [ty'])
                     fun = Elab.instantiate theta asc
-                scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds degree f) $ update f fun scp
+                scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds f) $ update f fun scp
                 local (\cf -> cf {comp = scp'}) $ annoSCP scp'
                 return $ first tyOf $ fromJust $ lookup f scp'
         let itys = tail $ inits ty
@@ -340,7 +349,7 @@ instance Annotate TypedEx where
                 fvxs_j <- foldrM share fv_0 fvxs_js
                 return $ (fvxs_j, qx_0:qxs_j, foldl1 (|+|) $ zipWith (<<<) (qx'_0:qx's_j) pi)
         qt <- rezero qf
-        qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv degree) [qt] $ init itys
+        qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv) [qt] $ init itys
         q  <- rezero qf'
         q' <- rezero qf'
         k1 <- costof k_ap1
@@ -379,7 +388,7 @@ makeEqn k q cs ty =
 
 annotate :: MonadError AnnoError m => Int -> [TypedProg] -> m EqnEnv
 annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
-    scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds k f) scp
+    scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBoundsDeg k f) scp
     let checkState = AnnoState {degree = k, scps = p, comp = scp', cost = constant}
     cs <- execWriterT $ runReaderT (annoSCP scp') checkState
     for scp' $ traverse $ \(fun, (pqs, _)) -> do
