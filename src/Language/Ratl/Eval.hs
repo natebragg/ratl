@@ -50,12 +50,12 @@ run phi = eval []
                 f <- unlessJust (lookupFunBySCP phi x) $
                         throwError $ NameError x
                 app f vs
-          eval rho (Let ds e) =
+          eval rho (Let bs e) =
                 let evalds rho'          [] = return rho'
-                    evalds rho' ((x, e):ds) = do
+                    evalds rho' ((x, e):bs) = do
                         v <- eval rho e
-                        evalds ((x, v):rho') ds
-                in do rho' <- evalds rho ds
+                        evalds ((x, v):rho') bs
+                in do rho' <- evalds rho bs
                       eval rho' e
           app :: MonadError RuntimeError m => Fun -> [Val] -> m Val
           app (Fun    _ x b) vs = do

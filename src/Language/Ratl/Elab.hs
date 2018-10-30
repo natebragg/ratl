@@ -118,7 +118,7 @@ instance Instantiable TypedEx where
     instantiate theta (TypedVal ty v) = TypedVal (instantiate theta ty) v
     instantiate theta (TypedIf ty ep et ef) = TypedIf (instantiate theta ty) (instantiate theta ep) (instantiate theta et) (instantiate theta ef)
     instantiate theta (TypedApp ty f es) = TypedApp (instantiate theta ty) f (instantiate theta es)
-    instantiate theta (TypedLet ty ds e) = TypedLet (instantiate theta ty) (instantiate theta ds) (instantiate theta e)
+    instantiate theta (TypedLet ty bs e) = TypedLet (instantiate theta ty) (instantiate theta bs) (instantiate theta e)
 
 class Elab a where
     type Type a :: *
@@ -178,8 +178,8 @@ instance Elab Ex where
         when (not $ null ineqs) $
             throwError $ TypeError $ ineqs
         return $ TypedApp ty'' f etys'
-    elab (Let ds e) = do
-        etyds <- traverse (traverse elab) ds
+    elab (Let bs e) = do
+        etyds <- traverse (traverse elab) bs
         let tyds = map (fmap tyGet) etyds
         ety <- withReaderT (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
         let ty = tyGet ety

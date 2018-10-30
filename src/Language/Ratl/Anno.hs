@@ -353,8 +353,8 @@ instance Annotate TypedEx where
         constrain [c |+| coerceZero qf' |-| coerceZero q' ==$ k2]
         fvs <- foldrM share [] fvxs
         return (fvs, q, q')
-    anno (TypedLet _ ds e) = do
-        (xs, (fvds, qs, qs')) <- second unzip3 <$> unzip <$> traverse (traverse anno) ds
+    anno (TypedLet _ bs e) = do
+        (xs, (fvds, qs, qs')) <- second unzip3 <$> unzip <$> traverse (traverse anno) bs
         qxs <- traverse rezero qs
         (fves, qe, qe') <- anno e
         fves' <- shareBind (zip xs qxs) fves

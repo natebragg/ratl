@@ -107,8 +107,8 @@ instance Show e => Show (ExRep e) where
     show (ValRep v) = show v
     show (AppRep x es) = "(" ++ unwords (show x:map show es) ++ ")"
     show (IfRep ep et ef) = "(if " ++ show ep ++ " " ++ show et ++ " " ++ show ef ++ ")"
-    show (LetRep ds e) = "(let (" ++ unwords (map showdec ds) ++ ") " ++ show e ++ ")"
-            where showdec (x, e) = "(" ++ show x ++ " " ++ show e ++ ")"
+    show (LetRep bs e) = "(let (" ++ unwords (map showbind bs) ++ ") " ++ show e ++ ")"
+            where showbind (x, e) = "(" ++ show x ++ " " ++ show e ++ ")"
 
 newtype Ex = Ex { unex :: Fix ExRep }
     deriving Eq
@@ -125,10 +125,10 @@ pattern If ep et ef <- ((\case
             ex@(Ex (Fix (IfRep ep et ef))) -> (ex, Ex ep, Ex et, Ex ef)
             ex -> (ex, undefined, undefined, undefined)) -> (Ex (Fix (IfRep _ _ _)), ep, et, ef))
     where If ep et ef = Ex (Fix (IfRep (unex ep) (unex et) (unex ef)))
-pattern Let ds e <- ((\case
-            ex@(Ex (Fix (LetRep ds e))) -> (ex, fmap (fmap Ex) ds, Ex e)
-            ex -> (ex, undefined, undefined)) -> (Ex (Fix (LetRep _ _)), ds, e))
-    where Let ds e = Ex (Fix (LetRep (fmap (fmap unex) ds) (unex e)))
+pattern Let bs e <- ((\case
+            ex@(Ex (Fix (LetRep bs e))) -> (ex, fmap (fmap Ex) bs, Ex e)
+            ex -> (ex, undefined, undefined)) -> (Ex (Fix (LetRep _ _)), bs, e))
+    where Let bs e = Ex (Fix (LetRep (fmap (fmap unex) bs) (unex e)))
 
 instance Show Ex where
     show = show . unex
@@ -152,10 +152,10 @@ pattern TypedIf ty ep et ef <- ((\case
             ex@(TypedEx (Fix (TyRep (_, IfRep ep et ef)))) -> (ex, TypedEx ep, TypedEx et, TypedEx ef)
             ex -> (ex, undefined, undefined, undefined)) -> (TypedEx (Fix (TyRep (ty, IfRep _ _ _))), ep, et, ef))
     where TypedIf ty ep et ef = TypedEx (Fix (TyRep (ty, IfRep (untypedex ep) (untypedex et) (untypedex ef))))
-pattern TypedLet ty ds e <- ((\case
-            ex@(TypedEx (Fix (TyRep (_, LetRep ds e)))) -> (ex, map (fmap TypedEx) ds, TypedEx e)
-            ex -> (ex, undefined, undefined)) -> (TypedEx (Fix (TyRep (ty, LetRep _ _))), ds, e))
-    where TypedLet ty ds e = TypedEx (Fix (TyRep (ty, LetRep (map (fmap untypedex) ds) (untypedex e))))
+pattern TypedLet ty bs e <- ((\case
+            ex@(TypedEx (Fix (TyRep (_, LetRep bs e)))) -> (ex, map (fmap TypedEx) bs, TypedEx e)
+            ex -> (ex, undefined, undefined)) -> (TypedEx (Fix (TyRep (ty, LetRep _ _))), bs, e))
+    where TypedLet ty bs e = TypedEx (Fix (TyRep (ty, LetRep (map (fmap untypedex) bs) (untypedex e))))
 
 instance Show TypedEx where
     show = show . untypedex
