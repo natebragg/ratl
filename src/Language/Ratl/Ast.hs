@@ -45,7 +45,7 @@ import Language.Ratl.Val (Val)
 
 
 data Var = V String
-    deriving (Eq)
+    deriving (Eq, Ord)
 
 instance Show Var where
     show (V x) = x

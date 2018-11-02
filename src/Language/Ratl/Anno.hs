@@ -8,7 +8,7 @@ module Language.Ratl.Anno (
 ) where
 
 import Data.List (transpose, intersect, union, inits)
-import Data.Mapping (Mapping(..))
+import Data.Mapping (Mapping(..), (<?<))
 import Data.Maybe (isJust, fromJust, mapMaybe)
 import Data.Foldable (traverse_, foldrM)
 import Data.Traversable (for)
@@ -67,9 +67,13 @@ import qualified Language.Ratl.Elab as Elab (
 
 type Anno = Int
 
+data LNVar = BVar Int
+           | FVar Var
+    deriving (Eq, Ord)
+
 type IxEnv = LinearFunFamily Index
 type CIxEnv = LinearFunFamily ContextIndex
-type VarEnv = [(Var, IxEnv)]
+type VarEnv = [(LNVar, IxEnv)]
 type FunEnv = [(Var, (TypedFun, (CIxEnv, IxEnv)))]
 type Eqn = ([(ContextIndex, Anno)], [GeneralForm])
 type EqnEnv = [(Var, Eqn)]
@@ -118,6 +122,16 @@ data AnnoError = ProjectionError Ty Index
 
 instance Show AnnoError where
     show (ProjectionError t i) = "Index " ++ show i ++ " does not appear to be a projection of type " ++ show t ++ "."
+
+-- Locally Nameless Representation Helpers
+
+bindvars :: [a] -> [(LNVar, a)]
+bindvars =
+    let boundvars = (map BVar [0..])
+    in \xs -> zip boundvars $ reverse xs
+
+varclose :: [Var] -> VarEnv -> VarEnv
+varclose xs fvs = fvs <?< bindvars (map FVar xs)
 
 -- IxEnv Helpers
 
@@ -259,7 +273,7 @@ annoSCP = traverse_ (traverse_ annoFE)
               xqs <- rezero pqs
               (fvs, q, q') <- anno e
               k <- degreeof
-              shareBind (zip [x] [xqs <<< map (\(a,b) -> (b,a)) (concat $ concat $ projectionsDeg k pty)]) fvs
+              shareBind (zip [FVar x] [xqs <<< map (\(a,b) -> (b,a)) (concat $ concat $ projectionsDeg k pty)]) fvs
               constrain $ [coerceZero pqs |-| coerceZero q ==$ 0]
               constrain $ rqs |-| q' ==* 0
           annoFE (TypedNative (Arrow [pty@(ListTy pt)]          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs lz lz pqs -- hack for car
@@ -283,6 +297,18 @@ annoSCP = traverse_ (traverse_ annoFE)
               constrain [foldl (|-|) p pcs ==$ 0 |
                          (q_in, q_out) <- zip [qs_h, qs_t] q's, (ix, p) <- elements q_in, pcs <- [mapMaybe (lookup ix) q_out], not $ null pcs]
 
+annoSeq :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => (Cost -> Double) -> [TypedEx] -> m (VarEnv, VarEnv, IxEnv, IxEnv)
+annoSeq k_e es = do
+    (fves, qes, qe's) <- unzip3 <$> traverse anno es
+    fvs <- foldrM share [] fves
+    q' <- freshIxEnv UnitTy
+    let q:qs = qes ++ [q']
+    k <- costof k_e
+    constrain [coerceZero q_in |-| coerceZero q_out >=$ k |
+               (q_in, q_out) <- zip qe's qs]
+    qxs <- traverse rezero qes
+    return (fvs, bindvars qxs, q, q')
+
 class Annotate a where
     anno :: (MonadError AnnoError m, MonadReader AnnoState m, MonadWriter [GeneralConstraint] m, MonadState Anno m) => a -> m (VarEnv, IxEnv, IxEnv)
 
@@ -291,7 +317,7 @@ instance Annotate TypedEx where
         (q, q') <- freshBounds ty
         k <- costof k_var
         constrain $ q |-| q' ==* k
-        return ([(x, q)], q, q')
+        return ([(FVar x, q)], q, q')
     anno (TypedVal ty v) = do
         (q, q') <- freshBounds ty
         k <- costof k_val
@@ -363,17 +389,17 @@ instance Annotate TypedEx where
         fvs <- foldrM share [] fvxs
         return (fvs, q, q')
     anno (TypedLet _ bs e) = do
-        (xs, (fvds, qs, qs')) <- second unzip3 <$> unzip <$> traverse (traverse anno) bs
-        qxs <- traverse rezero qs
+        let (xs, es) = unzip bs
+        (fvbs, bvbs, qb, qb') <- annoSeq k_lt1 es
         (fves, qe, qe') <- anno e
-        fves' <- shareBind (zip xs qxs) fves
-        fvs <- foldrM share fves' fvds
+        fves' <- shareBind (varclose xs bvbs) fves
+        fvs <- share fvbs fves'
         q  <- rezero qe
         q' <- rezero qe'
         k1 <- costof k_lt1
         k2 <- costof k_lt2
-        constrain [coerceZero q_in |-| coerceZero q_out >=$ k1 |
-                   (q_in, q_out) <- zip (q:qs') (qs ++ [qe])]
+        constrain [coerceZero q |-| coerceZero qb >=$ k1,
+                   coerceZero qb' |-| coerceZero qe >=$ 0]
         constrain $ filterZero qe' |-| filterZero q' ==* k2
         return (fvs, q, q')
 

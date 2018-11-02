@@ -4,6 +4,7 @@
 
 module Data.Mapping (
     Mapping(..),
+    (<?<),
 ) where
 
 import Prelude hiding (lookup)
@@ -29,6 +30,9 @@ class Mapping m k v | m -> k v where
     update = updateBy . (==)
     delete :: Eq k => k -> m -> m
     delete = deleteBy . (==)
+
+(<?<) :: (Eq k, Mapping m k v, Mapping m2 k k) => m -> m2 -> m
+m <?< m2 = fromList [(maybe k id $ lookup k m2, v) | (k, v) <- elements m]
 
 instance Mapping [(k, v)] k v where
     lookupBy f = go
