@@ -155,11 +155,11 @@ main = do
     pty <- traverse (handleE . elaborate prims_basis_module) p
     a <- if mode /= Run then return $ embed (0 :: Int) else
         handleE $ fmap embed $ parse (sexp <* eof) "command line" cmdline
-    eqns <- handleEx $ annotate deg_max pty
+    eqns <- annotate deg_max pty
     let mainapp a = (App (V "main") [(Val a)])
     cl_eqns <- if mode /= Run then return [] else do
         e <- handleE $ elaborate prims_basis_module (mainapp a)
-        eqns <- handleEx $ annotateEx deg_max pty e
+        eqns <- annotateEx deg_max pty e
         return [(V fn, eqns)]
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
     forM module_eqns $ \(f, (ixs, eqns)) -> do

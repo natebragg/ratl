@@ -16,7 +16,6 @@ import Control.Arrow (first, second)
 import Control.Monad (zipWithM, mfilter)
 import Control.Monad.RWS (MonadRWS, evalRWST)
 import Control.Monad.RWS.Extra (MonadRS, MonadWS, execRWT)
-import Control.Monad.Except (MonadError(..))
 import Control.Monad.State (MonadState, evalStateT, get, put)
 import Control.Monad.Reader (MonadReader, asks, local)
 import Control.Monad.Writer (MonadWriter, tell)
@@ -119,11 +118,6 @@ data AnnoState = AnnoState {
         comp :: FunEnv,
         cost :: Cost
     }
-
-data AnnoError = ProjectionError Ty Index
-
-instance Show AnnoError where
-    show (ProjectionError t i) = "Index " ++ show i ++ " does not appear to be a projection of type " ++ show t ++ "."
 
 -- Locally Nameless Representation Helpers
 
@@ -268,9 +262,9 @@ lookupThisSCP x = asks (lookup x . comp)
 
 -- The Engine
 
-annoSCP :: (MonadError AnnoError m, MonadRWS AnnoState [GeneralConstraint] Anno m) => FunEnv -> m ()
+annoSCP :: MonadRWS AnnoState [GeneralConstraint] Anno m => FunEnv -> m ()
 annoSCP = traverse_ (traverse_ annoFE)
-    where annoFE :: (MonadError AnnoError m, MonadRWS AnnoState [GeneralConstraint] Anno m) => (TypedFun, (CIxEnv, IxEnv)) -> m ()
+    where annoFE :: MonadRWS AnnoState [GeneralConstraint] Anno m => (TypedFun, (CIxEnv, IxEnv)) -> m ()
           annoFE (TypedFun (Arrow pty rty) x e, (pqs, rqs)) = do
               xqs <- rezero pqs
               (fvs, q, q') <- anno e
@@ -285,7 +279,7 @@ annoSCP = traverse_ (traverse_ annoFE)
               constrain $ [coerceZero pqs |-| coerceZero rqs ==$ 0]
           lz :: Mapping i k v => i
           lz = fromList []
-          consShift :: (MonadError AnnoError m, MonadRWS AnnoState [GeneralConstraint] Anno m) => Ty -> IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
+          consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => Ty -> IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
           consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
               let ty_p = [ty_h, ty_l]
               k <- degreeof
@@ -299,7 +293,7 @@ annoSCP = traverse_ (traverse_ annoFE)
               constrain [foldl (|-|) p pcs ==$ 0 |
                          (q_in, q_out) <- zip [qs_h, qs_t] q's, (ix, p) <- elements q_in, pcs <- [mapMaybe (lookup ix) q_out], not $ null pcs]
 
-annoSeq :: (MonadError AnnoError m, MonadRWS AnnoState [GeneralConstraint] Anno m) => (Cost -> Double) -> [TypedEx] -> m (VarEnv, VarEnv, IxEnv, IxEnv)
+annoSeq :: MonadRWS AnnoState [GeneralConstraint] Anno m => (Cost -> Double) -> [TypedEx] -> m (VarEnv, VarEnv, IxEnv, IxEnv)
 annoSeq k_e es = do
     (fves, qes, qe's) <- unzip3 <$> traverse anno es
     fvs <- foldrM share [] fves
@@ -312,7 +306,7 @@ annoSeq k_e es = do
     return (fvs, bindvars qxs, q, q')
 
 class Annotate a where
-    anno :: (MonadError AnnoError m, MonadRWS AnnoState [GeneralConstraint] Anno m) => a -> m (VarEnv, IxEnv, IxEnv)
+    anno :: MonadRWS AnnoState [GeneralConstraint] Anno m => a -> m (VarEnv, IxEnv, IxEnv)
 
 instance Annotate TypedEx where
     anno (TypedVar ty x) = do
@@ -414,7 +408,7 @@ makeEqn k q cs ty =
         indexmap = map (fmap resource) $ elements q
     in (indexmap, progs)
 
-annotate :: MonadError AnnoError m => Int -> [TypedProg] -> m EqnEnv
+annotate :: Monad m => Int -> [TypedProg] -> m EqnEnv
 annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
     scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBoundsDeg k f) scp
     let checkState = AnnoState {degree = k, scps = p, comp = scp', cost = constant}
@@ -423,7 +417,7 @@ annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
         let Arrow pty _ = tyOf fun
         return $ makeEqn k pqs cs pty
 
-annotateEx :: MonadError AnnoError m => Int -> [TypedProg] -> TypedEx -> m Eqn
+annotateEx :: Monad m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = do
     let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
     (([], q, q'), cs) <- evalRWST (anno e) checkState 0
