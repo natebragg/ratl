@@ -34,6 +34,7 @@ library
                        Language.Ratl.Val
   other-modules:       Bindings.Clp.Clp
                        Control.Monad.Except.Extra
+                       Control.Monad.RWS.Extra
                        Data.Clp.Managed
                        Data.Clp.LinearFunction
                        Data.Fix
