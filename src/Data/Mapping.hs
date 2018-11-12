@@ -7,12 +7,17 @@ module Data.Mapping (
     (<?<),
 ) where
 
+import Data.Maybe (listToMaybe)
 import Prelude hiding (lookup)
 
 class Mapping m k v | m -> k v where
     lookupBy :: (k -> Bool) -> m -> Maybe v
+    lookupBy = ((listToMaybe . values) .) . selectBy
     updateBy :: (k -> Bool) -> v -> m -> m
-    deleteBy :: (k -> Bool) -> m -> m      
+    deleteBy :: (k -> Bool) -> m -> m
+    deleteBy = selectBy . (not .)
+    selectBy :: (k -> Bool) -> m -> m
+    selectBy = deleteBy . (not .)
 
     fromList :: [(k, v)] -> m
     elements :: m -> [(k, v)]
@@ -30,6 +35,8 @@ class Mapping m k v | m -> k v where
     update = updateBy . (==)
     delete :: Eq k => k -> m -> m
     delete = deleteBy . (==)
+    select :: Eq k => k -> m -> m
+    select = selectBy . (==)
 
 (<?<) :: (Eq k, Mapping m k v, Mapping m2 k k) => m -> m2 -> m
 m <?< m2 = fromList [(maybe k id $ lookup k m2, v) | (k, v) <- elements m]
