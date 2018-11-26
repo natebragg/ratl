@@ -15,7 +15,7 @@ import Data.Traversable (for)
 import Control.Arrow (first, second)
 import Control.Monad (zipWithM, mfilter)
 import Control.Monad.RWS (MonadRWS, evalRWST)
-import Control.Monad.RWS.Extra (MonadRS, MonadWS, execRWT)
+import Control.Monad.RWS.Extra (MonadRS, MonadWS, evalRWT)
 import Control.Monad.State (MonadState, evalStateT, get, put)
 import Control.Monad.Reader (MonadReader, asks, local)
 import Control.Monad.Writer (MonadWriter, tell)
@@ -151,23 +151,15 @@ freshAnno = do
     put (q + 1)
     return $ sparse [(q, 1)]
 
-freshIxEnvDeg :: (MonadState Anno m, Indexable i t, Mapping q i LinearFunction) => Int -> t -> m q
-freshIxEnvDeg k t = fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
-
 freshIxEnv :: (MonadRS AnnoState Anno m, Indexable i t, Mapping q i LinearFunction) => t -> m q
-freshIxEnv t = degreeof >>= flip freshIxEnvDeg t
+freshIxEnv t = do
+    k <- degreeof
+    fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
 
 freshBounds :: MonadRS AnnoState Anno m => Ty -> m (IxEnv, IxEnv)
 freshBounds t = do
     q  <- freshIxEnv t
     q' <- rezero q
-    return (q, q')
-
-freshFunBoundsDeg :: MonadState Anno m => Int -> TypedFun -> m (CIxEnv, IxEnv)
-freshFunBoundsDeg k fun = do
-    let Arrow t t' = tyOf fun
-    q  <- freshIxEnvDeg k t
-    q' <- freshIxEnvDeg k t'
     return (q, q')
 
 freshFunBounds :: MonadRS AnnoState Anno m => TypedFun -> m (CIxEnv, IxEnv)
@@ -347,12 +339,13 @@ instance Annotate TypedEx where
                 else do
                     scp <- asks comp
                     (qf, qf') <- freshFunBounds fun
-                    -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
-                    cfscp <- traverse (traverse $ \(f, _) -> (,) f <$> freshFunBoundsDeg (degree - 1) f) $ update f (fun, (qf, qf')) scp
-                    let Just (_, (qcf, qcf')) = lookup f cfscp
-                    constrain $ qf  - qa  - qcf  ==* 0
-                    constrain $ qf' - qa' - qcf' ==* 0
-                    local (\cf -> cf {degree = degree - 1, comp = cfscp, cost = zero}) $ annoSCP cfscp
+                    local (\s -> s {degree = degree - 1, cost = zero}) $ do
+                        -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
+                        cfscp <- traverse (traverse $ \(f, _) -> (,) f <$> freshFunBounds f) $ update f (fun, (qf, qf')) scp
+                        let Just (_, (qcf, qcf')) = lookup f cfscp
+                        constrain $ qf  - qa  - qcf  ==* 0
+                        constrain $ qf' - qa' - qcf' ==* 0
+                        local (\s -> s {comp = cfscp}) $ annoSCP cfscp
                     return (tyOf fun, (qf, qf'))
             Nothing -> do
                 scp <- lookupSCP f
@@ -409,13 +402,16 @@ makeEqn k q cs ty =
     in (indexmap, progs)
 
 annotate :: Monad m => Int -> [TypedProg] -> m EqnEnv
-annotate k p = flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
-    scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBoundsDeg k f) scp
-    let checkState = AnnoState {degree = k, scps = p, comp = scp', cost = constant}
-    cs <- execRWT (annoSCP scp') checkState
-    for scp' $ traverse $ \(fun, (pqs, _)) -> do
-        let Arrow pty _ = tyOf fun
-        return $ makeEqn k pqs cs pty
+annotate k p = do
+    let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
+    flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
+        (scp', cs) <- flip evalRWT checkState $ do
+            scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds f) scp
+            local (\s -> s {comp = scp'}) $ annoSCP scp'
+            return scp'
+        for scp' $ traverse $ \(fun, (pqs, _)) -> do
+            let Arrow pty _ = tyOf fun
+            return $ makeEqn k pqs cs pty
 
 annotateEx :: Monad m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = do
