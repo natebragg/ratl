@@ -19,11 +19,11 @@ import Control.Monad.RWS.Extra (MonadRS, MonadWS, execRWT)
 import Control.Monad.State (MonadState, evalStateT, get, put)
 import Control.Monad.Reader (MonadReader, asks, local)
 import Control.Monad.Writer (MonadWriter, tell)
-import Prelude hiding (lookup)
+import Numeric.Algebra (sum, (+), (*.), (-))
+import Prelude hiding (lookup, sum, (+), (-))
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.LinearFunction (
-    (|*), (|+|), (|-|),
     LinearFunction,
     LinearFunFamily,
     sparse,
@@ -189,7 +189,7 @@ reannotate ixs = fromList <$> traverse (traverse $ const freshAnno) (elements ix
 
 buildPoly :: [CIxEnv] -> [[[(ContextIndex, Index)]]] -> [[[(Index, LinearFunction)]]]
 buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe (elements qs) . xlate
-    where xlate ixs (ix, lf) = (\ix' -> (ix', lf |* (poly ix / poly ix'))) <$> lookup ix ixs
+    where xlate ixs (ix, lf) = (\ix' -> (ix', lf *. (poly ix / poly ix'))) <$> lookup ix ixs
 
 nonEmptyConstraints c ixs k =
     case (mfilter (not . null) $          lookupBy isZero ixs,
@@ -215,7 +215,7 @@ share fvas fvbs = do
         let Just qa = lookup v fvas
             Just qb = lookup v fvbs
         qc <- reannotate qa
-        constrain $ qc |-| qa |-| qb ==* 0
+        constrain $ qc - qa - qb ==* 0
         return (v, qc)
     return $ combined ++ foldr delete (fvas ++ fvbs) vs
 
@@ -226,8 +226,8 @@ shareSubtype fvas fvbs = do
         let Just qa = lookup v fvas
             Just qb = lookup v fvbs
         qc <- reannotate qa
-        constrain $ qc |-| qa >=* 0
-        constrain $ qc |-| qb >=* 0
+        constrain $ qc - qa >=* 0
+        constrain $ qc - qb >=* 0
         return (v, qc)
     return $ combined ++ foldr delete (fvas ++ fvbs) vs
 
@@ -237,7 +237,7 @@ shareBind fvas fvbs = do
     for vs $ \v -> do
         let Just qa = lookup v fvas
             Just qb = lookup v fvbs
-        constrain $ qa |-| qb ==* 0
+        constrain $ qa - qb ==* 0
     return $ foldr delete fvbs vs
 
 to_ctx :: Int -> Ty -> IxEnv -> CIxEnv
@@ -270,13 +270,13 @@ annoSCP = traverse_ (traverse_ annoFE)
               (fvs, q, q') <- anno e
               k <- degreeof
               shareBind (zip [FVar x] [xqs <<< map (\(a,b) -> (b,a)) (concat $ concat $ projectionsDeg k pty)]) fvs
-              constrain $ [coerceZero pqs |-| coerceZero q ==$ 0]
-              constrain $ rqs |-| q' ==* 0
+              constrain $ [coerceZero pqs - coerceZero q ==$ 0]
+              constrain $ rqs - q' ==* 0
           annoFE (TypedNative (Arrow [pty@(ListTy pt)]          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs lz lz pqs -- hack for car
           annoFE (TypedNative (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty lz rqs lz pqs -- hack for cdr
           annoFE (TypedNative (Arrow [_, ListTy _]  rty@(ListTy _)) _ _, (pqs, rqs))            = consShift rty lz lz pqs =<< (to_ctx <$> degreeof <*> pure rty <*> pure rqs) -- hack for cons
           annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
-              constrain $ [coerceZero pqs |-| coerceZero rqs ==$ 0]
+              constrain $ [coerceZero pqs - coerceZero rqs ==$ 0]
           lz :: Mapping i k v => i
           lz = fromList []
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => Ty -> IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
@@ -288,9 +288,9 @@ annoSCP = traverse_ (traverse_ annoFE)
                   Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
                   ss = map (\(i, is) -> (,) <$> lookup i q's_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
                   q's = buildPoly (repeat q's_p) $ projectionsDeg k ty_p
-              constrain [foldl (|+|) (q |* (-1)) ps ==$ 0 |
+              constrain [sum ps - q ==$ 0 |
                          Just (q, ps) <- ss]
-              constrain [foldl (|-|) p pcs ==$ 0 |
+              constrain [p - sum pcs ==$ 0 |
                          (q_in, q_out) <- zip [qs_h, qs_t] q's, (ix, p) <- elements q_in, pcs <- [mapMaybe (lookup ix) q_out], not $ null pcs]
 
 annoSeq :: MonadRWS AnnoState [GeneralConstraint] Anno m => (Cost -> Double) -> [TypedEx] -> m (VarEnv, VarEnv, IxEnv, IxEnv)
@@ -300,7 +300,7 @@ annoSeq k_e es = do
     q' <- freshIxEnv UnitTy
     let q:qs = qes ++ [q']
     k <- costof k_e
-    constrain [coerceZero q_in |-| coerceZero q_out >=$ k |
+    constrain [coerceZero q_in - coerceZero q_out >=$ k |
                (q_in, q_out) <- zip qe's qs]
     qxs <- traverse rezero qes
     return (fvs, bindvars qxs, q, q')
@@ -312,12 +312,12 @@ instance Annotate TypedEx where
     anno (TypedVar ty x) = do
         (q, q') <- freshBounds ty
         k <- costof k_var
-        constrain $ q |-| q' ==* k
+        constrain $ q - q' ==* k
         return ([(FVar x, q)], q, q')
     anno (TypedVal ty v) = do
         (q, q') <- freshBounds ty
         k <- costof k_val
-        constrain $ q |-| q' ==* k
+        constrain $ q - q' ==* k
         return ([], q, q')
     anno (TypedIf ty ep et ef) = do
         (fvps, qp, qp') <- anno ep
@@ -326,11 +326,11 @@ instance Annotate TypedEx where
         fvs <- share fvps =<< shareSubtype fvts fvfs
         (q, q') <- freshBounds ty
         [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
-        constrain [coerceZero q   |-| coerceZero qp >=$ kp]
-        constrain [coerceZero qp' |-| coerceZero qt >=$ kt]
-        constrain [coerceZero qp' |-| coerceZero qf >=$ kf]
-        constrain $ qt' |-| q' >=* kc
-        constrain $ qf' |-| q' >=* kc
+        constrain [coerceZero q   - coerceZero qp >=$ kp]
+        constrain [coerceZero qp' - coerceZero qt >=$ kt]
+        constrain [coerceZero qp' - coerceZero qf >=$ kf]
+        constrain $ qt' - q' >=* kc
+        constrain $ qf' - q' >=* kc
         return (fvs, q, q')
     anno (TypedApp _ f es) = do
         fvqes <- traverse anno es
@@ -350,8 +350,8 @@ instance Annotate TypedEx where
                     -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
                     cfscp <- traverse (traverse $ \(f, _) -> (,) f <$> freshFunBoundsDeg (degree - 1) f) $ update f (fun, (qf, qf')) scp
                     let Just (_, (qcf, qcf')) = lookup f cfscp
-                    constrain $ qf  |-| qa  |-| qcf  ==* 0
-                    constrain $ qf' |-| qa' |-| qcf' ==* 0
+                    constrain $ qf  - qa  - qcf  ==* 0
+                    constrain $ qf' - qa' - qcf' ==* 0
                     local (\cf -> cf {degree = degree - 1, comp = cfscp, cost = zero}) $ annoSCP cfscp
                     return (tyOf fun, (qf, qf'))
             Nothing -> do
@@ -369,7 +369,7 @@ instance Annotate TypedEx where
             flip (flip zipWithM (zip es pis)) fvqes $ \(e, pi) (fv_0, qx_0, qx'_0) -> do
                 (fvxs_js, qxs_j, qx's_j) <- unzip3 <$> mapM anno (tail $ map (const e) pi)
                 fvxs_j <- foldrM share fv_0 fvxs_js
-                return $ (fvxs_j, qx_0:qxs_j, foldl1 (|+|) $ zipWith (<<<) (qx'_0:qx's_j) pi)
+                return $ (fvxs_j, qx_0:qxs_j, sum $ zipWith (<<<) (qx'_0:qx's_j) pi)
         qt <- rezero qf
         qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv) [qt] $ init itys
         q  <- rezero qf'
@@ -377,11 +377,11 @@ instance Annotate TypedEx where
         k1 <- costof k_ap1
         k2 <- costof k_ap2
         c  <- freshAnno
-        constrain [q_in |-| q_out ==$ 0.0 |
+        constrain [q_in - q_out ==$ 0.0 |
                    (q_in, q_out) <- concat $ zipWith zip (map (map coerceZero) qxs) $ [coerceZero q]:map values qts]
-        constrain $ concat [q_in |-| q_out ==* k1 | (q_in, q_out) <- zip qxs' qts]
-        constrain [(coerceZero $ last qts) |-| coerceZero qf |-| c ==$ k1]
-        constrain [c |+| coerceZero qf' |-| coerceZero q' ==$ k2]
+        constrain $ concat [q_in - q_out ==* k1 | (q_in, q_out) <- zip qxs' qts]
+        constrain [(coerceZero $ last qts) - coerceZero qf - c ==$ k1]
+        constrain [c + coerceZero qf' - coerceZero q' ==$ k2]
         fvs <- foldrM share [] fvxs
         return (fvs, q, q')
     anno (TypedLet _ bs e) = do
@@ -394,14 +394,14 @@ instance Annotate TypedEx where
         q' <- rezero qe'
         k1 <- costof k_lt1
         k2 <- costof k_lt2
-        constrain [coerceZero q |-| coerceZero qb >=$ k1,
-                   coerceZero qb' |-| coerceZero qe >=$ 0]
-        constrain $ filterZero qe' |-| filterZero q' ==* k2
+        constrain [coerceZero q - coerceZero qb >=$ k1,
+                   coerceZero qb' - coerceZero qe >=$ 0]
+        constrain $ filterZero qe' - filterZero q' ==* k2
         return (fvs, q, q')
 
 makeEqn :: Int -> CIxEnv -> [GeneralConstraint] -> [Ty] -> Eqn
 makeEqn k q cs ty =
-    let objective = foldr1 (|+|) . map (fromJust . flip lookup q)
+    let objective = sum . map (fromJust . flip lookup q)
         program = flip (GeneralForm Minimize) cs . objective
         progs = reverse $ take (k + 1) $ map program $ index ty
         resource = (\[a] -> a) . fst . coefficients

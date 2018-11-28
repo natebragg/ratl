@@ -40,7 +40,8 @@ library
                        Data.Fix
                        Data.Graph.Inductive.Extra
                        Data.Mapping
-  build-depends:       base >= 4.7 && < 5
+  build-depends:       algebra
+                     , base >= 4.7 && < 5
                      , bytestring
                      , fgl
                      , file-embed

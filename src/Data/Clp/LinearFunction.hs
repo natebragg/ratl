@@ -4,7 +4,6 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Data.Clp.LinearFunction (
-    Linear((|*), (|+|)), (|-|),
     LinearFunction,
     LinearFunFamily,
     dense,
@@ -17,24 +16,55 @@ import Control.Arrow (second)
 import Data.Foldable (toList)
 import Data.List (sortOn, partition)
 import Data.Mapping (Mapping(..))
+import Numeric.Algebra (
+    Natural,
+    Additive(..),
+    Abelian,
+    Multiplicative(..),
+    Semiring,
+    Group(..),
+    Monoidal(..),
+    LeftModule(..),
+    RightModule(..),
+    sum)
+import Prelude hiding (sum, negate, (+), (*))
+import qualified Prelude as P (negate, (+), (*))
 
-class Linear f where
-    (|*)  :: Num a => f a ->   a -> f a
-    (|+|) :: Num a => f a -> f a -> f a
+-- These instances are not lawful; they are inexact.
+instance Additive Double where
+    (+) = (P.+)
 
-(|-|) :: (Linear f, Num a) => f a -> f a -> f a
-l1 |-| l2 = l1 |+| l2 |* (-1)
+instance Abelian Double
 
-infixl 7 |*
-infixl 6 |+|
-infixl 6 |-|
+instance Multiplicative Double where
+    (*) = (P.*)
+
+instance Semiring Double
+
+instance RightModule Natural Double where
+    m *. n = m * fromIntegral n
+
+instance LeftModule Natural Double where
+    (.*) = (*) . fromIntegral
+
+instance Monoidal Double where
+    zero = 0.0
+
+instance RightModule Integer Double where
+    m *. n = m * fromIntegral n
+
+instance LeftModule Integer Double where
+    (.*) = (*) . fromIntegral
+
+instance Group Double where
+    negate = P.negate
 
 type LinearFunction = LinFunc Int Double
 
 -- For efficiency, it's a critical invariant that LinFuncs are normalized.
 -- Never construct with LinFunc, only sparse (or for debugging, dense).
 data LinFunc i a where
-    LinFunc :: (Ord i, Enum i, Eq a, Num a) => [(i, a)] -> LinFunc i a
+    LinFunc :: (Ord i, Enum i, Eq a, Monoidal a) => [(i, a)] -> LinFunc i a
 
 deriving instance (Show i, Show a) => Show (LinFunc i a)
 deriving instance (Ord i, Ord a) => Ord (LinFunc i a)
@@ -53,9 +83,8 @@ instance Foldable (LinFunc i) where
 
     elem a (LinFunc cs) = any ((a ==) . snd) cs
 
-instance Linear (LinFunc i) where
-    (LinFunc f) |* n = sparse $ fmap (fmap (* n)) f
-    (LinFunc f) |+| (LinFunc f') = sparse $ merge (sortOn fst f) (sortOn fst f')
+instance Additive a => Additive (LinFunc i a) where
+    (LinFunc f) + (LinFunc f') = sparse $ merge (sortOn fst f) (sortOn fst f')
         where merge  f [] = f
               merge [] f' = f'
               merge f@(ia@(i, a):ias) f'@(ia'@(i', a'):ia's) =
@@ -64,13 +93,37 @@ instance Linear (LinFunc i) where
                     EQ -> (i, a + a'):merge ias ia's
                     GT -> ia':merge f ia's
 
-dense :: (Ord i, Enum i, Eq a, Num a) => [a] -> LinFunc i a
+instance Semiring r => RightModule r (LinFunc i r) where
+    (LinFunc f) *. n = sparse $ fmap (fmap (* n)) f
+
+instance Semiring r => LeftModule r (LinFunc i r) where
+    (.*) = flip (*.)
+
+instance Additive r => RightModule Natural (LinFunc i r) where
+    m *. n = m *. fromIntegral n
+
+instance Additive r => LeftModule Natural (LinFunc i r) where
+    (.*) = (.*) . fromIntegral
+
+instance (Ord i, Enum i, Eq a, Monoidal a, Additive a) => Monoidal (LinFunc i a) where
+    zero = LinFunc []
+
+instance Additive r => RightModule Integer (LinFunc i r) where
+    m *. n = m *. fromIntegral n
+
+instance Additive r => LeftModule Integer (LinFunc i r) where
+    (.*) = (.*) . fromIntegral
+
+instance (Ord i, Enum i, Eq a, Monoidal a, Group a) => Group (LinFunc i a) where
+    negate (LinFunc f) = LinFunc $ fmap (fmap negate) f
+
+dense :: (Ord i, Enum i, Eq a, Monoidal a) => [a] -> LinFunc i a
 dense = sparse . zip (enumFrom $ toEnum 0)
 
-sparse :: (Ord i, Enum i, Eq a, Num a) => [(i, a)] -> LinFunc i a
-sparse = LinFunc . filter ((/= 0) . snd)
+sparse :: (Ord i, Enum i, Eq a, Monoidal a) => [(i, a)] -> LinFunc i a
+sparse = LinFunc . filter ((/= zero) . snd)
 
-unpack :: (Ord i, Enum i, Eq a, Num a) => [(i, a)] -> [a]
+unpack :: (Ord i, Enum i, Eq a, Monoidal a) => [(i, a)] -> [a]
 unpack = toList . sparse
 
 coefficients :: LinFunc i a -> ([i], [a])
@@ -89,10 +142,33 @@ instance Mapping (FunFamily b i a) b (LinFunc i a) where
     fromList = FunFamily
     elements = elements . unfamily
 
-instance Eq b => Linear (FunFamily b i) where
-    fs |*    n = FunFamily $ fmap (fmap (|* n)) $ unfamily fs
-    fs |+| f's = FunFamily $ merge $ unfamily fs ++ unfamily f's
+instance (Eq b, Additive a) => Additive (FunFamily b i a) where
+    fs + f's = FunFamily $ merge $ unfamily fs ++ unfamily f's
         where merge [] = []
               merge fs@((b, _):_) =
                 case partition ((==b) . fst) fs of
-                    (bs, unbs) -> (b, foldr1 (|+|) $ map snd bs):merge unbs
+                    (bs, unbs) -> (b, foldr1 (+) $ map snd bs):merge unbs
+
+instance (Eq b, Semiring r) => RightModule r (FunFamily b i r) where
+    fs *.    n = FunFamily $ fmap (fmap (*. n)) $ unfamily fs
+
+instance (Eq b, Semiring r) => LeftModule r (FunFamily b i r) where
+    (.*) = flip (*.)
+
+instance (Eq b, Additive r) => RightModule Natural (FunFamily b i r) where
+    m *. n = m *. fromIntegral n
+
+instance (Eq b, Additive r) => LeftModule Natural (FunFamily b i r) where
+    (.*) = (.*) . fromIntegral
+
+instance (Eq b, Additive a) => Monoidal (FunFamily b i a) where
+    zero = FunFamily []
+
+instance (Eq b, Additive r) => RightModule Integer (FunFamily b i r) where
+    m *. n = m *. fromIntegral n
+
+instance (Eq b, Additive r) => LeftModule Integer (FunFamily b i r) where
+    (.*) = (.*) . fromIntegral
+
+instance (Eq b, Ord i, Enum i, Eq a, Group a) => Group (FunFamily b i a) where
+    negate = FunFamily . fmap (fmap negate) . unfamily
