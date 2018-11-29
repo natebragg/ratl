@@ -22,6 +22,9 @@ import Language.Ratl.Ty (
     Ty(..),
     varname,
     varnum,
+    TyvarEnv,
+    freevars,
+    subst,
     FunTy(..),
     )
 import Language.Ratl.Val (
@@ -45,7 +48,6 @@ import Language.Ratl.Basis (arity)
 
 type TyEnv = [(Var, Ty)]
 type FunTyEnv = [(Var, FunTy)]
-type TyvarEnv = [(String, Ty)]
 
 data Env = Env {
         gamma :: TyEnv,
@@ -61,23 +63,14 @@ instance Show TypeError where
     show (ArityError f a) = "Expected " ++ show f ++ " arguments, but got " ++ show a ++ "."
     show (NameError x) = "Name " ++ show x ++ " is not defined."
 
-freein :: Ty -> [String]
-freein             NatTy = []
-freein       (ListTy ty) = freein ty
-freein (PairTy (t1, t2)) = freein t1 ++ freein t2
-freein         BooleanTy = []
-freein            UnitTy = []
-freein             SymTy = []
-freein         (Tyvar y) = [y]
-
 solve :: [Ty] -> [Ty] -> TyvarEnv
 solve tys tys' = compose varenv renames
     where varenv = foldl' build [] $ zip tys'' tys
           tys'' = instantiate renames tys'
           renames = zip (map varname $ intersect frees bound) (map (Tyvar . varname) [next_var..])
           next_var = 1 + (maximum $ union frees bound)
-          frees = nub $ map varnum $ concatMap freein tys
-          bound = nub $ map varnum $ concatMap freein tys'
+          frees = nub $ map varnum $ concatMap freevars tys
+          bound = nub $ map varnum $ concatMap freevars tys'
           compose theta2 theta1 = unionBy ((==) `on` fst) (instantiate theta2 theta1) theta2
           build theta (ty, ty') = compose (assoc (instantiate theta ty) (instantiate theta ty')) theta
           assoc       (ListTy ty)        (ListTy ty') = assoc ty ty'
@@ -92,15 +85,7 @@ instance (Functor f, Instantiable a) => Instantiable (f a) where
     instantiate theta = fmap (instantiate theta)
 
 instance Instantiable Ty where
-    instantiate theta = subst
-      where subst             NatTy = NatTy
-            subst       (ListTy ty) = ListTy $ subst ty
-            subst (PairTy (t1, t2)) = PairTy (subst t1, subst t2)
-            subst         BooleanTy = BooleanTy
-            subst            UnitTy = UnitTy
-            subst             SymTy = SymTy
-            subst         (Tyvar x) = varsubst x
-            varsubst x = maybe (Tyvar x) id $ lookup x theta
+    instantiate = subst
 
 instance Instantiable FunTy where
     instantiate theta (Arrow ty ty') = Arrow (instantiate theta ty) (instantiate theta ty')
