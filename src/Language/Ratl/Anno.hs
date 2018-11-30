@@ -1,6 +1,9 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE GADTs #-}
 
 module Language.Ratl.Anno (
     annotate,
@@ -19,8 +22,16 @@ import Control.Monad.RWS.Extra (MonadRS, MonadWS, evalRWT)
 import Control.Monad.State (MonadState, evalStateT, get, put)
 import Control.Monad.Reader (MonadReader, asks, local)
 import Control.Monad.Writer (MonadWriter, tell)
-import Numeric.Algebra (sum, (+), (*.), (-))
-import Prelude hiding (lookup, sum, (+), (-))
+import Numeric.Algebra (
+    Additive(..),
+    Semiring,
+    Group(..),
+    Monoidal,
+    LeftModule(..),
+    RightModule(..),
+    sum)
+import qualified Numeric.Algebra as Alg (zero)
+import Prelude hiding (lookup, sum, negate, (+), (-))
 
 import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.LinearFunction (
@@ -60,6 +71,10 @@ import Language.Ratl.Ast (
     tyOf,
     tyGet,
     )
+import Language.Ratl.Elab (
+    Unifiable(uid),
+    unify,
+    )
 import qualified Language.Ratl.Elab as Elab (
     instantiate,
     solve,
@@ -72,8 +87,29 @@ data LNVar = BVar Int
            | FVar Var
     deriving (Eq, Ord)
 
-type IxEnv = LinearFunFamily Index
-type CIxEnv = LinearFunFamily ContextIndex
+data IndexEnv t i where
+    IndexEnv :: Indexable i t => {
+        ixTy :: t,
+        eqns :: LinearFunFamily i
+    } -> IndexEnv t i
+
+instance (Eq i, Indexable i t, Unifiable t) => Additive (IndexEnv t i) where
+    q + p = IndexEnv (ixTy q `unify` ixTy p) (eqns q + eqns p)
+
+instance (Eq i, Indexable i t, Unifiable t, Semiring r, LeftModule r (LinearFunFamily i)) => LeftModule r (IndexEnv t i) where
+    n .* q = q {eqns = n .* eqns q}
+
+instance (Eq i, Indexable i t, Unifiable t, Semiring r, RightModule r (LinearFunFamily i)) => RightModule r (IndexEnv t i) where
+    q *. n = q {eqns = eqns q *. n}
+
+instance (Eq i, Indexable i t, Unifiable t) => Monoidal (IndexEnv t i) where
+    zero = IndexEnv uid Alg.zero
+
+instance (Eq i, Indexable i t, Unifiable t) => Group (IndexEnv t i) where
+    negate q = q {eqns = negate $ eqns q}
+
+type IxEnv = IndexEnv Ty Index
+type CIxEnv = IndexEnv [Ty] ContextIndex
 type VarEnv = [(LNVar, IxEnv)]
 type FunEnv = [(Var, (TypedFun, (CIxEnv, IxEnv)))]
 type Eqn = ([(ContextIndex, Anno)], [GeneralForm])
@@ -134,8 +170,8 @@ varclose xs fvs = fvs <?< bindvars (map FVar xs)
 isZero :: Indexable i t => i -> Bool
 isZero = (0 ==) . deg
 
-coerceZero :: (Indexable i t, Mapping q i LinearFunction) => q -> LinearFunction
-coerceZero = fromJust . lookupBy isZero
+coerceZero :: Indexable i t => IndexEnv t i -> LinearFunction
+coerceZero = fromJust . lookupBy isZero . eqns
 
 filterZero :: (Indexable i t, Mapping q i LinearFunction) => q -> q
 filterZero = deleteBy (not . isZero)
@@ -151,10 +187,10 @@ freshAnno = do
     put (q + 1)
     return $ sparse [(q, 1)]
 
-freshIxEnv :: (MonadRS AnnoState Anno m, Indexable i t, Mapping q i LinearFunction) => t -> m q
+freshIxEnv :: (MonadRS AnnoState Anno m, Indexable i t) => t -> m (IndexEnv t i)
 freshIxEnv t = do
     k <- degreeof
-    fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
+    IndexEnv t <$> fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
 
 freshBounds :: MonadRS AnnoState Anno m => Ty -> m (IxEnv, IxEnv)
 freshBounds t = do
@@ -169,30 +205,30 @@ freshFunBounds fun = do
     q' <- freshIxEnv t'
     return (q, q')
 
-rezero :: (MonadState Anno m, Indexable i t, Mapping q i LinearFunction) => q -> m q
+rezero :: (MonadState Anno m, Indexable i t) => IndexEnv t i -> m (IndexEnv t i)
 rezero qs = do
     q_0' <- freshAnno
-    return $ updateZero q_0' qs
+    return $ qs {eqns = updateZero q_0' $ eqns qs}
 
 reannotate :: MonadState Anno m => IxEnv -> m IxEnv
-reannotate ixs = fromList <$> traverse (traverse $ const freshAnno) (elements ixs)
+reannotate q = (\eqns' -> q {eqns = eqns'}) <$> fromList <$> traverse (traverse $ const freshAnno) (elements $ eqns q)
 
 -- Constraint Helpers
 
-buildPoly :: [CIxEnv] -> [[[(ContextIndex, Index)]]] -> [[[(Index, LinearFunction)]]]
+buildPoly :: [LinearFunFamily ContextIndex] -> [[[(ContextIndex, Index)]]] -> [[[(Index, LinearFunction)]]]
 buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe (elements qs) . xlate
     where xlate ixs (ix, lf) = (\ix' -> (ix', lf *. (poly ix / poly ix'))) <$> lookup ix ixs
 
-nonEmptyConstraints c ixs k =
-    case (mfilter (not . null) $          lookupBy isZero ixs,
-           filter (not . null) $ values $ deleteBy isZero ixs) of
+nonEmptyConstraints c q k =
+    case (mfilter (not . null) $          lookupBy isZero $ eqns q,
+           filter (not . null) $ values $ deleteBy isZero $ eqns q) of
         (Just z, nz) -> (z `c` k):map (`c` 0) nz
         (     _, nz) ->           map (`c` 0) nz
 
-(==*) :: (Indexable i t, Mapping q i LinearFunction) => q -> Double -> [GeneralConstraint]
+(==*) :: Indexable i t => IndexEnv t i -> Double -> [GeneralConstraint]
 (==*) = nonEmptyConstraints (==$)
 
-(>=*) :: (Indexable i t, Mapping q i LinearFunction) => q -> Double -> [GeneralConstraint]
+(>=*) :: Indexable i t => IndexEnv t i -> Double -> [GeneralConstraint]
 (>=*) = nonEmptyConstraints (>=$)
 
 infix 4 ==*
@@ -232,8 +268,8 @@ shareBind fvas fvbs = do
         constrain $ qa - qb ==* 0
     return $ foldr delete fvbs vs
 
-to_ctx :: Int -> Ty -> IxEnv -> CIxEnv
-to_ctx k ty q = q <<< concat (concat $ projectionsDeg k [ty])
+to_ctx :: Int -> IxEnv -> CIxEnv
+to_ctx k q = IndexEnv [ixTy q] $ eqns q <<< concat (concat $ projectionsDeg k [ixTy q])
 
 -- Reader/Writer/State Helpers
 
@@ -261,21 +297,19 @@ annoSCP = traverse_ (traverse_ annoFE)
               xqs <- rezero pqs
               (fvs, q, q') <- anno e
               k <- degreeof
-              shareBind (zip [FVar x] [xqs <<< map (\(a,b) -> (b,a)) (concat $ concat $ projectionsDeg k pty)]) fvs
+              shareBind (zip [FVar x] [IndexEnv (head $ ixTy xqs) $ eqns xqs <<< map (\(a,b) -> (b,a)) (concat $ concat $ projectionsDeg k pty)]) fvs
               constrain $ [coerceZero pqs - coerceZero q ==$ 0]
               constrain $ rqs - q' ==* 0
-          annoFE (TypedNative (Arrow [pty@(ListTy pt)]          rt) _ _, (pqs, rqs)) | pt == rt = consShift pty rqs lz lz pqs -- hack for car
-          annoFE (TypedNative (Arrow [pty@(ListTy pt)] (ListTy rt)) _ _, (pqs, rqs)) | pt == rt = consShift pty lz rqs lz pqs -- hack for cdr
-          annoFE (TypedNative (Arrow [_, ListTy _]  rty@(ListTy _)) _ _, (pqs, rqs))            = consShift rty lz lz pqs =<< (to_ctx <$> degreeof <*> pure rty <*> pure rqs) -- hack for cons
+          annoFE (TypedNative (Arrow [ty_l@(ListTy ty_h)]          rt) _ _, (pqs, rqs)) | ty_h == rt = freshIxEnv [ty_h, ty_l] >>= \q -> consShift rqs lz q pqs -- hack for car
+          annoFE (TypedNative (Arrow [ty_l@(ListTy ty_h)] (ListTy rt)) _ _, (pqs, rqs)) | ty_h == rt = freshIxEnv [ty_h, ty_l] >>= \q -> consShift lz rqs q pqs -- hack for cdr
+          annoFE (TypedNative (Arrow [_, ListTy _]        (ListTy  _)) _ _, (pqs, rqs)) =   (to_ctx <$> degreeof <*> pure rqs) >>= \q -> consShift lz lz pqs q -- hack for cons
           annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
               constrain $ [coerceZero pqs - coerceZero rqs ==$ 0]
-          lz :: Mapping i k v => i
-          lz = fromList []
-          consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => Ty -> IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
-          consShift ty_l@(ListTy ty_h) qs_h qs_t qs_p qs_l = do
-              let ty_p = [ty_h, ty_l]
+          lz :: Monoidal m => m
+          lz = Alg.zero
+          consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
+          consShift (IndexEnv _ qs_h) (IndexEnv _ qs_t) (IndexEnv ty_p q's_p) (IndexEnv [ty_l] qs_l) = do
               k <- degreeof
-              q's_p <- if null (values qs_p) then freshIxEnv ty_p else return qs_p
               let limit (i, is) = const (i, is) <$> lookup i q's_p
                   Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
                   ss = map (\(i, is) -> (,) <$> lookup i q's_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
@@ -359,10 +393,10 @@ instance Annotate TypedEx where
         let itys = tail $ inits ty
             pis = map (transpose . last . projectionsDeg degree) itys
         (fvxs, qxs, qxs') <- local (\cf -> cf {cost = zero}) $ unzip3 <$> do
-            flip (flip zipWithM (zip es pis)) fvqes $ \(e, pi) (fv_0, qx_0, qx'_0) -> do
+            flip (flip zipWithM (zip es (zip pis itys))) fvqes $ \(e, (pi, ity)) (fv_0, qx_0, qx'_0) -> do
                 (fvxs_js, qxs_j, qx's_j) <- unzip3 <$> mapM anno (tail $ map (const e) pi)
                 fvxs_j <- foldrM share fv_0 fvxs_js
-                return $ (fvxs_j, qx_0:qxs_j, sum $ zipWith (<<<) (qx'_0:qx's_j) pi)
+                return $ (fvxs_j, qx_0:qxs_j, sum $ zipWith ((IndexEnv ity .) . (<<<) . eqns) (qx'_0:qx's_j) pi)
         qt <- rezero qf
         qts <- foldrM ((\ixs envs -> (:envs) <$> ixs) . freshIxEnv) [qt] $ init itys
         q  <- rezero qf'
@@ -371,7 +405,7 @@ instance Annotate TypedEx where
         k2 <- costof k_ap2
         c  <- freshAnno
         constrain [q_in - q_out ==$ 0.0 |
-                   (q_in, q_out) <- concat $ zipWith zip (map (map coerceZero) qxs) $ [coerceZero q]:map values qts]
+                   (q_in, q_out) <- concat $ zipWith zip (map (map coerceZero) qxs) $ [coerceZero q]:map (values . eqns) qts]
         constrain $ concat [q_in - q_out ==* k1 | (q_in, q_out) <- zip qxs' qts]
         constrain [(coerceZero $ last qts) - coerceZero qf - c ==$ k1]
         constrain [c + coerceZero qf' - coerceZero q' ==$ k2]
@@ -392,8 +426,8 @@ instance Annotate TypedEx where
         constrain $ filterZero qe' - filterZero q' ==* k2
         return (fvs, q, q')
 
-makeEqn :: Int -> CIxEnv -> [GeneralConstraint] -> [Ty] -> Eqn
-makeEqn k q cs ty =
+makeEqn :: Int -> CIxEnv -> [GeneralConstraint] -> Eqn
+makeEqn k (IndexEnv ty q) cs =
     let objective = sum . map (fromJust . flip lookup q)
         program = flip (GeneralForm Minimize) cs . objective
         progs = reverse $ take (k + 1) $ map program $ index ty
@@ -410,11 +444,10 @@ annotate k p = do
             local (\s -> s {comp = scp'}) $ annoSCP scp'
             return scp'
         for scp' $ traverse $ \(fun, (pqs, _)) -> do
-            let Arrow pty _ = tyOf fun
-            return $ makeEqn k pqs cs pty
+            return $ makeEqn k pqs cs
 
 annotateEx :: Monad m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = do
     let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
     (([], q, q'), cs) <- evalRWST (anno e) checkState 0
-    return $ makeEqn 0 (to_ctx k (tyGet e) q) cs [tyGet e]
+    return $ makeEqn 0 (to_ctx k q) cs
