@@ -6,10 +6,13 @@ module Language.Ratl.Elab (
     Env(..),
     elaborate,
     elab,
+    Unifiable(uid),
+    unify,
     instantiate,
     solve,
 ) where
 
+import Data.Foldable (foldrM)
 import Data.Function (on)
 import Data.List (intersect, intercalate, union, unionBy, nub, foldl')
 import Control.Arrow (second)
@@ -19,12 +22,11 @@ import Control.Monad.Except.Extra (unlessJustM)
 import Control.Monad.Reader (runReaderT, withReaderT, ReaderT, asks)
 
 import Language.Ratl.Ty (
+    Tyvar,
     Ty(..),
-    varname,
-    varnum,
-    TyvarEnv,
-    freevars,
-    subst,
+    FreshTyvar,
+    evalFresh,
+    freshTyvar,
     FunTy(..),
     )
 import Language.Ratl.Val (
@@ -48,6 +50,7 @@ import Language.Ratl.Basis (arity)
 
 type TyEnv = [(Var, Ty)]
 type FunTyEnv = [(Var, FunTy)]
+type TyvarEnv = [(Tyvar, Ty)]
 
 data Env = Env {
         gamma :: TyEnv,
@@ -63,20 +66,80 @@ instance Show TypeError where
     show (ArityError f a) = "Expected " ++ show f ++ " arguments, but got " ++ show a ++ "."
     show (NameError x) = "Name " ++ show x ++ " is not defined."
 
+alpha :: (Unifiable t, Monad m) => Tyvar -> t -> FreshTyvar m t
+alpha x t = (\t' -> subst [(x, t')] t) <$> freshTyvar
+
+compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
+compose theta2 theta1 = unionBy ((==) `on` fst) (fmap (fmap (subst theta2)) theta1) theta2
+
+class Unifiable t where
+    uid :: t
+    freeVars :: t -> [Tyvar]
+    subst :: TyvarEnv -> t -> t
+    (~~) :: MonadError TypeError m => t -> t -> FreshTyvar m TyvarEnv
+
+constrainWithOverlap :: (MonadError TypeError m, Unifiable t) => t -> t -> m TyvarEnv
+constrainWithOverlap t t' =
+    let fv's  = freeVars t'
+    in  evalFresh (foldrM alpha t fv's >>= (~~ t')) (freeVars t ++ fv's)
+
 solve :: [Ty] -> [Ty] -> TyvarEnv
-solve tys tys' = compose varenv renames
-    where varenv = foldl' build [] $ zip tys'' tys
-          tys'' = instantiate renames tys'
-          renames = zip (map varname $ intersect frees bound) (map (Tyvar . varname) [next_var..])
-          next_var = 1 + (maximum $ union frees bound)
-          frees = nub $ map varnum $ concatMap freevars tys
-          bound = nub $ map varnum $ concatMap freevars tys'
-          compose theta2 theta1 = unionBy ((==) `on` fst) (instantiate theta2 theta1) theta2
-          build theta (ty, ty') = compose (assoc (instantiate theta ty) (instantiate theta ty')) theta
-          assoc       (ListTy ty)        (ListTy ty') = assoc ty ty'
-          assoc (PairTy (t1, t2)) (PairTy (t1', t2')) = assoc t1 t1' ++ assoc t2 t2'
-          assoc         (Tyvar x)                 ty' = [(x, ty')]
-          assoc                 _                   _ = []
+solve t t' = either (const []) id $ constrainWithOverlap t t'
+
+unify :: Unifiable t => t -> t -> t
+unify t t' = either (error . show) (flip subst t') $ constrainWithOverlap t t'
+
+instance Unifiable Ty where
+    uid = Tyvar "a"
+
+    freeVars       (ListTy ty) = freeVars ty
+    freeVars (PairTy (t1, t2)) = freeVars t1 ++ freeVars t2
+    freeVars         (Tyvar y) = [y]
+    freeVars                 _ = []
+
+    subst theta = go
+        where go       (ListTy ty) = ListTy $ go ty
+              go (PairTy (t1, t2)) = PairTy (go t1, go t2)
+              go         (Tyvar x) = maybe (Tyvar x) id $ lookup x theta
+              go                 t = t
+
+    t'              ~~ t | t == t'             = return []
+    Tyvar x         ~~ t | x `elem` freeVars t = (\t' -> [(x, t')]) <$> alpha x t
+    Tyvar x         ~~ t                       = return [(x, t)]
+    t               ~~ Tyvar x                 = Tyvar x ~~ t
+    ListTy t        ~~ ListTy t'               = t ~~ t'
+    PairTy (t1, t2) ~~ PairTy (t3, t4)         = do
+        theta1 <- t1 ~~ t3
+        theta2 <- subst theta1 t2 ~~ subst theta1 t4
+        return $ theta2 `compose` theta1
+    t' ~~ t = throwError $ TypeError $ [(t', t)]
+
+instance Unifiable [Ty] where
+    uid = []
+
+    freeVars = concatMap freeVars
+
+    subst = map . subst
+
+    []     ~~ []       = return []
+    []     ~~ ts       = freshTyvar >>= \t' -> [t'] ~~ ts
+    ts     ~~ []       = [] ~~ ts
+    (t:ts) ~~ (t':t's) = do
+        theta1 <- t ~~ t'
+        theta2 <- subst theta1 ts ~~ subst theta1 t's
+        return $ theta2 `compose` theta1
+
+instance Unifiable FunTy where
+    uid = Arrow uid uid
+
+    freeVars (Arrow t t') = freeVars t ++ freeVars t'
+
+    subst theta (Arrow t t') = Arrow (subst theta t) (subst theta t')
+
+    Arrow t1 t2 ~~ Arrow t3 t4 = do
+        theta1 <- t1 ~~ t3
+        theta2 <- subst theta1 t2 ~~ subst theta1 t4
+        return $ theta2 `compose` theta1
 
 class Instantiable t where
     instantiate :: TyvarEnv -> t -> t
@@ -88,7 +151,7 @@ instance Instantiable Ty where
     instantiate = subst
 
 instance Instantiable FunTy where
-    instantiate theta (Arrow ty ty') = Arrow (instantiate theta ty) (instantiate theta ty')
+    instantiate = subst
 
 instance Instantiable Fun where
     instantiate theta (Fun ty x e) = Fun (instantiate theta ty) x e
@@ -137,7 +200,7 @@ instance Elab Ex where
         return $ TypedVal ty v
     elab (If ep et ef) = do
         etys <- traverse elab [ep, et, ef]
-        let ifty   = [BooleanTy, Tyvar "a", Tyvar "a"]
+        let ifty   = [BooleanTy, uid, uid]
             theta1 = solve (map tyGet etys) ifty
             tys    = instantiate theta1 ifty
             theta2 = solve tys (map tyGet etys)
@@ -180,7 +243,7 @@ instance Elab Val where
 
 instance Elab List where
     type Type List = Ty
-    elab Nil = return $ ListTy $ Tyvar "a"
+    elab Nil = return $ ListTy uid
     elab (Cons v vs) = do
         vty <- elab v
         lty <- elab vs
