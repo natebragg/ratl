@@ -234,6 +234,11 @@ nonEmptyConstraints c q k =
 infix 4 ==*
 infix 4 >=*
 
+(%-%) :: (Eq i, Indexable i t1, Eq j, Indexable j t2) => IndexEnv t1 i -> IndexEnv t2 j -> LinearFunction
+q %-% p = coerceZero q - coerceZero p
+
+infix 5 %-%
+
 -- Sharing Helpers
 
 share :: MonadWS [GeneralConstraint] Anno m => VarEnv -> VarEnv -> m VarEnv
@@ -298,13 +303,13 @@ annoSCP = traverse_ (traverse_ annoFE)
               (fvs, q, q') <- anno e
               k <- degreeof
               shareBind (zip [FVar x] [IndexEnv (head $ ixTy xqs) $ eqns xqs <<< map (\(a,b) -> (b,a)) (concat $ concat $ projectionsDeg k pty)]) fvs
-              constrain $ [coerceZero pqs - coerceZero q ==$ 0]
+              constrain $ [pqs %-% q ==$ 0]
               constrain $ rqs - q' ==* 0
           annoFE (TypedNative (Arrow [ty_l@(ListTy ty_h)]          rt) _ _, (pqs, rqs)) | ty_h == rt = freshIxEnv [ty_h, ty_l] >>= \q -> consShift rqs lz q pqs -- hack for car
           annoFE (TypedNative (Arrow [ty_l@(ListTy ty_h)] (ListTy rt)) _ _, (pqs, rqs)) | ty_h == rt = freshIxEnv [ty_h, ty_l] >>= \q -> consShift lz rqs q pqs -- hack for cdr
           annoFE (TypedNative (Arrow [_, ListTy _]        (ListTy  _)) _ _, (pqs, rqs)) =   (to_ctx <$> degreeof <*> pure rqs) >>= \q -> consShift lz lz pqs q -- hack for cons
           annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
-              constrain $ [coerceZero pqs - coerceZero rqs ==$ 0]
+              constrain $ [pqs %-% rqs ==$ 0]
           lz :: Monoidal m => m
           lz = Alg.zero
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
@@ -326,7 +331,7 @@ annoSeq k_e es = do
     q' <- freshIxEnv UnitTy
     let q:qs = qes ++ [q']
     k <- costof k_e
-    constrain [coerceZero q_in - coerceZero q_out >=$ k |
+    constrain [q_in %-% q_out >=$ k |
                (q_in, q_out) <- zip qe's qs]
     qxs <- traverse rezero qes
     return (fvs, bindvars qxs, q, q')
@@ -352,9 +357,9 @@ instance Annotate TypedEx where
         fvs <- share fvps =<< shareSubtype fvts fvfs
         (q, q') <- freshBounds ty
         [kp, kt, kf, kc] <- sequence [costof k_ifp, costof k_ift, costof k_iff, costof k_ifc]
-        constrain [coerceZero q   - coerceZero qp >=$ kp]
-        constrain [coerceZero qp' - coerceZero qt >=$ kt]
-        constrain [coerceZero qp' - coerceZero qf >=$ kf]
+        constrain [q   %-% qp >=$ kp,
+                   qp' %-% qt >=$ kt,
+                   qp' %-% qf >=$ kf]
         constrain $ qt' - q' >=* kc
         constrain $ qf' - q' >=* kc
         return (fvs, q, q')
@@ -407,8 +412,8 @@ instance Annotate TypedEx where
         constrain [q_in - q_out ==$ 0.0 |
                    (q_in, q_out) <- concat $ zipWith zip (map (map coerceZero) qxs) $ [coerceZero q]:map (values . eqns) qts]
         constrain $ concat [q_in - q_out ==* k1 | (q_in, q_out) <- zip qxs' qts]
-        constrain [(coerceZero $ last qts) - coerceZero qf - c ==$ k1]
-        constrain [c + coerceZero qf' - coerceZero q' ==$ k2]
+        constrain [(last qts %-% qf) - c ==$ k1,
+                   c + (qf' %-% q') ==$ k2]
         fvs <- foldrM share [] fvxs
         return (fvs, q, q')
     anno (TypedLet _ bs e) = do
@@ -421,9 +426,9 @@ instance Annotate TypedEx where
         q' <- rezero qe'
         k1 <- costof k_lt1
         k2 <- costof k_lt2
-        constrain [coerceZero q - coerceZero qb >=$ k1,
-                   coerceZero qb' - coerceZero qe >=$ 0]
-        constrain $ filterZero qe' - filterZero q' ==* k2
+        constrain [q %-% qb >=$ k1,
+                   qb' %-% qe >=$ 0,
+                   qe' %-% q' ==$ k2]
         return (fvs, q, q')
 
 makeEqn :: Int -> CIxEnv -> [GeneralConstraint] -> Eqn
