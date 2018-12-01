@@ -313,12 +313,12 @@ annoSCP = traverse_ annoFun
           lz :: Monoidal m => m
           lz = Alg.zero
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => IxEnv -> IxEnv -> CIxEnv -> CIxEnv -> m ()
-          consShift (IndexEnv _ qs_h) (IndexEnv _ qs_t) (IndexEnv ty_p q's_p) (IndexEnv [ty_l] qs_l) = do
+          consShift (IndexEnv _ qs_h) (IndexEnv _ qs_t) (IndexEnv ty_p qs_p) (IndexEnv [ty_l] qs_l) = do
               k <- degreeof
-              let limit (i, is) = const (i, is) <$> lookup i q's_p
+              let limit (i, is) = const (i, is) <$> lookup i qs_p
                   Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
-                  ss = map (\(i, is) -> (,) <$> lookup i q's_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
-                  q's = buildPoly (repeat q's_p) $ projectionsDeg k ty_p
+                  ss = map (\(i, is) -> (,) <$> lookup i qs_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
+                  q's = buildPoly (repeat qs_p) $ projectionsDeg k ty_p
               constrain [sum ps - q ==$ 0 |
                          Just (q, ps) <- ss]
               constrain [p - sum pcs ==$ 0 |
