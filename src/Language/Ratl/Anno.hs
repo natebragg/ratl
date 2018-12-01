@@ -296,19 +296,19 @@ lookupThisSCP x = asks (lookup x . comp)
 -- The Engine
 
 annoSCP :: MonadRWS AnnoState [GeneralConstraint] Anno m => FunEnv -> m ()
-annoSCP = traverse_ (traverse_ annoFE)
-    where annoFE :: MonadRWS AnnoState [GeneralConstraint] Anno m => (TypedFun, (CIxEnv, IxEnv)) -> m ()
-          annoFE (TypedFun (Arrow pty rty) x e, (pqs, rqs)) = do
+annoSCP = traverse_ annoFun
+    where annoFun :: MonadRWS AnnoState [GeneralConstraint] Anno m => (Var, (TypedFun, (CIxEnv, IxEnv))) -> m ()
+          annoFun (_, (TypedFun (Arrow pty rty) x e, (pqs, rqs))) = do
               xqs <- rezero pqs
               (fvs, q, q') <- anno e
               k <- degreeof
               shareBind (zip [FVar x] [IndexEnv (head $ ixTy xqs) $ eqns xqs <<< map (\(a,b) -> (b,a)) (concat $ concat $ projectionsDeg k pty)]) fvs
               constrain $ [pqs %-% q ==$ 0]
               constrain $ rqs - q' ==* 0
-          annoFE (TypedNative (Arrow [ty_l@(ListTy ty_h)]          rt) _ _, (pqs, rqs)) | ty_h == rt = freshIxEnv [ty_h, ty_l] >>= \q -> consShift rqs lz q pqs -- hack for car
-          annoFE (TypedNative (Arrow [ty_l@(ListTy ty_h)] (ListTy rt)) _ _, (pqs, rqs)) | ty_h == rt = freshIxEnv [ty_h, ty_l] >>= \q -> consShift lz rqs q pqs -- hack for cdr
-          annoFE (TypedNative (Arrow [_, ListTy _]        (ListTy  _)) _ _, (pqs, rqs)) =   (to_ctx <$> degreeof <*> pure rqs) >>= \q -> consShift lz lz pqs q -- hack for cons
-          annoFE (TypedNative (Arrow ty ty') _ _, (pqs, rqs)) = do
+          annoFun (V "car",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _ _, (pqs, rqs))) = freshIxEnv [ty_h, ty_l] >>= \q -> consShift rqs lz q pqs
+          annoFun (V "cdr",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _ _, (pqs, rqs))) = freshIxEnv [ty_h, ty_l] >>= \q -> consShift lz rqs q pqs
+          annoFun (V "cons", (TypedNative (Arrow                    _ _) _ _, (pqs, rqs))) = (to_ctx <$> degreeof <*> pure rqs) >>= \q -> consShift lz lz pqs q
+          annoFun (_, (TypedNative (Arrow ty ty') _ _, (pqs, rqs))) = do
               constrain $ [pqs %-% rqs ==$ 0]
           lz :: Monoidal m => m
           lz = Alg.zero
