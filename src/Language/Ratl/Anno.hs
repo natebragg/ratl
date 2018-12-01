@@ -10,18 +10,18 @@ module Language.Ratl.Anno (
     annotateEx
 ) where
 
-import Data.List (transpose, intersect, union, inits)
-import Data.Mapping (Mapping(..), (<?<))
-import Data.Maybe (isJust, fromJust, mapMaybe)
-import Data.Foldable (traverse_, foldrM)
-import Data.Traversable (for)
 import Control.Arrow (first, second)
 import Control.Monad (zipWithM, mfilter)
 import Control.Monad.RWS (MonadRWS, evalRWST)
 import Control.Monad.RWS.Extra (MonadRS, MonadWS, evalRWT)
-import Control.Monad.State (MonadState, evalStateT, get, put)
 import Control.Monad.Reader (MonadReader, asks, local)
+import Control.Monad.State (MonadState, evalStateT, get, put)
 import Control.Monad.Writer (MonadWriter, tell)
+import Data.Foldable (traverse_, foldrM)
+import Data.List (transpose, intersect, union, inits)
+import Data.Mapping (Mapping(..), (<?<))
+import Data.Maybe (isJust, fromJust, mapMaybe)
+import Data.Traversable (for)
 import Numeric.Algebra (
     Additive(..),
     Semiring,
