@@ -13,7 +13,7 @@ import Prelude hiding (lookup)
 class Mapping m k v | m -> k v where
     lookupBy :: (k -> Bool) -> m -> Maybe v
     lookupBy = ((listToMaybe . values) .) . selectBy
-    updateBy :: (k -> Bool) -> v -> m -> m
+    updateBy :: (k -> Bool) -> Maybe k -> v -> m -> m
     deleteBy :: (k -> Bool) -> m -> m
     deleteBy = selectBy . (not .)
     selectBy :: (k -> Bool) -> m -> m
@@ -32,7 +32,7 @@ class Mapping m k v | m -> k v where
     lookup :: Eq k => k -> m -> Maybe v
     lookup = lookupBy . (==)
     update :: Eq k => k -> v -> m -> m
-    update = updateBy . (==)
+    update k = updateBy (k ==) (Just k)
     delete :: Eq k => k -> m -> m
     delete = deleteBy . (==)
     select :: Eq k => k -> m -> m
@@ -46,10 +46,10 @@ instance Mapping [(k, v)] k v where
         where go [] = Nothing
               go ((k,v):_) | f k = Just v
               go (_:kvs) = go kvs
-    updateBy f v = go
-        where go [] = []
-              go ((k,_):kvs) | f k = (k,v):go kvs
-              go (kv:kvs) = kv:go kvs
+    updateBy f k v = go k
+        where go k [] = maybe [] (\k -> [(k, v)]) k
+              go _ ((k,_):kvs) | f k = (k,v):go Nothing kvs
+              go k (kv:kvs) = kv:go k kvs
     deleteBy f = go
         where go [] = []
               go ((k,_):kvs) | f k = go kvs

@@ -52,6 +52,7 @@ import Language.Ratl.Index (
     deg,
     index,
     indexDeg,
+    zeroIndex,
     shift,
     projectionsDeg,
     )
@@ -176,8 +177,8 @@ coerceZero = fromJust . lookupBy isZero . eqns
 filterZero :: (Indexable i t, Mapping q i LinearFunction) => q -> q
 filterZero = deleteBy (not . isZero)
 
-updateZero :: (Indexable i t, Mapping q i LinearFunction) => LinearFunction -> q -> q
-updateZero = updateBy isZero
+updateZero :: Indexable i t => LinearFunction -> IndexEnv t i -> IndexEnv t i
+updateZero f q = q {eqns = updateBy isZero (Just $ zeroIndex $ ixTy q) f $ eqns q}
 
 -- Annotation Helpers
 
@@ -208,7 +209,7 @@ freshFunBounds fun = do
 rezero :: (MonadState Anno m, Indexable i t) => IndexEnv t i -> m (IndexEnv t i)
 rezero qs = do
     q_0' <- freshAnno
-    return $ qs {eqns = updateZero q_0' $ eqns qs}
+    return $ updateZero q_0' qs
 
 reannotate :: MonadState Anno m => IxEnv -> m IxEnv
 reannotate q = (\eqns' -> q {eqns = eqns'}) <$> fromList <$> traverse (traverse $ const freshAnno) (elements $ eqns q)

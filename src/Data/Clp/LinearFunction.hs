@@ -136,7 +136,7 @@ newtype FunFamily b i a = FunFamily { unfamily :: [(b, LinFunc i a)] }
 
 instance Mapping (FunFamily b i a) b (LinFunc i a) where
     lookupBy f   = lookupBy f . unfamily
-    updateBy f v = FunFamily . updateBy f v . unfamily
+    updateBy f k v = FunFamily . updateBy f k v . unfamily
     deleteBy f   = FunFamily . deleteBy f . unfamily
 
     fromList = FunFamily
