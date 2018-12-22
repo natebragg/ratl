@@ -74,7 +74,7 @@ instance Indexable Index Ty where
             where fzs = map ((factor . head *** map zero) . splitAt 1 . reverse) $ tail $ inits is
     factor _ = []
 
-data ContextIndex = CIndex [Index]
+data ContextIndex = CIndex { uncontext :: [Index] }
     deriving (Eq, Ord)
 
 instance Show ContextIndex where
@@ -155,15 +155,9 @@ shift _ = []
 --                     |||||
 --                     VVVVV full          pos
 projections :: [Ty] -> [[[[[(ContextIndex, Index)]]]]]
-projections = go
-    where assoc (a, (b, c)) = ((a, b), c)
-          allpairs = (map (map (first (uncurry $ (<>) . CIndex . pure) . assoc) . uncurry diagonals) .) . diagonals
-          go :: [Ty] -> [[[[[(ContextIndex, Index)]]]]]
-          go [t] = [map (map (pure . pure . (CIndex . pure &&& id))) $ index t]
-          go (t1:t2) =
-            let i1s = index t1
-            in  map (map (\i1 -> map (map (flip (,) i1 . (CIndex [i1] <>))) $ index t2)) i1s :
-                map (map (map (allpairs i1s))) (go t2)
+projections tys = flip map (init $ zip (inits tys) (tails tys)) $ \(ltys, ty:rtys) ->
+        let ilrs = map (map $ (CIndex *** CIndex) . splitAt (length ltys) . uncontext) $ index $ ltys ++ rtys
+        in  map (map (\i -> let im = CIndex [i] in map (map (\(il, ir) -> (il <> im <> ir, i))) ilrs)) $ index ty
 
 -- Vary each position up to degree k while holding everything else constant.
 --                               ,--- Per position
