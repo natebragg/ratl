@@ -1,5 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
@@ -60,10 +61,6 @@ import Language.Ratl.Ty (
     Ty(..),
     FunTy(..),
     )
-import Language.Ratl.Val (
-    List(..),
-    Val(..),
-    )
 import Language.Ratl.Ast (
     Var(..),
     TypedFun(..),
@@ -86,13 +83,15 @@ type Anno = Int
 
 data LNVar = BVar Int
            | FVar Var
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 data IndexEnv t i where
     IndexEnv :: Indexable i t => {
         ixTy :: t,
         eqns :: LinearFunFamily i
     } -> IndexEnv t i
+
+deriving instance (Show t, Show i) => Show (IndexEnv t i)
 
 instance (Eq i, Indexable i t, Unifiable t) => Additive (IndexEnv t i) where
     q + p = IndexEnv (ixTy q `unify` ixTy p) (eqns q + eqns p)
@@ -174,9 +173,6 @@ isZero = (0 ==) . deg
 coerceZero :: Indexable i t => IndexEnv t i -> LinearFunction
 coerceZero = fromJust . lookupBy isZero . eqns
 
-filterZero :: (Indexable i t, Mapping q i LinearFunction) => q -> q
-filterZero = deleteBy (not . isZero)
-
 updateZero :: Indexable i t => LinearFunction -> IndexEnv t i -> IndexEnv t i
 updateZero f q = q {eqns = updateBy isZero (Just $ zeroIndex $ ixTy q) f $ eqns q}
 
@@ -220,6 +216,7 @@ buildPoly :: [LinearFunFamily ContextIndex] -> [[[(ContextIndex, Index)]]] -> [[
 buildPoly = zipWith $ \qs -> concatMap $ map pure . flip mapMaybe (elements qs) . xlate
     where xlate ixs (ix, lf) = (\ix' -> (ix', lf *. (poly ix / poly ix'))) <$> lookup ix ixs
 
+nonEmptyConstraints :: Indexable i t => (LinearFunction -> Double -> GeneralConstraint) -> IndexEnv t i -> Double -> [GeneralConstraint]
 nonEmptyConstraints c q k =
     case (mfilter (not . null) $          lookupBy isZero $ eqns q,
            filter (not . null) $ values $ deleteBy isZero $ eqns q) of
