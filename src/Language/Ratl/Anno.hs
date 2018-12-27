@@ -49,6 +49,7 @@ import Language.Ratl.Index (
     Indexable,
     Index,
     ContextIndex,
+    context,
     poly,
     deg,
     index,
@@ -271,8 +272,8 @@ shareBind fvas fvbs = do
         constrain $ qa - qb ==* 0
     return $ foldr delete fvbs vs
 
-to_ctx :: Int -> IxEnv -> CIxEnv
-to_ctx k q = IndexEnv [ixTy q] $ eqns q <<< concat (concat $ projectionsDeg k [ixTy q])
+to_ctx :: IxEnv -> CIxEnv
+to_ctx q = IndexEnv [ixTy q] $ fromList $ map (first $ context . pure) $ elements $ eqns q
 
 -- Reader/Writer/State Helpers
 
@@ -305,7 +306,7 @@ annoSCP = traverse_ annoFun
               constrain $ rqs - q' ==* 0
           annoFun (V "car",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _ _, (pqs, rqs))) = freshIxEnv [ty_h, ty_l] >>= \q -> consShift rqs lz q pqs
           annoFun (V "cdr",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _ _, (pqs, rqs))) = freshIxEnv [ty_h, ty_l] >>= \q -> consShift lz rqs q pqs
-          annoFun (V "cons", (TypedNative (Arrow                    _ _) _ _, (pqs, rqs))) = (to_ctx <$> degreeof <*> pure rqs) >>= \q -> consShift lz lz pqs q
+          annoFun (V "cons", (TypedNative (Arrow                    _ _) _ _, (pqs, rqs))) = to_ctx <$> pure rqs     >>= \q -> consShift lz lz pqs q
           annoFun (_, (TypedNative (Arrow ty ty') _ _, (pqs, rqs))) = do
               constrain $ [pqs %-% rqs ==$ 0]
           lz :: Monoidal m => m
@@ -453,4 +454,4 @@ annotateEx :: Monad m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = do
     let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
     (([], q, q'), cs) <- evalRWST (anno e) checkState 0
-    return $ makeEqn 0 (to_ctx k q) cs
+    return $ makeEqn 0 (to_ctx q) cs

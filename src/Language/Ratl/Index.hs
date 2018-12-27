@@ -6,6 +6,7 @@ module Language.Ratl.Index (
   Indexable,
   Index,
   ContextIndex,
+  context,
   deg,
   poly,
   index,
@@ -76,6 +77,9 @@ instance Indexable Index Ty where
 
 data ContextIndex = CIndex { uncontext :: [Index] }
     deriving (Eq, Ord)
+
+context :: [Index] -> ContextIndex
+context = CIndex
 
 instance Show ContextIndex where
     show (CIndex is) = '{' : intercalate ", " (map show is) ++ "}"
