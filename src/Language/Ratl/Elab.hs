@@ -5,7 +5,6 @@
 module Language.Ratl.Elab (
     Env(..),
     elaborate,
-    elab,
     Unifiable(uid),
     unify,
     instantiate,
@@ -78,16 +77,13 @@ class Unifiable t where
     subst :: TyvarEnv -> t -> t
     (~~) :: MonadError TypeError m => t -> t -> FreshTyvar m TyvarEnv
 
-constrainWithOverlap :: (MonadError TypeError m, Unifiable t) => t -> t -> m TyvarEnv
-constrainWithOverlap t t' =
+solve :: (MonadError TypeError m, Unifiable t) => t -> t -> m TyvarEnv
+solve t t' =
     let fv's  = freeVars t'
     in  evalFresh (foldrM alpha t fv's >>= (~~ t')) (freeVars t ++ fv's)
 
-solve :: [Ty] -> [Ty] -> TyvarEnv
-solve t t' = either (const []) id $ constrainWithOverlap t t'
-
 unify :: Unifiable t => t -> t -> t
-unify t t' = either (error . show) (flip subst t') $ constrainWithOverlap t t'
+unify t t' = either (error . show) (flip subst t') $ solve t t'
 
 instance Unifiable Ty where
     uid = Tyvar "a"
@@ -180,8 +176,8 @@ instance Elab Fun where
     type Type Fun = TypedFun
     elab (Fun fty@(Arrow pty rty) x e) = do
         ety <- withReaderT (\ce -> ce {gamma = zip [x] pty}) $ elab e
-        let theta = solve [rty] [tyGet ety]
-            ety' = instantiate theta ety
+        theta <- solve rty (tyGet ety)
+        let ety' = instantiate theta ety
             ty'' = tyGet ety'
         when (rty /= ty'') $
             throwError $ TypeError $ [(rty, ty'')]
@@ -201,10 +197,10 @@ instance Elab Ex where
     elab (If ep et ef) = do
         etys <- traverse elab [ep, et, ef]
         let ifty   = [BooleanTy, uid, uid]
-            theta1 = solve (map tyGet etys) ifty
-            tys    = instantiate theta1 ifty
-            theta2 = solve tys (map tyGet etys)
-            etys'@[etyp', etyt', etyf'] = instantiate theta2 etys
+        theta1 <- solve (map tyGet etys) ifty
+        let tys    = instantiate theta1 ifty
+        theta2 <- solve tys (map tyGet etys)
+        let etys'@[etyp', etyt', etyf'] = instantiate theta2 etys
             tys'   = map tyGet etys'
             ineqs  = filter (uncurry (/=)) (zip tys' tys)
         when (not $ null ineqs) $
@@ -216,11 +212,11 @@ instance Elab Ex where
             throwError $ ArityError (arity f) (length es)
         Arrow ty ty' <- unlessJustM (asks $ lookup f . phi) $
             throwError $ NameError f
-        let theta1 = solve (map tyGet etys) (ty ++ [ty'])
-            tys    = instantiate theta1 ty
+        theta1 <- solve (map tyGet etys) (ty ++ [ty'])
+        let tys    = instantiate theta1 ty
             ty''   = instantiate theta1 ty'
-            theta2 = solve tys (map tyGet etys)
-            etys'  = instantiate theta2 etys
+        theta2 <- solve tys (map tyGet etys)
+        let etys'  = instantiate theta2 etys
             tys'   = map tyGet etys'
             ineqs  = filter (uncurry (/=)) (zip tys' tys)
         when (not $ null ineqs) $
@@ -248,14 +244,14 @@ instance Elab List where
         vty <- elab v
         lty <- elab vs
         ty <- case lty of
-            ListTy lty' ->
-                let theta1 = solve [vty] [lty']
-                    lty''  = instantiate theta1 lty'
-                    theta2 = solve [lty'] [vty]
+            ListTy lty' -> do
+                theta1 <- solve vty lty'
+                theta2 <- solve lty' vty
+                let lty''  = instantiate theta1 lty'
                     vty''  = instantiate theta2 vty
-                in if lty'' == vty''
-                   then return $ ListTy lty''
-                   else throwError $ TypeError [(vty'', lty'')]
+                when (lty'' /= vty'') $
+                   throwError $ TypeError [(vty'', lty'')]
+                return $ ListTy lty''
             t -> throwError $ TypeError [(ListTy vty, t)]
         return ty
 

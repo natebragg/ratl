@@ -370,7 +370,7 @@ instance Annotate TypedEx where
             Just (asc, (qa, qa')) -> do
                 cost_free <- costof (== zero)
                 let Arrow ty ty' = tyOf asc
-                    theta = Elab.solve tys (ty ++ [ty'])
+                    Right theta = Elab.solve tys (ty ++ [ty'])
                     fun = Elab.instantiate theta asc
                 if degree <= 1 || cost_free then
                     return (tyOf fun, (qa, qa'))
@@ -389,7 +389,7 @@ instance Annotate TypedEx where
                 scp <- lookupSCP f
                 let asc = fromJust $ lookup f scp
                     Arrow ty ty' = tyOf asc
-                    theta = Elab.solve tys (ty ++ [ty'])
+                    Right theta = Elab.solve tys (ty ++ [ty'])
                     fun = Elab.instantiate theta asc
                 scp' <- traverse (traverse $ \f -> (,) f <$> freshFunBounds f) $ update f fun scp
                 local (\cf -> cf {comp = scp'}) $ annoSCP scp'
