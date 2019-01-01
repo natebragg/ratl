@@ -80,7 +80,7 @@ class Unifiable t where
 solve :: (MonadError TypeError m, Unifiable t) => t -> t -> m TyvarEnv
 solve t t' =
     let fv's  = freeVars t'
-    in  evalFresh (foldrM alpha t fv's >>= (~~ t')) (freeVars t ++ fv's)
+    in  evalFresh (foldrM alpha t fv's >>= (t' ~~)) (freeVars t ++ fv's)
 
 unify :: Unifiable t => t -> t -> t
 unify t t' = either (error . show) (flip subst t') $ solve t t'
@@ -196,16 +196,10 @@ instance Elab Ex where
         return $ TypedVal ty v
     elab (If ep et ef) = do
         etys <- traverse elab [ep, et, ef]
-        let ifty   = [BooleanTy, uid, uid]
-        theta1 <- solve (map tyGet etys) ifty
-        let tys    = instantiate theta1 ifty
-        theta2 <- solve tys (map tyGet etys)
-        let etys'@[etyp', etyt', etyf'] = instantiate theta2 etys
-            tys'   = map tyGet etys'
-            ineqs  = filter (uncurry (/=)) (zip tys' tys)
-        when (not $ null ineqs) $
-            throwError $ TypeError $ ineqs
-        return $ TypedIf (last tys') etyp' etyt' etyf'
+        let ifty = [BooleanTy, uid, uid]
+        theta <- solve ifty (map tyGet etys)
+        let [etyp', etyt', etyf'] = instantiate theta etys
+        return $ TypedIf (tyGet etyf') etyp' etyt' etyf'
     elab (App f es) = do
         etys <- traverse elab es
         when (arity f /= length es) $
@@ -215,7 +209,7 @@ instance Elab Ex where
         theta1 <- solve (map tyGet etys) (ty ++ [ty'])
         let tys    = instantiate theta1 ty
             ty''   = instantiate theta1 ty'
-        theta2 <- solve tys (map tyGet etys)
+        theta2 <- solve (ty ++ [ty']) (map tyGet etys)
         let etys'  = instantiate theta2 etys
             tys'   = map tyGet etys'
             ineqs  = filter (uncurry (/=)) (zip tys' tys)
@@ -245,13 +239,8 @@ instance Elab List where
         lty <- elab vs
         ty <- case lty of
             ListTy lty' -> do
-                theta1 <- solve vty lty'
-                theta2 <- solve lty' vty
-                let lty''  = instantiate theta1 lty'
-                    vty''  = instantiate theta2 vty
-                when (lty'' /= vty'') $
-                   throwError $ TypeError [(vty'', lty'')]
-                return $ ListTy lty''
+                theta <- solve vty lty'
+                return $ ListTy $ instantiate theta lty'
             t -> throwError $ TypeError [(ListTy vty, t)]
         return ty
 
