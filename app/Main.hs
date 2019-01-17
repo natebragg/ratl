@@ -164,10 +164,11 @@ main = do
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
     forM module_eqns $ \(f, (ixs, eqns)) -> do
         let (optimums, _) = unzip $ progressive_solve eqns
-        let infeasible = any null optimums
+        let feasible = filter (not . null) optimums
+        let infeasible = null feasible
         let bound = if infeasible
                     then ": Analysis was infeasible"
-                    else ": " ++ pretty_bound ixs (last optimums)
+                    else ": " ++ pretty_bound ixs (last feasible)
         putStrLn $ show f ++ bound
         return $ (f, not infeasible)
     when (mode == Run) $ do
