@@ -45,12 +45,13 @@ progressive_solve = fst . foldl accum ([], [])
     where accum (ss, cs') (GeneralForm dir obj cs) = (ss ++ [sol], (obj `Leq` snd sol):cs')
             where sol = solve $ GeneralForm dir obj (cs' ++ cs)
 
-pretty_bound :: [(ContextIndex, Int)] -> [Double] -> String
-pretty_bound ixs cs = if null bounds then show 0.0 else (intercalate " + " bounds ++ explanation)
+pretty_bound :: Bool ->[(ContextIndex, Int)] -> [Double] -> String
+pretty_bound explicit ixs cs = if null bounds then show 0.0 else (intercalate " + " bounds ++ explanation)
     where (bounds, (_, vs)) = flip runState (varnames, []) $
                                 reverse <$> concat <$> traverse coeff cixs
           cixs = fmap (fmap $ flip lookup $ map swap ixs) $ zip cs [0..]
-          explanation = if length vs <= 1 then "" else ("\n  where" ++ concat descriptions)
+          explanation = let n = length vs in
+                if explicit && n > 0 || n > 1 then ("\n  where" ++ concat descriptions) else ""
           descriptions = map (\(ix, x) -> "\n    " ++ x ++ " is for index " ++ show ix) vs
           varnames = map pure alphabet ++ concatMap (\n -> map (:'_':show n) alphabet) [2..]
           -- the alphabet in reverse starting from n skipping o and l
@@ -83,6 +84,7 @@ callgraph = scSubprograms . (connects =<< flatten . mapFun (second calls))
 data Flag = Version
           | Help
           | Mode String
+          | Explicit
           | DegreeMax String
     deriving Eq
 
@@ -97,6 +99,7 @@ opts :: [OptDescr Flag]
 opts = [Option ['v'] ["version"] (NoArg Version) "Version information.",
         Option ['h'] ["help"] (NoArg Help) "Print this message.",
         Option ['m'] ["mode"] (ReqArg Mode "MODE") ("One of: " ++ modelist),
+        Option ['e'] ["explicit"] (NoArg Explicit) ("Always include explanation of bounds."),
         Option ['d'] ["degreemax"] (ReqArg DegreeMax "DEGREE") "Maximum degree of analysis."]
 
 printUsage :: IO ()
@@ -109,21 +112,22 @@ printVersion = do
     putStrLn $ "Version " ++ version
     putStrLn $ "Using Clp version " ++ Clp.version
 
-handleArgs :: IO (Int, Mode, String, String)
+handleArgs :: IO (Int, Mode, Bool, String, String)
 handleArgs = do
     args <- getArgs
     case getOpt RequireOrder opts args of
         (os,  _, [])
-            | elem Help os -> printUsage >> exitSuccess
-            | elem Version os -> printVersion >> exitSuccess
+            | Help    `elem` os -> printUsage >> exitSuccess
+            | Version `elem` os -> printVersion >> exitSuccess
         (os, [], es) -> putStrLn "Filename required" >> putStr (concat es) >> printUsage >> exitFailure
         (os, fn:args, es)
             | not $ null es -> putStr (concat es) >> printUsage >> exitFailure
-            | otherwise -> let degrees = [readEither d | DegreeMax d <- os] in
-                           let modes = [readEither m | Mode m <- os] in
-                           case (lefts degrees, lefts modes, rights degrees, rights modes) of
+            | otherwise -> let degrees = [readEither d | DegreeMax d <- os]
+                               modes = [readEither m | Mode m <- os]
+                               explicit = Explicit `elem` os
+                           in  case (lefts degrees, lefts modes, rights degrees, rights modes) of
                              ([], [], ds, ms) ->
-                                return (last $ 1:ds, last $ Run:ms, fn, unwords args)
+                                return (last $ 1:ds, last $ Run:ms, explicit, fn, unwords args)
                              (ds, ms,  _, _) -> do
                                 when (not $ null ds) $
                                      putStrLn "Option degreemax requires integer argument"
@@ -138,7 +142,7 @@ handleEx m = runExceptT m >>= handleE
 
 main :: IO ()
 main = do
-    (deg_max, mode, fn, cmdline) <- handleArgs
+    (deg_max, mode, explicit, fn, cmdline) <- handleArgs
     when (deg_max < 0) $ do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
@@ -168,7 +172,7 @@ main = do
         let infeasible = null feasible
         let bound = if infeasible
                     then ": Analysis was infeasible"
-                    else ": " ++ pretty_bound ixs (last feasible)
+                    else ": " ++ pretty_bound explicit ixs (last feasible)
         putStrLn $ show f ++ bound
         return $ (f, not infeasible)
     when (mode == Run) $ do
