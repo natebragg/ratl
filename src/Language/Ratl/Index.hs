@@ -22,6 +22,8 @@ module Language.Ratl.Index (
 import Control.Arrow (first, second, (***), (&&&))
 import Data.Function (on)
 import Data.List (sortBy, groupBy, inits, tails, intercalate, subsequences)
+import Data.Mapping (mapConcat)
+import Data.Monoid (Sum(getSum))
 import Data.Semigroup (Semigroup(..))
 import Language.Ratl.Ty (Ty(..))
 
@@ -173,9 +175,11 @@ projectionsDeg :: Int -> [Ty] -> [[[(ContextIndex, Index)]]]
 projectionsDeg k = map (concatMap overallDeg . take (k + 1)) . projections
     where overallDeg = map $ concat . (takeWhile $ (<= k) . deg . fst . head)
 
-shareCoef :: Num a => Index -> Index -> [(Index, a)]
-shareCoef = go
-    where go AIndex AIndex = unitCoef AIndex
+shareCoef :: Num a => ContextIndex -> [(ContextIndex, a)]
+shareCoef (CIndex []) = []
+shareCoef (CIndex (ix:ixs)) = map (context . pure *** getSum) $ foldl shareAnother (unitCoef ix) ixs
+    where shareAnother scs i1 = mapConcat [map (second (c *)) $ go i1 i2 | (i2, c) <- scs]
+          go AIndex AIndex = unitCoef AIndex
           go (PIndex (i1, i2)) (PIndex (i1', i2')) =
             [(PIndex (i1, i2), n1 * n2) | ((i1, n1), (i2, n2)) <- diagonals (go i1 i1') (go i2 i2')]
           go (LIndex xs) (LIndex ys) =

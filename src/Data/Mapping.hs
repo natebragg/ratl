@@ -4,10 +4,13 @@
 
 module Data.Mapping (
     Mapping(..),
+    mapAppend,
+    mapConcat,
     (<?<),
 ) where
 
 import Data.Maybe (listToMaybe)
+import Data.Semigroup (Semigroup(..))
 import Prelude hiding (lookup)
 
 class Mapping m k v | m -> k v where
@@ -37,6 +40,13 @@ class Mapping m k v | m -> k v where
     delete = deleteBy . (==)
     select :: Eq k => k -> m -> m
     select = selectBy . (==)
+
+mapAppend :: (Semigroup v, Eq k, Mapping m k v) => m -> m -> m
+mapAppend as bs = foldl combine as $ elements bs
+    where combine as (k, v) = update k (maybe v (<> v) (lookup k as)) as
+
+mapConcat :: (Semigroup v, Eq k, Mapping m k v) => [m] -> m
+mapConcat = foldr mapAppend $ fromList []
 
 (<?<) :: (Eq k, Mapping m k v, Mapping m2 k k) => m -> m2 -> m
 m <?< m2 = fromList [(maybe k id $ lookup k m2, v) | (k, v) <- elements m]
