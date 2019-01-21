@@ -1,6 +1,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE Rank2Types #-}
 
 module Language.Ratl.Index (
   Indexable,
@@ -12,10 +13,11 @@ module Language.Ratl.Index (
   index,
   indexDeg,
   zeroIndex,
+  transform,
   factor,
   shift,
-  projections,
-  projectionsDeg,
+  project,
+  projectDeg,
   shareCoef,
 ) where
 
@@ -144,6 +146,9 @@ indexDeg k = concat . take (k + 1) . index
 zeroIndex :: Indexable i t => t -> i
 zeroIndex = head . head . index
 
+transform :: (forall a. [a] -> [a]) -> ContextIndex -> ContextIndex
+transform f = context . f . uncontext
+
 shift :: Ty -> [(ContextIndex, [ContextIndex])]
 shift t@(ListTy _) = map go $ concat $ tail $ index [t]
     where go jl@(CIndex [LIndex (j:l)]) =
@@ -152,28 +157,13 @@ shift t@(ListTy _) = map go $ concat $ tail $ index [t]
                 (_, j, l) -> (j <> l, [jl])
 shift _ = []
 
--- Vary each position infinitely while holding everything else constant.
---                     ,----- Per position
---                     |,---- Per position degree
---                     ||,--- Per exact position index
---                     |||,-- Per overall degree
---                     ||||,- Per full index
---                     |||||
---                     VVVVV full          pos
-projections :: [Ty] -> [[[[[(ContextIndex, Index)]]]]]
-projections tys = flip map (init $ zip (inits tys) (tails tys)) $ \(ltys, ty:rtys) ->
-        let ilrs = map (map $ (CIndex *** CIndex) . splitAt (length ltys) . uncontext) $ index $ ltys ++ rtys
-        in  map (map (\i -> let im = CIndex [i] in map (map (\(il, ir) -> (il <> im <> ir, i))) ilrs)) $ index ty
+project :: [Ty] -> [Ty] -> [(ContextIndex, [ContextIndex])]
+project jtys gtys = map (flip (,) $ concat $ index gtys) $ concat $ index jtys
 
--- Vary each position up to degree k while holding everything else constant.
---                               ,--- Per position
---                               |,-- Per position, position degree monotonic
---                               ||,- Per full index, overall degree monotonic
---                               |||
---                               VVV full          pos
-projectionsDeg :: Int -> [Ty] -> [[[(ContextIndex, Index)]]]
-projectionsDeg k = map (concatMap overallDeg . take (k + 1)) . projections
-    where overallDeg = map $ concat . (takeWhile $ (<= k) . deg . fst . head)
+projectDeg :: Int -> [Ty] -> [Ty] -> [(ContextIndex, [ContextIndex])]
+projectDeg k = ((map (\(ix, ixs) -> (ix, takeWhile (degK . (ix <>)) ixs)) .
+                 takeWhile (degK . fst)) .) . project
+    where degK = (<= k) . deg
 
 shareCoef :: Num a => ContextIndex -> [(ContextIndex, a)]
 shareCoef (CIndex []) = []

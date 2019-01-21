@@ -1,14 +1,24 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Data.Mapping (
     Mapping(..),
+    partition,
     mapAppend,
     mapConcat,
+    mapInvert,
     (<?<),
+    lookupWithDefault,
+    substitute,
+    selectAll,
+    deleteAll,
+    partitionAll,
 ) where
 
+import Control.Arrow ((&&&))
+import Control.Monad (join)
 import Data.Maybe (listToMaybe)
 import Data.Semigroup (Semigroup(..))
 import Prelude hiding (lookup)
@@ -41,6 +51,9 @@ class Mapping m k v | m -> k v where
     select :: Eq k => k -> m -> m
     select = selectBy . (==)
 
+partition :: (Eq k, Mapping m k v) => k -> m -> (m, m)
+partition = uncurry (&&&) . (select &&& delete)
+
 mapAppend :: (Semigroup v, Eq k, Mapping m k v) => m -> m -> m
 mapAppend as bs = foldl combine as $ elements bs
     where combine as (k, v) = update k (maybe v (<> v) (lookup k as)) as
@@ -48,8 +61,26 @@ mapAppend as bs = foldl combine as $ elements bs
 mapConcat :: (Semigroup v, Eq k, Mapping m k v) => [m] -> m
 mapConcat = foldr mapAppend $ fromList []
 
+mapInvert :: (Eq v, Mapping m k v, Mapping m' v [k]) => m -> m'
+mapInvert m = mapConcat $ [fromList [(v, [k])] | (k, v) <- elements m]
+
 (<?<) :: (Eq k, Mapping m k v, Mapping m2 k k) => m -> m2 -> m
 m <?< m2 = fromList [(maybe k id $ lookup k m2, v) | (k, v) <- elements m]
+
+lookupWithDefault :: (Eq k, Mapping m k v) => k -> v -> m -> v
+lookupWithDefault k v = maybe v id . lookup k
+
+substitute :: (Eq k, Functor f, Mapping m k k) => m -> f k -> f k
+substitute = fmap . flip (join lookupWithDefault)
+
+selectAll :: (Eq k, Mapping m k v) => [k] -> m -> m
+selectAll = selectBy . flip elem
+
+deleteAll :: (Eq k, Mapping m k v) => [k] -> m -> m
+deleteAll = flip $ foldl $ flip delete
+
+partitionAll :: (Eq k, Mapping m k v) => [k] -> m -> (m, m)
+partitionAll = uncurry (&&&) . (selectAll &&& deleteAll)
 
 instance Mapping [(k, v)] k v where
     lookupBy f = go
