@@ -181,6 +181,9 @@ coerceZero = fromJust . lookupBy isZero . eqns
 updateZero :: Indexable i t => LinearFunction -> IndexEnv t i -> IndexEnv t i
 updateZero f q = q {eqns = updateBy isZero (Just $ zeroIndex $ ixTy q) f $ eqns q}
 
+addZero :: Indexable i t => LinearFunction -> IndexEnv t i -> IndexEnv t i
+addZero c p = updateZero (coerceZero p + c) p
+
 -- Annotation Helpers
 
 freshAnno :: MonadState Anno m => m LinearFunction
@@ -415,27 +418,28 @@ instance Annotate TypedEx where
         q <- annoSequential k_ifp [ep] qc
         return (q, q')
     anno (TypedApp _ f es) = do
-        degree <- degreeof
         let tys = map tyGet es
-        (qf, qf') <- lookupThisSCP f >>= \case
-            Just (asc, (qa, qa')) -> do
+        (p, p', q, q') <- lookupThisSCP f >>= \case
+            Just (asc, (p, p')) -> do
                 cost_free <- costof (== zero)
-                let Arrow ty ty' = tyOf asc
-                    Right theta = Elab.solve tys (ty ++ [ty'])
-                    fun = Elab.instantiate theta asc
-                if degree <= 1 || cost_free then
-                    return (qa, qa')
+                degree <- degreeof
+                if degree <= 1 || cost_free then do
+                    q <- traverse rezero p
+                    q' <- rezero p'
+                    c  <- freshAnno
+                    return (addZero c (snd p), addZero c p', q, q')
                 else do
                     scp <- asks comp
-                    (qf, qf') <- freshFunBounds fun
+                    let Arrow ty ty' = tyOf asc
+                        Right theta = Elab.solve tys (ty ++ [ty'])
+                        fun = Elab.instantiate theta asc
+                    (q, q') <- freshFunBounds fun
                     local (\s -> s {degree = degree - 1, cost = zero}) $ do
                         -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
-                        cfscp <- refreshFunEnv $ update f (fun, (qf, qf')) scp
-                        let Just (_, (qcf, qcf')) = lookup f cfscp
-                        constrain $ snd qf  - snd qa  - snd qcf  ==* 0
-                        constrain $     qf' -     qa' -     qcf' ==* 0
+                        cfscp <- refreshFunEnv $ update f (fun, (q, q')) scp
                         local (\s -> s {comp = cfscp}) $ traverse anno cfscp
-                    return (qf, qf')
+                        let Just (_, (pcf, pcf')) = lookup f cfscp
+                        return (snd p + snd pcf, p' + pcf', q, q')
             Nothing -> do
                 scp <- lookupSCP f
                 let asc = fromJust $ lookup f scp
@@ -444,15 +448,15 @@ instance Annotate TypedEx where
                     fun = Elab.instantiate theta asc
                 scp' <- freshFunEnv $ update f fun scp
                 local (\cf -> cf {comp = scp'}) $ traverse anno scp'
-                return $ snd $ fromJust $ lookup f scp'
-        qfc <- traverse rezero qf
-        q' <- rezero qf'
-        q  <- annoSequential k_ap1 es qfc
+                let Just (_, (p, p')) = lookup f scp'
+                q <- traverse rezero p
+                q' <- rezero p'
+                return (snd p, p', q, q')
         k1 <- costof k_ap1
         k2 <- costof k_ap2
-        c  <- freshAnno
-        constrain [(snd qfc %-% snd qf) - c ==$ k1,
-                   c + (qf' %-% q') ==$ k2]
+        constrain $ snd q - p ==* k1
+        constrain $    p' - q' ==* k2
+        q  <- annoSequential k_ap1 es q
         return (q, q')
     anno (TypedLet _ bs e) = do
         let (xs, es) = unzip bs
