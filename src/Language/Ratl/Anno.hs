@@ -21,7 +21,7 @@ import Control.Monad.Writer (MonadWriter, tell)
 import Data.Foldable (foldrM, for_)
 import Data.Function (on)
 import Data.List (sortBy, nub, union, (\\))
-import Data.Mapping (Mapping(..), partition, substitute, mapInvert, deleteAll, partitionAll)
+import Data.Mapping (Mapping(..), partition, substitute, mapInvert, selectAll, deleteAll, partitionAll)
 import Data.Maybe (isJust, fromJust)
 import Data.Semigroup ((<>))
 import Data.Traversable (for)
@@ -246,6 +246,17 @@ infix 5 %-%
 both :: (a -> b) -> (a, a) -> (b, b)
 both f = f *** f
 
+discardLeft :: MonadReader AnnoState m => CIxEnv -> m CIxEnv
+discardLeft q@(IndexEnv [] _) = return q
+discardLeft (IndexEnv (ty:tys) q) = IndexEnv tys <$> q'
+    where q' = fromList . map (first (transform tail)) . elements . flip selectAll q . map (zeroIndex [ty] <>) <$> (indexDeg <$> degreeof <*> pure tys)
+
+discardRight :: MonadReader AnnoState m => CIxEnv -> m CIxEnv
+discardRight q@(IndexEnv [] _) = return q
+discardRight (IndexEnv tys q) = IndexEnv tys' <$> q'
+    where q' = fromList . map (first (transform init)) . elements . flip selectAll q . map (<> zeroIndex [ty]) <$> (indexDeg <$> degreeof <*> pure tys')
+          (ty, tys') = (last tys, init tys)
+
 augment :: (LNVar, Ty) -> VarEnv -> VarEnv
 augment (x, _) q@(xs, _) | x `elem` xs = q
 augment (x, ty) (xs, IndexEnv tys q) = (x:xs, IndexEnv (ty:tys) q')
@@ -388,16 +399,16 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
           annoFun (_, (TypedNative (Arrow ty ty') _ _, (pqs, rqs))) = do
               constrain $ [snd pqs %-% rqs ==$ 0]
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> CIxEnv -> CIxEnv -> m ()
-          consShift qs_h@(IndexEnv ty_h _) qs_t@(IndexEnv ty_t _) (IndexEnv ty_p qs_p) (IndexEnv [ty_l] qs_l) = do
-              let limit (i, is) = const (i, is) <$> lookup i qs_p
-                  Just shs = sequence $ takeWhile isJust $ map limit $ shift ty_l
-                  ss = map (\(i, is) -> (,) <$> lookup i qs_p <*> sequence (filter isJust $ map (flip lookup qs_l) is)) shs
+          consShift qh qt qp ql = do
+              let limit (i, is) = const (i, is) <$> lookup i (eqns qp)
+                  Just shs = sequence $ takeWhile isJust $ map limit $ shift $ head $ ixTy ql
+                  ss = map (\(i, is) -> (,) <$> lookup i (eqns qp) <*> sequence (filter isJust $ map (flip lookup $ eqns ql) is)) shs
               constrain [sum ps - q ==$ 0 |
                          Just (q, ps) <- ss]
-              qs_p_h <- map (IndexEnv ty_h . (qs_p <<<) . map swap) <$> map (map $ first $ transform reverse) <$> projectOver ty_t ty_h
-              constrain $ qs_h - sum qs_p_h ==* 0
-              qs_p_t <- map (IndexEnv ty_t . (qs_p <<<) . map swap) <$> projectOver ty_h ty_t
-              constrain $ qs_t - sum qs_p_t ==* 0
+              qph <- discardRight qp
+              constrain $ qh - qph ==* 0
+              qpt <- discardLeft qp
+              constrain $ qt - qpt ==* 0
 
 instance Annotate TypedEx where
     anno (TypedVar ty x) = do
