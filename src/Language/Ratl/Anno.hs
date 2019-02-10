@@ -337,26 +337,23 @@ annoSequential k_e es = go annoSeq (second snd <$> annoSeq) (anyRecurses es) (co
           recurses (TypedLet _ bs e) = anyRecurses (e:map snd bs)
           anyRecurses = fmap or . traverse recurses
           go zeroAnno jAnno doesRecurse k_e p_ = do
-            scp <- asks comp
-            recs <- doesRecurse
-            -- if es contains recursion, reannotate everything in the SCC
-            -- required because it handles each possible world separately
-            let maybeRefreshScp = if recs then refreshFunEnv scp else return scp
-            scp' <- maybeRefreshScp
-            ((bqs, q_0@(IndexEnv tysq _)), (bq's, IndexEnv tysq' q'_0)) <- local (\s -> s {comp = scp'}) zeroAnno
+            ((bqs, q_0@(IndexEnv tysq _)), (bq's, IndexEnv tysq' q'_0)) <- zeroAnno
             let (bps, p) = augmentMany (bq's, tysq') p_
             pi@(_:pis_j) <- projectNames (zip bps $ ixTy p) bq's
-            scp's <- replicateM (length pis_j) maybeRefreshScp
-            (qs_j, q's_j) <- unzip <$> for scp's (\scp' -> (snd *** eqns) <$> local (\s -> s {cost = zero, comp = scp'}) jAnno)
-            when recs $
-                -- then, sum up those reannotations, and set them equal to your real one.
-                -- they must be summed up directly (not projected) to account for their
-                -- actual behavior across all worlds.
-                for_ scp $ \(f, (fun, (qa, qa'))) -> do
-                    let (qf, qf') = snd $ fromJust $ lookup f scp'
-                    let (qcfs, qcf's) = unzip $ map (snd . fromJust . lookup f) scp's
-                    constrain $ snd qf  - snd qa  - sum (map snd qcfs)  ==* 0
-                    constrain $     qf' -     qa' - sum qcf's ==* 0
+            (qs_j, q's_j) <- fmap (unzip . map (snd *** eqns)) $ for pis_j $ \((z, _):_) -> do
+                degree <- degreeof
+                local (\s -> s {degree = degree - (deg z), cost = zero}) $ do
+                    recs <- doesRecurse
+                    if not recs || degree < 1 then
+                        jAnno
+                    else do
+                        -- if es contains recursion, reannotate everything in the SCC
+                        -- required because it handles each possible world separately
+                        scp <- asks comp
+                        cfscp <- refreshFunEnv scp
+                        local (\s -> s {comp = cfscp}) $ do
+                            traverse anno cfscp
+                            jAnno
             k <- costof k_e
             let q' = p {eqns = sum $ zipWith (<<<) (q'_0:q's_j) pi}
             constrain $ q' - p ==* k
