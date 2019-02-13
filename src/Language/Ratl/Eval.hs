@@ -25,12 +25,10 @@ import Data.Maybe (listToMaybe, catMaybes)
 lookupFunBySCP :: [Prog] -> Var -> Maybe (Fun)
 lookupFunBySCP p x = listToMaybe $ catMaybes $ map (flip lookupFun x) p
 
-data RuntimeError = ArityError Int Int
-                  | NameError Var
+data RuntimeError = NameError Var
                   | NativeError NativeError
 
 instance Show RuntimeError where
-    show (ArityError f a) = "Expected " ++ show f ++ " arguments, but got " ++ show a ++ " at runtime."
     show (NameError x) = "Name " ++ show x ++ " is not defined at runtime."
     show (NativeError e) = show e
 
@@ -59,11 +57,6 @@ run phi = eval []
                       eval rho' e
           app :: MonadError RuntimeError m => Fun -> [Val] -> m Val
           app (Fun    _ x b) vs = do
-                let a = length [x]
-                when (a /= length vs) $
-                    throwError $ ArityError a (length vs)
                 eval (zip [x] vs) b
           app (Native _ a f) vs = do
-                when (a /= length vs) $
-                    throwError $ ArityError a (length vs)
                 toError $ withExcept NativeError $ f vs
