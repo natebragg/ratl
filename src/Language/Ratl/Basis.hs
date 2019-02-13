@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Language.Ratl.Basis (
-    arity,
     prims,
     basis,
 ) where
@@ -55,9 +54,6 @@ cdr [List Nil] = throwError EmptyError
 
 cons :: [Val] -> Except NativeError Val
 cons [x, List xs] = return $ List (Cons x xs)
-
-arity :: Var -> Int
-arity = maybe 1 (\(Native _ a _) -> a) . lookupFun prims
 
 prims :: Prog
 prims = makeProg [

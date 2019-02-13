@@ -45,7 +45,6 @@ import Language.Ratl.Ast (
     mapFun,
     travFun,
     )
-import Language.Ratl.Basis (arity)
 
 type TyEnv = [(Var, Ty)]
 type FunTyEnv = [(Var, FunTy)]
@@ -202,10 +201,10 @@ instance Elab Ex where
         return $ TypedIf (tyGet etyf') etyp' etyt' etyf'
     elab (App f es) = do
         etys <- traverse elab es
-        when (arity f /= length es) $
-            throwError $ ArityError (arity f) (length es)
         Arrow ty ty' <- unlessJustM (asks $ lookup f . phi) $
             throwError $ NameError f
+        when (length ty /= length es) $
+            throwError $ ArityError (length ty) (length es)
         theta1 <- solve (map tyGet etys) (ty ++ [ty'])
         let tys    = instantiate theta1 ty
             ty''   = instantiate theta1 ty'
