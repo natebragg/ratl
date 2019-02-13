@@ -58,5 +58,5 @@ run phi = eval []
           app :: MonadError RuntimeError m => Fun -> [Val] -> m Val
           app (Fun    _ x b) vs = do
                 eval (zip [x] vs) b
-          app (Native _ a f) vs = do
+          app (Native _ f) vs =
                 toError $ withExcept NativeError $ f vs

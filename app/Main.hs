@@ -74,7 +74,7 @@ pretty_bound explicit ixs cs = if null bounds then show 0.0 else (intercalate " 
 callgraph :: Prog -> [Prog]
 callgraph = scSubprograms . (connects =<< flatten . mapFun (second calls))
     where flatten = concatMap $ uncurry (map . (,))
-          calls (Native _ _ _) = []
+          calls (Native _ _) = []
           calls (Fun _ _ e) = ecalls e
           ecalls (App f es) = f : concatMap ecalls es
           ecalls (If ep et ef) = concatMap ecalls [ep, et, ef]

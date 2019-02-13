@@ -150,11 +150,11 @@ instance Instantiable FunTy where
 
 instance Instantiable Fun where
     instantiate theta (Fun ty x e) = Fun (instantiate theta ty) x e
-    instantiate theta (Native ty a f) = Native (instantiate theta ty) a f
+    instantiate theta (Native ty f) = Native (instantiate theta ty) f
 
 instance Instantiable TypedFun where
     instantiate theta (TypedFun ty x e) = TypedFun (instantiate theta ty) x (instantiate theta e)
-    instantiate theta (TypedNative ty a f) = TypedNative (instantiate theta ty) a f
+    instantiate theta (TypedNative ty f) = TypedNative (instantiate theta ty) f
 
 instance Instantiable TypedEx where
     instantiate theta (TypedVar ty x) = TypedVar (instantiate theta ty) x
@@ -181,8 +181,8 @@ instance Elab Fun where
         when (rty /= ty'') $
             throwError $ TypeError $ [(rty, ty'')]
         return $ TypedFun fty x ety'
-    elab (Native fty a f) =
-        return $ TypedNative fty a f
+    elab (Native fty f) =
+        return $ TypedNative fty f
 
 instance Elab Ex where
     type Type Ex = TypedEx

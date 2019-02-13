@@ -58,21 +58,21 @@ cons [x, List xs] = return $ List (Cons x xs)
 prims :: Prog
 prims = makeProg [
     -- arithmetic operations
-    (V "+",     Native (Arrow [NatTy, NatTy] NatTy)                                 2 (arith (+))),
-    (V "-",     Native (Arrow [NatTy, NatTy] NatTy)                                 2 (arith (-))),
-    (V "*",     Native (Arrow [NatTy, NatTy] NatTy)                                 2 (arith (*))),
-    (V "/",     Native (Arrow [NatTy, NatTy] NatTy)                                 2 divide),
+    (V "+",     Native (Arrow [NatTy, NatTy] NatTy)                                 (arith (+))),
+    (V "-",     Native (Arrow [NatTy, NatTy] NatTy)                                 (arith (-))),
+    (V "*",     Native (Arrow [NatTy, NatTy] NatTy)                                 (arith (*))),
+    (V "/",     Native (Arrow [NatTy, NatTy] NatTy)                                 divide),
 
     -- comparison operations
-    (V "<",     Native (Arrow [NatTy, NatTy] BooleanTy)                             2 (cmp (<))),
-    (V ">",     Native (Arrow [NatTy, NatTy] BooleanTy)                             2 (cmp (>))),
-    (V "=",     Native (Arrow [Tyvar "a", Tyvar "a"] BooleanTy)                     2 equal),
+    (V "<",     Native (Arrow [NatTy, NatTy] BooleanTy)                             (cmp (<))),
+    (V ">",     Native (Arrow [NatTy, NatTy] BooleanTy)                             (cmp (>))),
+    (V "=",     Native (Arrow [Tyvar "a", Tyvar "a"] BooleanTy)                     equal),
 
     -- list functions
-    (V "null?", Native (Arrow [ListTy (Tyvar "a")] BooleanTy)                       1 null'),
-    (V "cons",  Native (Arrow [Tyvar "a", ListTy (Tyvar "a")] (ListTy (Tyvar "a"))) 2 cons),
-    (V "car",   Native (Arrow [ListTy (Tyvar "a")] (Tyvar "a"))                     1 car),
-    (V "cdr",   Native (Arrow [ListTy (Tyvar "a")] (ListTy (Tyvar "a")))            1 cdr)
+    (V "null?", Native (Arrow [ListTy (Tyvar "a")] BooleanTy)                       null'),
+    (V "cons",  Native (Arrow [Tyvar "a", ListTy (Tyvar "a")] (ListTy (Tyvar "a"))) cons),
+    (V "car",   Native (Arrow [ListTy (Tyvar "a")] (Tyvar "a"))                     car),
+    (V "cdr",   Native (Arrow [ListTy (Tyvar "a")] (ListTy (Tyvar "a")))            cdr)
     ]
 
 basis :: String

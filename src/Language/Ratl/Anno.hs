@@ -390,10 +390,10 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
               (q, q') <- anno e
               constrain $ snd pqs - snd (varclose [x] $ augmentMany ([FVar x], pty) q) ==* 0
               constrain $ rqs - q' ==* 0
-          annoFun (V "car",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _ _, ((_, pqs), rqs))) =                              freshIxEnv [ty_l] >>= \qt -> freshIxEnv [ty_h, ty_l] >>= \qp -> consShift (to_ctx rqs) qt qp pqs
-          annoFun (V "cdr",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _ _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh ->                              freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qh (to_ctx rqs) qp pqs
-          annoFun (V "cons", (TypedNative (Arrow         [ty_h, ty_l] _) _ _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh -> freshIxEnv [ty_l] >>= \qt ->                                    consShift qh qt pqs (to_ctx rqs)
-          annoFun (_, (TypedNative (Arrow ty ty') _ _, (pqs, rqs))) = do
+          annoFun (V "car",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) =                              freshIxEnv [ty_l] >>= \qt -> freshIxEnv [ty_h, ty_l] >>= \qp -> consShift (to_ctx rqs) qt qp pqs
+          annoFun (V "cdr",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh ->                              freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qh (to_ctx rqs) qp pqs
+          annoFun (V "cons", (TypedNative (Arrow         [ty_h, ty_l] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh -> freshIxEnv [ty_l] >>= \qt ->                                    consShift qh qt pqs (to_ctx rqs)
+          annoFun (_, (TypedNative (Arrow ty ty') _, (pqs, rqs))) = do
               constrain $ [snd pqs %-% rqs ==$ 0]
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> CIxEnv -> CIxEnv -> m ()
           consShift qh qt qp ql = do
