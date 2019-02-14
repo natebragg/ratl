@@ -9,7 +9,7 @@ import Language.Ratl.Val (
     Val(..),
     )
 import Language.Ratl.Ast (
-    NativeError(..),
+    RuntimeError(..),
     Var(..),
     Fun(..),
     Ex(..),
@@ -18,19 +18,12 @@ import Language.Ratl.Ast (
     )
 
 import Control.Monad (when)
-import Control.Monad.Except (MonadError(..), withExcept)
+import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.Except.Extra (unlessJust, toError)
 import Data.Maybe (listToMaybe, catMaybes)
 
 lookupFunBySCP :: [Prog] -> Var -> Maybe (Fun)
 lookupFunBySCP p x = listToMaybe $ catMaybes $ map (flip lookupFun x) p
-
-data RuntimeError = NameError Var
-                  | NativeError NativeError
-
-instance Show RuntimeError where
-    show (NameError x) = "Name " ++ show x ++ " is not defined at runtime."
-    show (NativeError e) = show e
 
 run :: MonadError RuntimeError m => [Prog] -> Ex -> m Val
 run phi = eval []
@@ -59,4 +52,4 @@ run phi = eval []
           app (Fun _ xs b) vs =
                 eval (zip xs vs) b
           app (Native _ f) vs =
-                toError $ withExcept NativeError $ f vs
+                toError $ f vs

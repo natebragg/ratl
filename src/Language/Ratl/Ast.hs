@@ -5,7 +5,7 @@
 {-# LANGUAGE GADTs #-}
 
 module Language.Ratl.Ast (
-    NativeError(..),
+    RuntimeError(..),
     Var(..),
     Fun(Fun, Native),
     TypedFun(TypedFun, TypedNative),
@@ -50,19 +50,21 @@ data Var = V String
 instance Show Var where
     show (V x) = x
 
-data NativeError = EmptyError
-                 | DivideByZeroError
+data RuntimeError = EmptyError
+                  | DivideByZeroError
+                  | NameError Var
 
-instance Show NativeError where
+instance Show RuntimeError where
     show EmptyError = "Tried to access contents of empty list."
     show DivideByZeroError = "Tried to divide by zero."
+    show (NameError x) = "Name " ++ show x ++ " is not defined."
 
 class Typed t where
     tyOf :: t -> FunTy
 
 data FunRep e where
     FunRep :: FunTy -> [Var] -> e -> FunRep e
-    NativeRep :: FunTy -> ([Val] -> Except NativeError Val) -> FunRep e
+    NativeRep :: FunTy -> ([Val] -> Except RuntimeError Val) -> FunRep e
 
 instance Show (FunRep e) where
     show _ = "(define ...)"

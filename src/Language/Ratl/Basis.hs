@@ -16,7 +16,7 @@ import Language.Ratl.Val (
     Val(..),
     )
 import Language.Ratl.Ast (
-    NativeError(..),
+    RuntimeError(..),
     Var(..),
     Fun(..),
     Prog,
@@ -31,7 +31,7 @@ import Data.FileEmbed (embedFile)
 arith :: Monad m => (Int -> Int -> Int) -> [Val] -> m Val
 arith op [n, m] = return $ embed $ project n `op` project m
 
-divide :: MonadError NativeError m => [Val] -> m Val
+divide :: MonadError RuntimeError m => [Val] -> m Val
 divide [_, m] | m == embed (0 :: Int) = throwError DivideByZeroError
 divide vs = arith div vs
 
@@ -44,11 +44,11 @@ equal [a, b] = return $ embed $ a == b
 null' :: Monad m => [Val] -> m Val
 null' [List xs] = return $ embed $ xs == Nil
 
-car :: MonadError NativeError m => [Val] -> m Val
+car :: MonadError RuntimeError m => [Val] -> m Val
 car [List (Cons x _)] = return $ x
 car [List Nil] = throwError EmptyError
 
-cdr :: MonadError NativeError m => [Val] -> m Val
+cdr :: MonadError RuntimeError m => [Val] -> m Val
 cdr [List (Cons _ xs)] = return $ List xs
 cdr [List Nil] = throwError EmptyError
 
