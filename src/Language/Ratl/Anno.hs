@@ -393,6 +393,7 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
           annoFun (V "car",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) =                              freshIxEnv [ty_l] >>= \qt -> freshIxEnv [ty_h, ty_l] >>= \qp -> consShift (to_ctx rqs) qt qp pqs
           annoFun (V "cdr",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh ->                              freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qh (to_ctx rqs) qp pqs
           annoFun (V "cons", (TypedNative (Arrow         [ty_h, ty_l] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh -> freshIxEnv [ty_l] >>= \qt ->                                    consShift qh qt pqs (to_ctx rqs)
+          annoFun (V "error", (TypedNative _ _, _)) = return ()
           annoFun (_, (TypedNative (Arrow ty ty') _, (pqs, rqs))) = do
               constrain $ [snd pqs %-% rqs ==$ 0]
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> CIxEnv -> CIxEnv -> m ()
@@ -425,7 +426,7 @@ instance Annotate TypedEx where
         qc <- annoParallel [((k_ift, k_ifc), et), ((k_iff, k_ifc), ef)] q'
         q <- annoSequential k_ifp [ep] qc
         return (q, q')
-    anno (TypedApp _ f es) = do
+    anno (TypedApp ty f es) = do
         let tys = map tyGet es
         (p, p', q, q') <- lookupThisSCP f >>= \case
             Just (asc, (p, p')) -> do
@@ -438,8 +439,7 @@ instance Annotate TypedEx where
                     return (addZero c (snd p), addZero c p', q, q')
                 else do
                     scp <- asks comp
-                    let Arrow ty ty' = tyOf asc
-                        Right theta = Elab.solve tys (ty ++ [ty'])
+                    let Right theta = Elab.solve (Arrow tys ty) $ tyOf asc
                         fun = Elab.instantiate theta asc
                     (q, q') <- freshFunBounds fun
                     local (\s -> s {degree = degree - 1, cost = zero}) $ do
@@ -451,8 +451,7 @@ instance Annotate TypedEx where
             Nothing -> do
                 scp <- lookupSCP f
                 let asc = fromJust $ lookup f scp
-                    Arrow ty ty' = tyOf asc
-                    Right theta = Elab.solve tys (ty ++ [ty'])
+                    Right theta = Elab.solve (Arrow tys ty) $ tyOf asc
                     fun = Elab.instantiate theta asc
                 scp' <- freshFunEnv $ update f fun scp
                 local (\cf -> cf {comp = scp'}) $ traverse anno scp'

@@ -55,6 +55,9 @@ cdr [List Nil] = throwError EmptyError
 cons :: Monad m => [Val] -> m Val
 cons [x, List xs] = return $ List (Cons x xs)
 
+error' :: MonadError RuntimeError m => [Val] -> m Val
+error' [v] = throwError $ UserError v
+
 prims :: Prog
 prims = makeProg [
     -- arithmetic operations
@@ -72,7 +75,10 @@ prims = makeProg [
     (V "null?", Native (Arrow [ListTy (Tyvar "a")] BooleanTy)                       null'),
     (V "cons",  Native (Arrow [Tyvar "a", ListTy (Tyvar "a")] (ListTy (Tyvar "a"))) cons),
     (V "car",   Native (Arrow [ListTy (Tyvar "a")] (Tyvar "a"))                     car),
-    (V "cdr",   Native (Arrow [ListTy (Tyvar "a")] (ListTy (Tyvar "a")))            cdr)
+    (V "cdr",   Native (Arrow [ListTy (Tyvar "a")] (ListTy (Tyvar "a")))            cdr),
+
+    -- io functions
+    (V "error", Native (Arrow [Tyvar "a"] (Tyvar "b"))                              error')
     ]
 
 basis :: String

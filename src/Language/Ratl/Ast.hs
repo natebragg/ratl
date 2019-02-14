@@ -53,11 +53,13 @@ instance Show Var where
 data RuntimeError = EmptyError
                   | DivideByZeroError
                   | NameError Var
+                  | UserError Val
 
 instance Show RuntimeError where
     show EmptyError = "Tried to access contents of empty list."
     show DivideByZeroError = "Tried to divide by zero."
     show (NameError x) = "Name " ++ show x ++ " is not defined."
+    show (UserError v) = "Error: " ++ show v
 
 class Typed t where
     tyOf :: t -> FunTy
