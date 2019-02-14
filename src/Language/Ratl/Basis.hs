@@ -24,35 +24,35 @@ import Language.Ratl.Ast (
     lookupFun,
     )
 
-import Control.Monad.Except (Except, throwError)
+import Control.Monad.Except (MonadError, throwError)
 import Data.ByteString.Char8 (unpack)
 import Data.FileEmbed (embedFile)
 
-arith :: (Int -> Int -> Int) -> [Val] -> Except NativeError Val
+arith :: Monad m => (Int -> Int -> Int) -> [Val] -> m Val
 arith op [n, m] = return $ embed $ project n `op` project m
 
-divide :: [Val] -> Except NativeError Val
+divide :: MonadError NativeError m => [Val] -> m Val
 divide [_, m] | m == embed (0 :: Int) = throwError DivideByZeroError
 divide vs = arith div vs
 
-cmp :: (Int -> Int -> Bool) -> [Val] -> Except NativeError Val
+cmp :: Monad m => (Int -> Int -> Bool) -> [Val] -> m Val
 cmp op [n, m] = return $ embed $ project n `op` project m
 
-equal :: [Val] -> Except NativeError Val
+equal :: Monad m => [Val] -> m Val
 equal [a, b] = return $ embed $ a == b
 
-null' :: [Val] -> Except NativeError Val
+null' :: Monad m => [Val] -> m Val
 null' [List xs] = return $ embed $ xs == Nil
 
-car :: [Val] -> Except NativeError Val
+car :: MonadError NativeError m => [Val] -> m Val
 car [List (Cons x _)] = return $ x
 car [List Nil] = throwError EmptyError
 
-cdr :: [Val] -> Except NativeError Val
+cdr :: MonadError NativeError m => [Val] -> m Val
 cdr [List (Cons _ xs)] = return $ List xs
 cdr [List Nil] = throwError EmptyError
 
-cons :: [Val] -> Except NativeError Val
+cons :: Monad m => [Val] -> m Val
 cons [x, List xs] = return $ List (Cons x xs)
 
 prims :: Prog
