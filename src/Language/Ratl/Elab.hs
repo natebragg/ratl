@@ -149,11 +149,11 @@ instance Instantiable FunTy where
     instantiate = subst
 
 instance Instantiable Fun where
-    instantiate theta (Fun ty x e) = Fun (instantiate theta ty) x e
+    instantiate theta (Fun ty xs e) = Fun (instantiate theta ty) xs e
     instantiate theta (Native ty f) = Native (instantiate theta ty) f
 
 instance Instantiable TypedFun where
-    instantiate theta (TypedFun ty x e) = TypedFun (instantiate theta ty) x (instantiate theta e)
+    instantiate theta (TypedFun ty xs e) = TypedFun (instantiate theta ty) xs (instantiate theta e)
     instantiate theta (TypedNative ty f) = TypedNative (instantiate theta ty) f
 
 instance Instantiable TypedEx where
@@ -173,14 +173,16 @@ instance Elab Prog where
 
 instance Elab Fun where
     type Type Fun = TypedFun
-    elab (Fun fty@(Arrow pty rty) x e) = do
-        ety <- withReaderT (\ce -> ce {gamma = zip [x] pty}) $ elab e
+    elab (Fun fty@(Arrow pty rty) xs e) = do
+        when (length xs /= length pty) $
+            throwError $ ArityError (length xs) (length pty)
+        ety <- withReaderT (\ce -> ce {gamma = zip xs pty}) $ elab e
         theta <- solve rty (tyGet ety)
         let ety' = instantiate theta ety
             ty'' = tyGet ety'
         when (rty /= ty'') $
             throwError $ TypeError $ [(rty, ty'')]
-        return $ TypedFun fty x ety'
+        return $ TypedFun fty xs ety'
     elab (Native fty f) =
         return $ TypedNative fty f
 

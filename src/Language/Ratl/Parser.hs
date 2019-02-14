@@ -27,7 +27,7 @@ import Language.Ratl.Ty (
     FunTy(..),
     )
 
-import Text.Parsec (Parsec, ParsecT, Stream(..), try, many, (<|>), (<?>))
+import Text.Parsec (Parsec, ParsecT, Stream(..), try, many, many1, (<|>), (<?>))
 import Text.Parsec.Prim (
     tokenPrim,
     updateParserState,
@@ -138,16 +138,16 @@ ty = (reserved "int" >> return NatTy)
 
 funty :: SexpParser FunTy
 funty = do
-    t1 <- ty
+    t1 <- many1 ty
     reserved "->"
     t2 <- ty
-    return $ Arrow [t1] t2
+    return $ Arrow t1 t2
 
 fun :: SexpParser (Var, Fun)
 fun = (list $ reserved "define" >>
               (,) <$> var
                   <*> (Fun <$> list funty
-                           <*> list var
+                           <*> list (many1 var)
                            <*> ex))
   <?> "function definition"
 

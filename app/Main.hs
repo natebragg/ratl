@@ -10,7 +10,7 @@ import Data.Either (lefts, rights)
 import Data.List (intercalate)
 import Data.Maybe (isNothing, fromJust)
 import Data.Tuple (swap)
-import Text.Parsec (parse, eof)
+import Text.Parsec (parse, many1, eof)
 import Text.Printf (printf)
 import Text.Read (readEither)
 import System.Exit (exitSuccess, exitFailure)
@@ -157,12 +157,11 @@ main = do
     let prims_basis_module = prims_basis `mappend` m
     let p = callgraph $ prims_basis_module
     pty <- traverse (handleE . elaborate prims_basis_module) p
-    a <- if mode /= Run then return $ embed (0 :: Int) else
-        handleE $ fmap embed $ parse (sexp <* eof) "command line" cmdline
+    mainapp <- App (V "main") <$> if mode /= Run then return [] else
+        handleE $ map (Val . embed) <$> parse (many1 sexp <* eof) "command line" cmdline
     eqns <- annotate deg_max pty
-    let mainapp a = (App (V "main") [(Val a)])
     cl_eqns <- if mode /= Run then return [] else do
-        e <- handleE $ elaborate prims_basis_module (mainapp a)
+        e <- handleE $ elaborate prims_basis_module mainapp
         eqns <- annotateEx deg_max pty e
         return [(V fn, eqns)]
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
@@ -176,5 +175,5 @@ main = do
         putStrLn $ show f ++ bound
         return $ (f, not infeasible)
     when (mode == Run) $ do
-        v <- handleEx $ run p $ mainapp a
+        v <- handleEx $ run p mainapp
         print v

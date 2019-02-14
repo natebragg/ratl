@@ -56,7 +56,7 @@ run phi = eval []
                 in do rho' <- evalds rho bs
                       eval rho' e
           app :: MonadError RuntimeError m => Fun -> [Val] -> m Val
-          app (Fun    _ x b) vs = do
-                eval (zip [x] vs) b
+          app (Fun _ xs b) vs =
+                eval (zip xs vs) b
           app (Native _ f) vs =
                 toError $ withExcept NativeError $ f vs

@@ -61,7 +61,7 @@ class Typed t where
     tyOf :: t -> FunTy
 
 data FunRep e where
-    FunRep :: FunTy -> Var -> e -> FunRep e
+    FunRep :: FunTy -> [Var] -> e -> FunRep e
     NativeRep :: FunTy -> ([Val] -> Except NativeError Val) -> FunRep e
 
 instance Show (FunRep e) where
@@ -71,7 +71,7 @@ newtype Fun = F { unfun :: FunRep Ex }
 
 {-# COMPLETE Fun, Native #-}
 
-pattern Fun ty x e = F (FunRep ty x e)
+pattern Fun ty xs e = F (FunRep ty xs e)
 pattern Native ty f = F (NativeRep ty f)
 
 instance Show Fun where
@@ -85,7 +85,7 @@ newtype TypedFun = TypedF { untypedfun :: FunRep TypedEx }
 
 {-# COMPLETE TypedFun, TypedNative #-}
 
-pattern TypedFun ty x e = TypedF (FunRep ty x e)
+pattern TypedFun ty xs e = TypedF (FunRep ty xs e)
 pattern TypedNative ty f = TypedF (NativeRep ty f)
 
 instance Show TypedFun where

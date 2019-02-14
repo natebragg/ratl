@@ -386,9 +386,9 @@ class Annotate a where
 instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
    anno f@(_, (_, qs)) = annoFun f >> return qs
     where annoFun :: MonadRWS AnnoState [GeneralConstraint] Anno m => (Var, (TypedFun, (VarEnv, IxEnv))) -> m ()
-          annoFun (_, (TypedFun (Arrow pty rty) x e, (pqs, rqs))) = do
+          annoFun (_, (TypedFun (Arrow pty rty) xs e, (pqs, rqs))) = do
               (q, q') <- anno e
-              constrain $ snd pqs - snd (varclose [x] $ augmentMany ([FVar x], pty) q) ==* 0
+              constrain $ snd pqs - snd (varclose xs $ augmentMany (map FVar xs, pty) q) ==* 0
               constrain $ rqs - q' ==* 0
           annoFun (V "car",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) =                              freshIxEnv [ty_l] >>= \qt -> freshIxEnv [ty_h, ty_l] >>= \qp -> consShift (to_ctx rqs) qt qp pqs
           annoFun (V "cdr",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh ->                              freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qh (to_ctx rqs) qp pqs
