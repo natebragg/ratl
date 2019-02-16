@@ -3,7 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Language.Ratl.Parser (
-    preorder,
+    iterator,
     prog,
 ) where
 
@@ -11,7 +11,6 @@ import Language.Ratl.Val (
     Span(..),
     Embeddable(..),
     Val,
-    LitList(..),
     Lit(..),
     litSpan,
     )
@@ -27,7 +26,17 @@ import Language.Ratl.Ty (
     FunTy(..),
     )
 
-import Text.Parsec (Parsec, ParsecT, Stream(..), try, many, many1, (<|>), (<?>))
+import Text.Parsec (
+    Parsec,
+    ParsecT,
+    Stream(..),
+    notFollowedBy,
+    try,
+    many,
+    many1,
+    (<|>),
+    (<?>),
+    )
 import Text.Parsec.Prim (
     tokenPrim,
     updateParserState,
@@ -44,28 +53,31 @@ reservedSyms = [
     "#t", "#f"
     ]
 
-newtype Iterator = Iterator { runIterator :: Maybe ((Lit, Iterator), Iterator) }
+newtype Iterator = Iterator { runIterator :: Maybe (Lit, Iterator) }
 
-skipNext :: Iterator -> Iterator
-skipNext = Iterator . fmap (\((v, _), skip) -> ((v, skip), skip)) . runIterator
-
-preorder :: Lit -> Iterator
-preorder = gov (Iterator Nothing)
-    where gov :: Iterator -> Lit -> Iterator
-          gov next v@(LitList _ vs) = Iterator $ Just ((v, gol next vs), next)
-          gov next v                = Iterator $ Just ((v, next), next)
-          gol :: Iterator -> LitList -> Iterator
-          gol next (LitCons v vs) = gov (gol next vs) v
-          gol next LitNil         = next
+iterator :: Lit -> Iterator
+iterator = go (Iterator Nothing)
+    where go :: Iterator -> Lit -> Iterator
+          go next (LitNil _)      = next
+          go next (LitCons _ f s) = Iterator $ Just (f, go next s)
+          go next v               = Iterator $ Just (v, next)
 
 instance Monad m => Stream Iterator m Lit where
-    uncons = return . fmap fst . runIterator
+    uncons = return . runIterator
 
 type SexpParser = Parsec Iterator ()
 
+withStream :: Monad m => Iterator -> ParsecT Iterator u m a -> ParsecT Iterator u m a
+withStream s' p = do
+    s <- stateInput <$> getParserState
+    updateParserState $ \st -> st {stateInput = s'}
+    result <- p
+    updateParserState $ \st -> st {stateInput = s}
+    return result
+
 satisfy :: Monad m => (Lit -> Bool) -> ParsecT Iterator u m Lit
 satisfy f = tokenPrim (\a -> show a)
-                      (\pos t i -> case (litSpan t, fmap (litSpan . fst . fst) $ runIterator i) of
+                      (\pos t i -> case (litSpan t, fmap (litSpan . fst) $ runIterator i) of
                         (_, Just (Span start _)) -> start
                         (Span _ stop, _) -> stop
                         otherwise -> pos)
@@ -76,9 +88,6 @@ item a = satisfy (==a) <?> show a
 
 anyItem :: Monad m => ParsecT Iterator u m Lit
 anyItem = satisfy (const True)
-
-consume :: SexpParser Lit
-consume = updateParserState (\st -> st {stateInput = skipNext $ stateInput st}) >> anyItem
 
 int :: SexpParser Lit
 int = satisfy (\case LitNat _ _ -> True; _ -> False)
@@ -91,15 +100,10 @@ sym = satisfy (\case LitSym _ _ -> True; _ -> False)
 
 list :: SexpParser a -> SexpParser a
 list p = do
-    st <- getParserState
-    ((v, _), skip) <- maybe (unexpected "end of expression") return $
-                      runIterator $ stateInput st
-    setParserState $ st {stateInput = preorder v}
-    satisfy (\case LitList _ _ -> True; _ -> False)
-    result <- p
-    updateParserState $ \st -> st {stateInput = Iterator $ Just ((v, skip), skip)}
-    anyItem
-    return result
+    v <- satisfy (\case LitCons _ _ _ -> True; LitNil _ -> True; _ -> False)
+            <?> "beginning of s-expression"
+    withStream (iterator v) (p <* (notFollowedBy anyItem
+            <?> "end of s-expression"))
 
 identifier :: SexpParser Lit
 identifier = try $ do
@@ -118,7 +122,7 @@ var = (\(LitSym _ x) -> V x) <$> identifier
 val :: SexpParser Val
 val = embed <$> int
   <|> embed <$> boolean
-  <|> try (embed <$> (list $ reserved "quote" >> consume))
+  <|> try (embed <$> (list $ reserved "quote" >> anyItem))
   <?> "value"
 
 ex :: SexpParser Ex
@@ -152,4 +156,4 @@ fun = (list $ reserved "define" >>
   <?> "function definition"
 
 prog :: SexpParser Prog
-prog = makeProg <$> (list $ many fun)
+prog = makeProg <$> (many fun)

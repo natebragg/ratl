@@ -29,7 +29,6 @@ import Language.Ratl.Ty (
     FunTy(..),
     )
 import Language.Ratl.Val (
-    List(..),
     Val(..),
     )
 import Language.Ratl.Ast (
@@ -224,26 +223,24 @@ instance Elab Ex where
         let ty = tyGet ety
         return $ TypedLet ty etyds ety
 
+-- Incomplete: exclusion = UnitTy, PairTy 'a (ListTy 'b | t in exclusion)
+-- Fixing requires '() to type as {ListTy 'a, UnitTy}, and '(_ . ()) to
+-- type as {PairTy 'a UnitTy, PairTy 'a (ListTy 'b), ListTy 'a}
+-- unification is intersection over set member equivalence.
 instance Elab Val where
     type Type Val = Ty
     elab (Nat _)     = return NatTy
     elab (Boolean _) = return BooleanTy
-    elab Unit        = return UnitTy
     elab (Sym _)     = return SymTy
-    elab (List l)    = elab l
-
-instance Elab List where
-    type Type List = Ty
-    elab Nil = return $ ListTy uid
-    elab (Cons v vs) = do
-        vty <- elab v
-        lty <- elab vs
-        ty <- case lty of
+    elab Nil         = return $ ListTy uid
+    elab (Cons f s)  = do
+        vty <- elab f
+        lty <- elab s
+        case lty of
             ListTy lty' -> do
                 theta <- solve vty lty'
                 return $ ListTy $ instantiate theta lty'
-            t -> throwError $ TypeError [(ListTy vty, t)]
-        return ty
+            t -> return $ PairTy vty t
 
 elaborate :: (Elab a, MonadError TypeError m) => Prog -> a -> m (Type a)
 elaborate p a = runReaderT (elab a) (Env {phi = mapFun (second tyOf) p, gamma = []})

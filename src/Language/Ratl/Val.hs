@@ -1,19 +1,16 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE GADTs #-}
 
 module Language.Ratl.Val (
     Span(..),
     Embeddable(..),
-    List(Nil, Cons),
-    Val(List, Nat, Boolean, Unit, Sym),
-    LitList(LitNil, LitCons),
+    Val(   Nat,    Boolean,    Sym,    Nil,    Cons),
+    Lit(LitNat, LitBoolean, LitSym, LitNil, LitCons),
     litList,
-    Lit(LitList, LitNat, LitBoolean, LitUnit, LitSym),
     litSpan,
+    withSpan,
 ) where
 
 import Text.Parsec.Pos (SourcePos)
@@ -31,51 +28,6 @@ class Embeddable a where
 instance Embeddable (f (Fix f)) => Embeddable (Fix f) where
     embed = embed . unfix
     project = Fix . project
-
-
-data ListRep v = NilRep | ConsRep v (ListRep v)
-    deriving (Eq, Functor)
-
-instance Embeddable a => Embeddable [a] where
-    embed = List . go
-        where go [] = Nil
-              go (v:vs) = Cons (embed v) $ go vs
-
-    project (List a) = go a
-        where go Nil = []
-              go (Cons v vs) = project v:go vs
-    project v = projectionBug v
-
-instance Show v => Show (ListRep v) where
-    show l = beg ++ go "" l ++ end
-        where (beg, sep, end) = ("(", " ", ")")
-              go _ NilRep = ""
-              go c (ConsRep v vs) = c ++ show v ++ go sep vs
-
-newtype List = ListT { unlist :: ListRep (Fix ValRep) }
-    deriving Eq
-
-{-# COMPLETE Nil, Cons #-}
-
-pattern Nil = ListT NilRep
-pattern Cons v xs <- ((\case
-            l@(ListT (ConsRep v xs)) -> (l, Val v, ListT xs)
-            l -> (l, undefined, undefined)) -> (ListT (ConsRep _ _), v, xs))
-    where Cons v xs = ListT (ConsRep (unval v) (unlist xs))
-
-newtype LitList = LitListT { unsexp :: ListRep (Fix LitRep) }
-    deriving Eq
-
-{-# COMPLETE LitNil, LitCons #-}
-
-pattern LitNil = LitListT NilRep
-pattern LitCons v xs <- ((\case
-            l@(LitListT (ConsRep v xs)) -> (l, Lit v, LitListT xs)
-            l -> (l, undefined, undefined)) -> (LitListT (ConsRep _ _), v, xs))
-    where LitCons v xs = LitListT (ConsRep (unlit v) (unsexp xs))
-
-litList :: [Lit] -> LitList
-litList = LitListT . foldr (ConsRep . unlit) NilRep
 
 newtype Nat = N Int
     deriving (Eq)
@@ -100,11 +52,6 @@ instance Show Boolean where
     show (B True) = "#t"
     show (B False) = "#f"
 
-instance Embeddable () where
-    embed () = Unit
-    project Unit = ()
-    project v = projectionBug v
-
 newtype Sym = S String
     deriving (Eq)
 
@@ -116,37 +63,69 @@ instance Embeddable Sym where
     project (Sym x) = x
     project v = projectionBug v
 
-data ValRep v = ListRep (ListRep v)
-              | NatRep Nat
+instance Embeddable () where
+    embed () = Nil
+    project Nil = ()
+    project v = projectionBug v
+
+instance (Embeddable a, Embeddable b) => Embeddable (a, b) where
+    embed (a, b) = Cons (embed a) (embed b)
+    project (Cons f s) = (project f, project s)
+    project v = projectionBug v
+
+instance Embeddable a => Embeddable [a] where
+    embed = go
+        where go [] = Nil
+              go (v:vs) = Cons (embed v) $ go vs
+
+    project = go
+        where go Nil = []
+              go (Cons v vs) = project v:go vs
+              go v = projectionBug v
+
+data ValRep v = NatRep Nat
               | BooleanRep Boolean
-              | UnitRep
               | SymRep Sym
-    deriving (Eq, Functor)
+              | NilRep
+              | ConsRep v v
+    deriving Eq
 
 instance Embeddable v => Embeddable (ValRep v) where
-    embed = Val . Fix . fmap (unval . embed)
-    project = fmap (project . Val) . unfix . unval
+    embed (NatRep n)     = Val (Fix (NatRep n))
+    embed (BooleanRep b) = Val (Fix (BooleanRep b))
+    embed (SymRep s)     = Val (Fix (SymRep s))
+    embed  NilRep        = Val (Fix  NilRep)
+    embed (ConsRep f s)  = Val (Fix (ConsRep (unval $ embed f) (unval $ embed s)))
 
-instance Show v => Show (ValRep v) where
-    show (ListRep xs) = show xs
+    project (Val (Fix (NatRep n)))     = NatRep n
+    project (Val (Fix (BooleanRep b))) = BooleanRep b
+    project (Val (Fix (SymRep s)))     = SymRep s
+    project (Val (Fix  NilRep))        = NilRep
+    project (Val (Fix (ConsRep f s)))  = ConsRep (project $ Val f) (project $ Val s)
+
+instance (Show v, Embeddable v) => Show (ValRep v) where
     show (NatRep n) = show n
     show (BooleanRep b) = show b
-    show UnitRep = show ()
     show (SymRep s) = show s
+    show NilRep = show ()
+    show (ConsRep f s) = "(" ++ show f ++ go (unfix $ unval $ embed s) ++ ")"
+        where go NilRep = ""
+              go (ConsRep f s) = " " ++ show f ++ go (unfix $ unval $ embed s)
+              go v = " . " ++ show v
 
 newtype Val = Val { unval :: (Fix ValRep) }
     deriving Eq
 
-{-# COMPLETE List, Nat, Boolean, Unit, Sym #-}
+{-# COMPLETE Nat, Boolean, Sym, Nil, Cons #-}
 
-pattern List xs <- ((\case
-            v@(Val (Fix (ListRep xs))) -> (v, ListT xs)
-            v -> (v, undefined)) -> (Val (Fix (ListRep _)), xs))
-    where List xs = Val (Fix (ListRep (unlist xs)))
 pattern Nat n = Val (Fix (NatRep n))
 pattern Boolean b = Val (Fix (BooleanRep b))
-pattern Unit = Val (Fix UnitRep)
 pattern Sym s = Val (Fix (SymRep s))
+pattern Nil = Val (Fix NilRep)
+pattern Cons f s <- ((\case
+            v@(Val (Fix (ConsRep f s))) -> (v, (Val f, Val s))
+            v -> (v, undefined)) -> (Val (Fix (ConsRep _ _)), (f, s)))
+    where Cons f s = Val (Fix (ConsRep (unval f) (unval s)))
 
 instance Embeddable Val where
     embed = id
@@ -164,25 +143,31 @@ instance Embeddable a => Embeddable (LitRep a) where
     embed = embed . snd . unlitrep
     project = LitRep . (,) Unknown . project
 
-instance Show a => Show (LitRep a) where
+instance (Show a, Embeddable a) => Show (LitRep a) where
     show = show . snd . unlitrep
 
 newtype Lit = Lit { unlit :: (Fix LitRep) }
     deriving Eq
 
-{-# COMPLETE LitList, LitNat, LitBoolean, LitUnit, LitSym #-}
+{-# COMPLETE LitNat, LitBoolean, LitSym, LitNil, LitCons #-}
 
-pattern LitList span xs <- ((\case
-            v@(Lit (Fix (LitRep (_, ListRep xs)))) -> (v, LitListT xs)
-            v -> (v, undefined)) -> (Lit (Fix (LitRep (span, ListRep _))), xs))
-    where LitList span xs = Lit (Fix (LitRep (span, ListRep (unsexp xs))))
 pattern LitNat span n = Lit (Fix (LitRep (span, NatRep (N n))))
 pattern LitBoolean span b = Lit (Fix (LitRep (span, BooleanRep (B b))))
-pattern LitUnit span = Lit (Fix (LitRep (span, UnitRep)))
 pattern LitSym span s = Lit (Fix (LitRep (span, SymRep (S s))))
+pattern LitNil span = Lit (Fix (LitRep (span, NilRep)))
+pattern LitCons span f s <- ((\case
+            v@(Lit (Fix (LitRep (_, ConsRep f s)))) -> (v, (Lit f, Lit s))
+            v -> (v, undefined)) -> (Lit (Fix (LitRep (span, ConsRep _ _))), (f, s)))
+    where LitCons span f s = Lit (Fix (LitRep (span, ConsRep (unlit f) (unlit s))))
+
+litList :: [Lit] -> Lit
+litList = foldr (LitCons Unknown) (LitNil Unknown)
 
 litSpan :: Lit -> Span
 litSpan = fst . unlitrep . unfix . unlit
+
+withSpan :: Span -> Lit -> Lit
+withSpan s = Lit . Fix . LitRep . (,) s . snd . unlitrep . unfix . unlit
 
 instance Embeddable Lit where
     embed = embed . unlit

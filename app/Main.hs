@@ -21,7 +21,7 @@ import System.Console.GetOpt (usageInfo, getOpt, OptDescr(..), ArgDescr(..), Arg
 import qualified Data.Clp.Clp as Clp (version)
 import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralForm(..))
 import Language.Ratl.Reader (sexp, sexps)
-import Language.Ratl.Parser (preorder, prog)
+import Language.Ratl.Parser (iterator, prog)
 import Language.Ratl.Basis (prims, basis)
 import Language.Ratl.Index (ContextIndex, factor)
 import Language.Ratl.Val (embed)
@@ -148,12 +148,12 @@ main = do
         exitFailure
     handleE $ elaborate mempty prims
     sb <- handleE $ parse (sexps <* eof) "initial basis" basis
-    b <- handleE $ parse (prog <* eof) "initial basis" $ preorder sb
+    b <- handleE $ parse (prog <* eof) "initial basis" $ iterator sb
     let prims_basis = prims `mappend` b
     handleE $ elaborate prims_basis b
     inp <- readFile fn
     sm <- handleE $ parse (sexps <* eof) fn inp
-    m <- handleE $ parse (prog <* eof) fn $ preorder sm
+    m <- handleE $ parse (prog <* eof) fn $ iterator sm
     let prims_basis_module = prims_basis `mappend` m
     let p = callgraph $ prims_basis_module
     pty <- traverse (handleE . elaborate prims_basis_module) p

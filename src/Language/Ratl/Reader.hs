@@ -8,6 +8,7 @@ import Language.Ratl.Val (
     Span(Span),
     Lit(..),
     litList,
+    withSpan,
     )
 
 import Data.Char (isSpace)
@@ -56,6 +57,9 @@ identifier = P.identifier lexer
 num :: Parser Integer
 num = P.lexeme lexer (P.decimal lexer)
 
+group :: Parser a -> Parser a
+group = (<|>) <$> parens <*> brackets
+
 nat :: Parser Int
 nat = fromInteger <$> num
 
@@ -80,12 +84,11 @@ atom = spanOf LitBoolean boolean
    <?> "atom"
 
 list :: Parser Lit
-list = spanOf LitList (parens (litList <$> many sexp))
-   <|> spanOf LitList (brackets (litList <$> many sexp))
+list = spanOf withSpan (group $ litList <$> many sexp)
    <?> "list"
 
 quoted :: Parser Lit
-quoted = spanOf LitList $ do
+quoted = spanOf withSpan $ do
     quote <- spanOf LitSym $ char '\'' >> return "quote"
     datum <- sexp
     return $ litList [quote, datum]
@@ -97,4 +100,4 @@ sexp = quoted
    <?> "s-expression"
 
 sexps :: Parser Lit
-sexps = whiteSpace >> spanOf LitList (litList <$> many sexp)
+sexps = whiteSpace >> spanOf withSpan (litList <$> many sexp)

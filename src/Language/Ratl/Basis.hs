@@ -12,7 +12,6 @@ import Language.Ratl.Ty (
     )
 import Language.Ratl.Val (
     Embeddable(..),
-    List(..),
     Val(..),
     )
 import Language.Ratl.Ast (
@@ -42,18 +41,19 @@ equal :: Monad m => [Val] -> m Val
 equal [a, b] = return $ embed $ a == b
 
 null' :: Monad m => [Val] -> m Val
-null' [List xs] = return $ embed $ xs == Nil
-
-car :: MonadError RuntimeError m => [Val] -> m Val
-car [List (Cons x _)] = return $ x
-car [List Nil] = throwError EmptyError
-
-cdr :: MonadError RuntimeError m => [Val] -> m Val
-cdr [List (Cons _ xs)] = return $ List xs
-cdr [List Nil] = throwError EmptyError
+null' [Cons _ _] = return $ embed False
+null' [Nil]      = return $ embed True
 
 cons :: Monad m => [Val] -> m Val
-cons [x, List xs] = return $ List (Cons x xs)
+cons [x, xs] = return $ Cons x xs
+
+car :: MonadError RuntimeError m => [Val] -> m Val
+car [Cons x _] = return x
+car [Nil] = throwError EmptyError
+
+cdr :: MonadError RuntimeError m => [Val] -> m Val
+cdr [Cons _ xs] = return xs
+cdr [Nil] = throwError EmptyError
 
 error' :: MonadError RuntimeError m => [Val] -> m Val
 error' [v] = throwError $ UserError v
