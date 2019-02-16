@@ -60,9 +60,9 @@ instance Indexable Index Ty where
     index (UnitTy)     = [[AIndex]]
     index (SymTy)      = [[AIndex]]
     index (Tyvar _)    = [[AIndex]]
-    index (PairTy ts)  = do
+    index (PairTy t1 t2)  = do
         ds <- groupBy ((==) `on` deg . PIndex . heads) $
-              uncurry (diagonals `on` index) ts
+              (diagonals `on` index) t1 t2
         return $ ds >>= \(d1, d2) -> curry PIndex <$> d1 <*> d2
     index (ListTy t) = do
         cs <- combos (index t)
@@ -100,7 +100,7 @@ instance Indexable ContextIndex [Ty] where
 
     poly (CIndex is) = product $ map poly is
 
-    index = fmap (fmap $ CIndex . unpair) . index . foldr (curry PairTy) UnitTy
+    index = fmap (fmap $ CIndex . unpair) . index . foldr PairTy UnitTy
         where unpair (PIndex (i1, i2)) = i1:unpair i2
               unpair _ = []
 

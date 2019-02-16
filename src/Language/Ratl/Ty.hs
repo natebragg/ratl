@@ -17,7 +17,7 @@ type Tyvar = String
 
 data Ty   = NatTy
           | ListTy Ty
-          | PairTy (Ty, Ty)
+          | PairTy Ty Ty
           | BooleanTy
           | UnitTy
           | SymTy
@@ -27,7 +27,7 @@ data Ty   = NatTy
 instance Show Ty where
     show NatTy = "int"
     show (ListTy t) = "(list " ++ show t ++ ")"
-    show (PairTy (t1, t2)) = "(pair " ++ show t1 ++ " " ++ show t2 ++ ")"
+    show (PairTy t1 t2) = "(pair " ++ show t1 ++ " " ++ show t2 ++ ")"
     show BooleanTy = "bool"
     show UnitTy = "unit"
     show SymTy = "sym"

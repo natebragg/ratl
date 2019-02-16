@@ -87,23 +87,23 @@ unify t t' = either (error . show) (flip subst t') $ solve t t'
 instance Unifiable Ty where
     uid = Tyvar "a"
 
-    freeVars       (ListTy ty) = freeVars ty
-    freeVars (PairTy (t1, t2)) = freeVars t1 ++ freeVars t2
-    freeVars         (Tyvar y) = [y]
-    freeVars                 _ = []
+    freeVars    (ListTy ty) = freeVars ty
+    freeVars (PairTy t1 t2) = freeVars t1 ++ freeVars t2
+    freeVars      (Tyvar y) = [y]
+    freeVars              _ = []
 
     subst theta = go
-        where go       (ListTy ty) = ListTy $ go ty
-              go (PairTy (t1, t2)) = PairTy (go t1, go t2)
-              go         (Tyvar x) = maybe (Tyvar x) id $ lookup x theta
-              go                 t = t
+        where go    (ListTy ty) = ListTy $ go ty
+              go (PairTy t1 t2) = PairTy (go t1) (go t2)
+              go      (Tyvar x) = maybe (Tyvar x) id $ lookup x theta
+              go              t = t
 
-    t'              ~~ t | t == t'             = return []
-    Tyvar x         ~~ t | x `elem` freeVars t = (\t' -> [(x, t')]) <$> alpha x t
-    Tyvar x         ~~ t                       = return [(x, t)]
-    t               ~~ Tyvar x                 = Tyvar x ~~ t
-    ListTy t        ~~ ListTy t'               = t ~~ t'
-    PairTy (t1, t2) ~~ PairTy (t3, t4)         = do
+    t'           ~~ t | t == t'             = return []
+    Tyvar x      ~~ t | x `elem` freeVars t = (\t' -> [(x, t')]) <$> alpha x t
+    Tyvar x      ~~ t                       = return [(x, t)]
+    t            ~~ Tyvar x                 = Tyvar x ~~ t
+    ListTy t     ~~ ListTy t'               = t ~~ t'
+    PairTy t1 t2 ~~ PairTy t3 t4            = do
         theta1 <- t1 ~~ t3
         theta2 <- subst theta1 t2 ~~ subst theta1 t4
         return $ theta2 `compose` theta1
