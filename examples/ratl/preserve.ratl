@@ -1,0 +1,14 @@
+; A test that demonstrates preserving potential across 
+; calls to car, cons, fst, snd, and pair.  Because of
+; the nature of list potential, preserve_carcons needs
+; quadratic degree in order to preserve, even though
+; the bound is linear.
+
+(define preserve_carcons ([list int] -> [list int]) (xs)
+    (preserve_carcons (cdr (car (cons xs '[])))))
+
+(define preserve_fstpair ([list int] -> [list int]) (xs)
+    (preserve_fstpair (cdr (fst (pair xs xs)))))
+
+(define preserve_sndpair ([list int] -> [list int]) (xs)
+    (preserve_sndpair (cdr (snd (pair xs xs)))))

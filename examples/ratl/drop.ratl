@@ -1,0 +1,4 @@
+(define drop (int [list int] -> [list int]) (n xs)
+     (if (= n 0)
+         xs
+         (drop (- n 1) (cdr xs))))
