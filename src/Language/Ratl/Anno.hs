@@ -393,12 +393,11 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
               pi <- projectNames (zip ys pty) zs
               constrain $ snd pqs - snd (varclose xs (ys, IndexEnv pty $ eqns qa <<< concat pi)) ==* 0
               constrain $ rqs - q' ==* 0
-          annoFun (V "car",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) =                              freshIxEnv [ty_l] >>= \qt -> freshIxEnv [ty_h, ty_l] >>= \qp -> consShift (to_ctx rqs) qt qp pqs
-          annoFun (V "cdr",  (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh ->                              freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qh (to_ctx rqs) qp pqs
-          annoFun (V "cons", (TypedNative (Arrow         [ty_h, ty_l] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh -> freshIxEnv [ty_l] >>= \qt ->                                    consShift qh qt pqs (to_ctx rqs)
-          annoFun (V "error", (TypedNative _ _, _)) = return ()
-          annoFun (_, (TypedNative (Arrow ty ty') _, (pqs, rqs))) = do
-              constrain $ [snd pqs %-% rqs ==$ 0]
+          annoFun (V "car",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) =                              freshIxEnv [ty_l] >>= \qt -> freshIxEnv [ty_h, ty_l] >>= \qp -> consShift (to_ctx rqs) qt qp pqs
+          annoFun (V "cdr",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh ->                              freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qh (to_ctx rqs) qp pqs
+          annoFun (V "cons",  (TypedNative (Arrow         [ty_h, ty_l] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h] >>= \qh -> freshIxEnv [ty_l] >>= \qt ->                                    consShift qh qt pqs (to_ctx rqs)
+          annoFun (V "error", (TypedNative _                              _, _              )) = return ()
+          annoFun (_,         (TypedNative _                              _, ((_, pqs), rqs))) = constrain $ [pqs %-% rqs ==$ 0]
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> CIxEnv -> CIxEnv -> m ()
           consShift qh qt qp ql = do
               let limit (i, is) = const (i, is) <$> lookup i (eqns qp)
