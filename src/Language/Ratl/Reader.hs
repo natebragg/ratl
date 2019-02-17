@@ -7,13 +7,27 @@ import Language.Ratl.Val (
     Embeddable(..),
     Span(Span),
     Lit(..),
+    litCons,
     litList,
     withSpan,
     )
 
 import Data.Char (isSpace)
-import Text.Parsec (try, many, getPosition, (<|>), (<?>))
+import Text.Parsec (
+    SourcePos,
+    notFollowedBy,
+    lookAhead,
+    option,
+    try,
+    many,
+    getPosition,
+    (<|>),
+    (<?>),
+    )
 import Text.Parsec.Char (noneOf, char)
+import Text.Parsec.Error (Message(UnExpect), newErrorMessage)
+import Text.Parsec.Prim (Consumed(Consumed), Reply(Error), mkPT)
+import Text.Parsec.Error (setErrorPos)
 import Text.Parsec.String (Parser)
 import Text.Parsec.Language (LanguageDef, emptyDef)
 import Text.Parsec.Token (GenLanguageDef(..))
@@ -54,11 +68,27 @@ brackets = P.brackets lexer
 identifier :: Parser String
 identifier = P.identifier lexer
 
+symbol :: String -> Parser String
+symbol = P.symbol lexer
+
 num :: Parser Integer
 num = P.lexeme lexer (P.decimal lexer)
 
+unexpectedAt :: String -> SourcePos -> Parser a
+unexpectedAt msg p = mkPT $ const $
+    return $ Consumed $ return $ Error $ newErrorMessage (UnExpect msg) p
+
 group :: Parser a -> Parser a
 group = (<|>) <$> parens <*> brackets
+
+groupEnd :: Parser String
+groupEnd = symbol ")" <|> symbol "]"
+
+isDot :: Parser Bool
+isDot = option False (reserved "." >> return True)
+
+noDot :: Parser ()
+noDot = notFollowedBy (reserved ".")
 
 nat :: Parser Int
 nat = fromInteger <$> num
@@ -84,7 +114,17 @@ atom = spanOf LitBoolean boolean
    <?> "atom"
 
 list :: Parser Lit
-list = spanOf withSpan (group $ litList <$> many sexp)
+list = spanOf withSpan (group $ do
+        es <- many (noDot >> sexp)
+        pos <- getPosition
+        dot <- isDot
+        if dot then do
+            e <- sexp
+                <|> unexpectedAt "'.' without a subsequent s-expression" pos
+            lookAhead groupEnd
+                <|> unexpectedAt "'.' with more than one subsequent s-expression" pos
+            return $ litCons e es
+        else return $ litList es)
    <?> "list"
 
 quoted :: Parser Lit

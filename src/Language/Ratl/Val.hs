@@ -8,6 +8,7 @@ module Language.Ratl.Val (
     Embeddable(..),
     Val(   Nat,    Boolean,    Sym,    Nil,    Cons),
     Lit(LitNat, LitBoolean, LitSym, LitNil, LitCons),
+    litCons,
     litList,
     litSpan,
     withSpan,
@@ -160,8 +161,11 @@ pattern LitCons span f s <- ((\case
             v -> (v, undefined)) -> (Lit (Fix (LitRep (span, ConsRep _ _))), (f, s)))
     where LitCons span f s = Lit (Fix (LitRep (span, ConsRep (unlit f) (unlit s))))
 
+litCons :: Lit -> [Lit] -> Lit
+litCons = foldr (LitCons Unknown)
+
 litList :: [Lit] -> Lit
-litList = foldr (LitCons Unknown) (LitNil Unknown)
+litList = litCons (LitNil Unknown)
 
 litSpan :: Lit -> Span
 litSpan = fst . unlitrep . unfix . unlit

@@ -5,6 +5,7 @@
 module Language.Ratl.Parser (
     iterator,
     prog,
+    eol,
 ) where
 
 import Language.Ratl.Val (
@@ -58,7 +59,6 @@ newtype Iterator = Iterator { runIterator :: Maybe (Lit, Iterator) }
 iterator :: Lit -> Iterator
 iterator = go (Iterator Nothing)
     where go :: Iterator -> Lit -> Iterator
-          go next (LitNil _)      = next
           go next (LitCons _ f s) = Iterator $ Just (f, go next s)
           go next v               = Iterator $ Just (v, next)
 
@@ -98,12 +98,28 @@ boolean = satisfy (\case LitBoolean _ _ -> True; _ -> False)
 sym :: SexpParser Lit
 sym = satisfy (\case LitSym _ _ -> True; _ -> False)
 
+nil :: SexpParser Lit
+nil = satisfy (\case LitNil _ -> True; _ -> False)
+
+cons :: SexpParser Lit
+cons = satisfy (\case LitCons _ _ _ -> True; _ -> False)
+
+eol :: SexpParser ()
+eol = do
+    -- This is subtle; A well-formed list ends with nil, with no further
+    -- tokens.  Parsec fails uncontrollably after trying to read past the
+    -- end of input.  So, to give good error messages, the parse must be
+    -- circuitous, and "unexpected" here works around another nuance.
+    try nil <|> do notFollowedBy anyItem
+                   unexpected "malformed end of list; possible misuse of '.'"
+    notFollowedBy anyItem
+  <?> "end of list"
+
 list :: SexpParser a -> SexpParser a
 list p = do
-    v <- satisfy (\case LitCons _ _ _ -> True; LitNil _ -> True; _ -> False)
-            <?> "beginning of s-expression"
-    withStream (iterator v) (p <* (notFollowedBy anyItem
-            <?> "end of s-expression"))
+    v <- cons
+    withStream (iterator v) (p <* eol)
+  <?> "list"
 
 identifier :: SexpParser Lit
 identifier = try $ do
