@@ -1,0 +1,9 @@
+(define zip ((list int) (list sym) -> (list (pair int sym))) (xs ys)
+  (if (null? xs)
+    '[]
+    (if (null? ys)
+      '[]
+      (cons (pair (car xs) (car ys)) (zip (cdr xs) (cdr ys))))))
+
+(define main ((list int) (list sym) -> (list (pair int sym))) (xs ys)
+  (zip xs ys))

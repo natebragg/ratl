@@ -1,5 +1,11 @@
 (define loop (int -> int) (_)
     (loop 0))
 
+(define loop_to_list (int -> [list int]) (n)
+    (loop_to_list n))
+
+(define loop_lit_list ([list int] -> int) (_)
+    (loop_lit_list (cdr '[1 2])))
+
 (define main (int -> int) (arg)
     (loop arg))

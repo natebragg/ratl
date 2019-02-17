@@ -1,0 +1,15 @@
+(define pairs (int [list int] -> [list [list int]]) (x ys)
+    (if (null? ys)
+        '[]
+        (cons (cons x (cons (car ys) '[]))
+              (pairs x (cdr ys)))))
+
+(define cart ([list int] [list int] -> [list [list [list int]]]) (xs ys)
+    (if (null? xs)
+        '[]
+        (cons (pairs (car xs) ys)
+              (cart (cdr xs) ys))))
+
+(define main ([list int] [list int] -> [list [list [list int]]]) (xs ys)
+    (cart xs ys))
+

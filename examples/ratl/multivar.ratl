@@ -1,0 +1,23 @@
+; This example serves as a minimal demonstration of the difference between
+; multivariate potential and the sums of univariate potential.
+;
+; The key is that prod cannot type without the environment containing the index
+; (<[*]_x, [*]_y), whereas dist only needs (<[*]_x, []_y) and ([]_x, <[*]_y)
+; where [] denotes constant potential, [*] linear potential, and < application
+; of the shift operation.
+
+(define mapmul (int [list int] -> [list int]) (x ys)
+    (if (null? ys) '[]
+        (cons (* x (car ys)) (mapmul x (cdr ys)))))
+
+(define dist ([list int] [list int] -> [list [list int]]) (xs ys)
+    (if (null? xs) '[]
+        (if (null? ys) '[]
+            (cons (mapmul (car xs) ys)
+                  (cons (mapmul (car ys) xs) '())))))
+
+(define prod ([list int] [list int] -> [list [list int]]) (xs ys)
+    (if (null? xs) '[]
+        (if (null? ys) '[]
+            (cons (mapmul (car xs) ys)
+                  (prod (cdr xs) ys)))))
