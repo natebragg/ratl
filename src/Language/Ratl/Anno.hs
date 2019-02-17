@@ -53,6 +53,7 @@ import Language.Ratl.Index (
     Index,
     ContextIndex,
     context,
+    splitPairs,
     deg,
     index,
     indexDeg,
@@ -304,6 +305,11 @@ share (xs, q) = foldrM shareOne (xs, q) repeats
 to_ctx :: IxEnv -> CIxEnv
 to_ctx q = IndexEnv [ixTy q] $ fromList $ map (first $ context . pure) $ elements $ eqns q
 
+expand_ctx :: CIxEnv -> CIxEnv
+expand_ctx q = IndexEnv (concatMap unPairTy $ ixTy q) $ fromList $ map (first splitPairs) $ elements $ eqns q
+    where unPairTy (PairTy t1 t2) = [t1, t2]
+          unPairTy t = [t]
+
 -- Reader/Writer/State Helpers
 
 lookupSCP :: MonadReader AnnoState m => Var -> m TypedProg
@@ -396,6 +402,9 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
           annoFun (V "car",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qp pqs >> constrainCar qp (to_ctx rqs)
           annoFun (V "cdr",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qp pqs >> constrainCdr qp (to_ctx rqs)
           annoFun (V "cons",  (TypedNative _                              _, ((_, pqs), rqs))) =                                    consShift pqs (to_ctx rqs)
+          annoFun (V "pair",  (TypedNative _                              _, ((_, pqs), rqs))) = constrain $ pqs - expand_ctx (to_ctx rqs) ==* 0
+          annoFun (V "fst",   (TypedNative _                              _, ((_, pqs), rqs))) = constrainCar (expand_ctx pqs) (to_ctx rqs)
+          annoFun (V "snd",   (TypedNative _                              _, ((_, pqs), rqs))) = constrainCdr (expand_ctx pqs) (to_ctx rqs)
           annoFun (V "error", (TypedNative _                              _, _              )) = return ()
           annoFun (_,         (TypedNative _                              _, ((_, pqs), rqs))) = constrain $ [pqs %-% rqs ==$ 0]
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> m ()

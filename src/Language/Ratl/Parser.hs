@@ -47,9 +47,11 @@ import Text.Parsec.Prim (
     unexpected,
     )
 
-reservedSyms = [
+reservedTySyms = [
     "->",
-    "int", "bool", "unit", "sym", "list",
+    "int", "bool", "unit", "sym", "list", "pair"
+    ]
+reservedSyms = [
     "define", "if", "let",
     "#t", "#f"
     ]
@@ -153,7 +155,8 @@ ty = (reserved "int" >> return NatTy)
  <|> (reserved "bool" >> return BooleanTy)
  <|> (reserved "unit" >> return UnitTy)
  <|> (reserved "sym" >> return SymTy)
- <|> (list $ reserved "list" >> ListTy <$> ty)
+ <|> (list $ (reserved "list" >> ListTy <$> ty)
+         <|> (reserved "pair" >> PairTy <$> ty <*> ty))
  <?> "type"
 
 funty :: SexpParser FunTy

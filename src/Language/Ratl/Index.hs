@@ -8,6 +8,7 @@ module Language.Ratl.Index (
   Index,
   ContextIndex,
   context,
+  splitPairs,
   deg,
   poly,
   index,
@@ -84,6 +85,11 @@ data ContextIndex = CIndex { uncontext :: [Index] }
 
 context :: [Index] -> ContextIndex
 context = CIndex
+
+splitPairs :: ContextIndex -> ContextIndex
+splitPairs = context . concatMap go . uncontext
+    where go (PIndex (i1, i2)) = [i1, i2]
+          go i = [i]
 
 instance Show ContextIndex where
     show (CIndex is) = '{' : intercalate ", " (map show is) ++ "}"

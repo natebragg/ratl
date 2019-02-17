@@ -77,6 +77,11 @@ prims = makeProg [
     (V "car",   Native (Arrow [ListTy (Tyvar "a")] (Tyvar "a"))                     car),
     (V "cdr",   Native (Arrow [ListTy (Tyvar "a")] (ListTy (Tyvar "a")))            cdr),
 
+    -- pair functions
+    (V "pair",  Native (Arrow [Tyvar "a", Tyvar "b"] (PairTy (Tyvar "a") (Tyvar "b"))) cons),
+    (V "fst",   Native (Arrow [PairTy (Tyvar "a") (Tyvar "b")] (Tyvar "a"))         car),
+    (V "snd",   Native (Arrow [PairTy (Tyvar "a") (Tyvar "b")] (Tyvar "b"))         cdr),
+
     -- io functions
     (V "error", Native (Arrow [Tyvar "a"] (Tyvar "b"))                              error')
     ]
