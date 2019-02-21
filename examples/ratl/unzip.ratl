@@ -1,0 +1,9 @@
+(define unzip ((list (pair int sym)) -> (pair (list int) (list sym))) (xsys)
+  (if (null? xsys)
+    (pair '[] '[])
+    (let ((t (unzip (cdr xsys)))
+          (h (car xsys)))
+      (pair (cons (fst h) (fst t)) (cons (snd h) (snd t))))))
+
+(define main ((list (pair int sym)) -> (pair (list int) (list sym))) (xsys)
+  (unzip xsys))
