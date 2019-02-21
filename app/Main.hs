@@ -3,12 +3,13 @@
 module Main where
 
 import Control.Arrow (second)
-import Control.Monad (when, forM)
+import Control.Monad (when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (State, get, put, runState)
 import Data.Either (lefts, rights)
 import Data.List (intercalate)
 import Data.Maybe (isNothing, fromJust)
+import Data.Traversable (for)
 import Data.Tuple (swap)
 import Text.Parsec (parse, many1, eof)
 import Text.Printf (printf)
@@ -30,6 +31,7 @@ import Language.Ratl.Ast (
     Var(V),
     Fun(..),
     Prog,
+    tyOf,
     lookupFun,
     mapFun,
     connects,
@@ -90,6 +92,7 @@ data Flag = Version
 
 data Mode = Analyze
           | Run
+          | Check
     deriving (Show, Read, Ord, Bounded, Enum, Eq)
 
 modelist :: String
@@ -159,13 +162,17 @@ main = do
     pty <- traverse (handleE . elaborate prims_basis_module) p
     mainapp <- App (V "main") <$> if mode /= Run then return [] else
         handleE $ parse (many1 (Val <$> embed <$> sexp) <* eof) "command line" cmdline
+    when (mode == Check) $ do
+        for (filter (isNothing . lookupFun prims_basis . fst) $ concat pty) $ \(x, f) ->
+            putStrLn $ show x ++ ": " ++ show (tyOf f)
+        exitSuccess
     eqns <- annotate deg_max pty
     cl_eqns <- if mode /= Run then return [] else do
         e <- handleE $ elaborate prims_basis_module mainapp
         eqns <- annotateEx deg_max pty e
         return [(V fn, eqns)]
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
-    forM module_eqns $ \(f, (ixs, eqns)) -> do
+    for module_eqns $ \(f, (ixs, eqns)) -> do
         let (optimums, _) = unzip $ progressive_solve eqns
         let feasible = filter (not . null) optimums
         let infeasible = null feasible
