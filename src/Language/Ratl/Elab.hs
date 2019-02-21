@@ -18,7 +18,7 @@ import Control.Arrow (second)
 import Control.Monad (when, void)
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Except.Extra (unlessJustM)
-import Control.Monad.Reader (runReaderT, withReaderT, ReaderT, asks)
+import Control.Monad.Reader (MonadReader, runReaderT, local, asks)
 
 import Language.Ratl.Ty (
     Tyvar,
@@ -164,7 +164,7 @@ instance Instantiable TypedEx where
 
 class Elab a where
     type Type a :: *
-    elab :: MonadError TypeError m => a -> ReaderT Env m (Type a)
+    elab :: (MonadReader Env m, MonadError TypeError m) => a -> m (Type a)
 
 instance Elab Prog where
     type Type Prog = TypedProg
@@ -175,7 +175,7 @@ instance Elab Fun where
     elab (Fun fty@(Arrow pty rty) xs e) = do
         when (length xs /= length pty) $
             throwError $ ArityError (length xs) (length pty)
-        ety <- withReaderT (\ce -> ce {gamma = zip xs pty}) $ elab e
+        ety <- local (\ce -> ce {gamma = zip xs pty}) $ elab e
         theta <- solve rty (tyGet ety)
         let ety' = instantiate theta ety
             ty'' = tyGet ety'
@@ -219,7 +219,7 @@ instance Elab Ex where
     elab (Let bs e) = do
         etyds <- traverse (traverse elab) bs
         let tyds = map (fmap tyGet) etyds
-        ety <- withReaderT (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
+        ety <- local (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
         let ty = tyGet ety
         return $ TypedLet ty etyds ety
 
