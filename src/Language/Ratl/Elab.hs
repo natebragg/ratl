@@ -15,7 +15,7 @@ import Data.Foldable (foldrM)
 import Data.Function (on)
 import Data.List (intersect, intercalate, union, unionBy, nub, foldl')
 import Control.Arrow (second)
-import Control.Monad (when, void)
+import Control.Monad (when, void, (<=<))
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Except.Extra (unlessJustM)
 import Control.Monad.Reader (MonadReader, runReaderT, local, asks)
@@ -74,6 +74,11 @@ class Unifiable t where
     freeVars :: t -> [Tyvar]
     subst :: TyvarEnv -> t -> t
     (~~) :: MonadError TypeError m => t -> t -> FreshTyvar m TyvarEnv
+
+infix 4 ~~
+
+refresh :: (Unifiable t, Monad m) => t -> FreshTyvar m t
+refresh t = foldrM alpha t $ freeVars t
 
 solve :: (MonadError TypeError m, Unifiable t) => t -> t -> m TyvarEnv
 solve t t' =
@@ -164,7 +169,7 @@ instance Instantiable TypedEx where
 
 class Elab a where
     type Type a :: *
-    elab :: (MonadReader Env m, MonadError TypeError m) => a -> m (Type a)
+    elab :: (MonadReader Env m, MonadError TypeError m) => a -> FreshTyvar m (Type a)
 
 instance Elab Prog where
     type Type Prog = TypedProg
@@ -172,15 +177,13 @@ instance Elab Prog where
 
 instance Elab Fun where
     type Type Fun = TypedFun
-    elab (Fun fty@(Arrow pty rty) xs e) = do
+    elab (Fun fty xs e) = do
+        Arrow pty rty <- refresh fty
         when (length xs /= length pty) $
             throwError $ ArityError (length xs) (length pty)
         ety <- local (\ce -> ce {gamma = zip xs pty}) $ elab e
-        theta <- solve rty (tyGet ety)
+        theta <- rty ~~ tyGet ety
         let ety' = instantiate theta ety
-            ty'' = tyGet ety'
-        when (rty /= ty'') $
-            throwError $ TypeError $ [(rty, ty'')]
         return $ TypedFun fty xs ety'
     elab (Native fty f) =
         return $ TypedNative fty f
@@ -196,25 +199,19 @@ instance Elab Ex where
         return $ TypedVal ty v
     elab (If ep et ef) = do
         etys <- traverse elab [ep, et, ef]
-        let ifty = [BooleanTy, uid, uid]
-        theta <- solve ifty (map tyGet etys)
+        ifty <- refresh [BooleanTy, uid, uid]
+        theta <- ifty ~~ map tyGet etys
         let [etyp', etyt', etyf'] = instantiate theta etys
         return $ TypedIf (tyGet etyf') etyp' etyt' etyf'
     elab (App f es) = do
         etys <- traverse elab es
-        Arrow ty ty' <- unlessJustM (asks $ lookup f . phi) $
+        Arrow ty ty' <- refresh <=< unlessJustM (asks $ lookup f . phi) $
             throwError $ NameError f
         when (length ty /= length es) $
             throwError $ ArityError (length ty) (length es)
-        theta1 <- solve (map tyGet etys) (ty ++ [ty'])
-        let tys    = instantiate theta1 ty
-            ty''   = instantiate theta1 ty'
-        theta2 <- solve (ty ++ [ty']) (map tyGet etys)
-        let etys'  = instantiate theta2 etys
-            tys'   = map tyGet etys'
-            ineqs  = filter (uncurry (/=)) (zip tys' tys)
-        when (not $ null ineqs) $
-            throwError $ TypeError $ ineqs
+        theta <- ty ++ [ty'] ~~ map tyGet etys
+        let ty''  = instantiate theta ty'
+            etys' = instantiate theta etys
         return $ TypedApp ty'' f etys'
     elab (Let bs e) = do
         etyds <- traverse (traverse elab) bs
@@ -232,15 +229,15 @@ instance Elab Val where
     elab (Nat _)     = return NatTy
     elab (Boolean _) = return BooleanTy
     elab (Sym _)     = return SymTy
-    elab Nil         = return $ ListTy uid
+    elab Nil         = ListTy <$> freshTyvar
     elab (Cons f s)  = do
         vty <- elab f
         lty <- elab s
         case lty of
             ListTy lty' -> do
-                theta <- solve vty lty'
+                theta <- vty ~~ lty'
                 return $ ListTy $ instantiate theta lty'
             t -> return $ PairTy vty t
 
 elaborate :: (Elab a, MonadError TypeError m) => Prog -> a -> m (Type a)
-elaborate p a = runReaderT (elab a) (Env {phi = mapFun (second tyOf) p, gamma = []})
+elaborate p a = runReaderT (evalFresh (elab a) []) (Env {phi = mapFun (second tyOf) p, gamma = []})
