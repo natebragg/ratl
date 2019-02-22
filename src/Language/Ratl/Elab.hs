@@ -42,6 +42,7 @@ import Language.Ratl.Ast (
     tyOf,
     tyGet,
     mapFun,
+    mapProg,
     travFun,
     )
 
@@ -157,6 +158,11 @@ instance Quantified TypedFun where
     subst theta (TypedFun ty xs e) = TypedFun (subst theta ty) xs (subst theta e)
     subst theta (TypedNative ty f) = TypedNative (subst theta ty) f
 
+instance Quantified Ex where
+    freeVars _ = []
+
+    subst _ e = e
+
 instance Quantified TypedEx where
     freeVars = freeVars . tyGet
 
@@ -165,6 +171,11 @@ instance Quantified TypedEx where
     subst theta (TypedIf ty ep et ef) = TypedIf (subst theta ty) (subst theta ep) (subst theta et) (subst theta ef)
     subst theta (TypedApp ty f es) = TypedApp (subst theta ty) f (subst theta es)
     subst theta (TypedLet ty bs e) = TypedLet (subst theta ty) (subst theta bs) (subst theta e)
+
+instance Quantified Prog where
+    freeVars = concat . mapFun (freeVars . snd)
+
+    subst = mapProg . fmap . subst
 
 class Elab a where
     type Type a :: *
@@ -238,5 +249,5 @@ instance Elab Val where
                 return $ ListTy $ subst theta lty'
             t -> return $ PairTy vty t
 
-elaborate :: (Elab a, MonadError TypeError m) => Prog -> a -> m (Type a)
-elaborate p a = runReaderT (evalFresh (elab a) []) (Env {phi = mapFun (second tyOf) p, gamma = []})
+elaborate :: (Elab a, Quantified a, MonadError TypeError m) => Prog -> a -> m (Type a)
+elaborate p a = runReaderT (evalFresh (elab a) (freeVars a)) (Env {phi = mapFun (second tyOf) p, gamma = []})
