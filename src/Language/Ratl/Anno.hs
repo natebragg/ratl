@@ -80,7 +80,7 @@ import Language.Ratl.Elab (
     unify,
     )
 import qualified Language.Ratl.Elab as Elab (
-    instantiate,
+    subst,
     solve,
     )
 
@@ -455,10 +455,10 @@ instance Annotate TypedEx where
                 else do
                     scp <- asks comp
                     let Right theta = Elab.solve (Arrow tys ty) $ tyOf asc
-                        fun = Elab.instantiate theta asc
+                        fun = Elab.subst theta asc
                     (q, q') <- freshFunBounds fun
                     local (\s -> s {degree = degree - 1, cost = zero}) $ do
-                        -- this is cheating for polymorphic mutual recursion; should instantiate tys over the scp somehow
+                        -- this is cheating for polymorphic mutual recursion; should subst tys over the scp somehow
                         cfscp <- refreshFunEnv $ update f (fun, (q, q')) scp
                         local (\s -> s {comp = cfscp}) $ traverse anno cfscp
                         let Just (_, (pcf, pcf')) = lookup f cfscp
@@ -467,7 +467,7 @@ instance Annotate TypedEx where
                 scp <- lookupSCP f
                 let asc = fromJust $ lookup f scp
                     Right theta = Elab.solve (Arrow tys ty) $ tyOf asc
-                    fun = Elab.instantiate theta asc
+                    fun = Elab.subst theta asc
                 scp' <- freshFunEnv $ update f fun scp
                 local (\cf -> cf {comp = scp'}) $ traverse anno scp'
                 let Just (_, (p, p')) = lookup f scp'

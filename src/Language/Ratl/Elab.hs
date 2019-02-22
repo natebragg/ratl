@@ -6,8 +6,8 @@ module Language.Ratl.Elab (
     Env(..),
     elaborate,
     Unifiable(uid),
+    subst,
     unify,
-    instantiate,
     solve,
 ) where
 
@@ -116,10 +116,10 @@ instance Unifiable Ty where
         return $ theta2 `compose` theta1
     t' ~~ t = throwError $ TypeError $ [(t', t)]
 
-instance Quantified [Ty] where
+instance (Functor f, Foldable f, Quantified a) => Quantified (f a) where
     freeVars = concatMap freeVars
 
-    subst = map . subst
+    subst = fmap . subst
 
 instance Unifiable [Ty] where
     uid = []
@@ -145,32 +145,26 @@ instance Unifiable FunTy where
         theta2 <- subst theta1 t2 ~~ subst theta1 t4
         return $ theta2 `compose` theta1
 
-class Instantiable t where
-    instantiate :: TyvarEnv -> t -> t
+instance Quantified Fun where
+    freeVars = freeVars . tyOf
 
-instance (Functor f, Instantiable a) => Instantiable (f a) where
-    instantiate theta = fmap (instantiate theta)
+    subst theta (Fun ty xs e) = Fun (subst theta ty) xs e
+    subst theta (Native ty f) = Native (subst theta ty) f
 
-instance Instantiable Ty where
-    instantiate = subst
+instance Quantified TypedFun where
+    freeVars = freeVars . tyOf
 
-instance Instantiable FunTy where
-    instantiate = subst
+    subst theta (TypedFun ty xs e) = TypedFun (subst theta ty) xs (subst theta e)
+    subst theta (TypedNative ty f) = TypedNative (subst theta ty) f
 
-instance Instantiable Fun where
-    instantiate theta (Fun ty xs e) = Fun (instantiate theta ty) xs e
-    instantiate theta (Native ty f) = Native (instantiate theta ty) f
+instance Quantified TypedEx where
+    freeVars = freeVars . tyGet
 
-instance Instantiable TypedFun where
-    instantiate theta (TypedFun ty xs e) = TypedFun (instantiate theta ty) xs (instantiate theta e)
-    instantiate theta (TypedNative ty f) = TypedNative (instantiate theta ty) f
-
-instance Instantiable TypedEx where
-    instantiate theta (TypedVar ty x) = TypedVar (instantiate theta ty) x
-    instantiate theta (TypedVal ty v) = TypedVal (instantiate theta ty) v
-    instantiate theta (TypedIf ty ep et ef) = TypedIf (instantiate theta ty) (instantiate theta ep) (instantiate theta et) (instantiate theta ef)
-    instantiate theta (TypedApp ty f es) = TypedApp (instantiate theta ty) f (instantiate theta es)
-    instantiate theta (TypedLet ty bs e) = TypedLet (instantiate theta ty) (instantiate theta bs) (instantiate theta e)
+    subst theta (TypedVar ty x) = TypedVar (subst theta ty) x
+    subst theta (TypedVal ty v) = TypedVal (subst theta ty) v
+    subst theta (TypedIf ty ep et ef) = TypedIf (subst theta ty) (subst theta ep) (subst theta et) (subst theta ef)
+    subst theta (TypedApp ty f es) = TypedApp (subst theta ty) f (subst theta es)
+    subst theta (TypedLet ty bs e) = TypedLet (subst theta ty) (subst theta bs) (subst theta e)
 
 class Elab a where
     type Type a :: *
@@ -188,7 +182,7 @@ instance Elab Fun where
             throwError $ ArityError (length xs) (length pty)
         ety <- local (\ce -> ce {gamma = zip xs pty}) $ elab e
         theta <- rty ~~ tyGet ety
-        let ety' = instantiate theta ety
+        let ety' = subst theta ety
         return $ TypedFun fty xs ety'
     elab (Native fty f) =
         return $ TypedNative fty f
@@ -206,7 +200,7 @@ instance Elab Ex where
         etys <- traverse elab [ep, et, ef]
         ifty <- refresh [BooleanTy, uid, uid]
         theta <- ifty ~~ map tyGet etys
-        let [etyp', etyt', etyf'] = instantiate theta etys
+        let [etyp', etyt', etyf'] = subst theta etys
         return $ TypedIf (tyGet etyf') etyp' etyt' etyf'
     elab (App f es) = do
         etys <- traverse elab es
@@ -215,8 +209,8 @@ instance Elab Ex where
         when (length ty /= length es) $
             throwError $ ArityError (length ty) (length es)
         theta <- ty ++ [ty'] ~~ map tyGet etys
-        let ty''  = instantiate theta ty'
-            etys' = instantiate theta etys
+        let ty''  = subst theta ty'
+            etys' = subst theta etys
         return $ TypedApp ty'' f etys'
     elab (Let bs e) = do
         etyds <- traverse (traverse elab) bs
@@ -241,7 +235,7 @@ instance Elab Val where
         case lty of
             ListTy lty' -> do
                 theta <- vty ~~ lty'
-                return $ ListTy $ instantiate theta lty'
+                return $ ListTy $ subst theta lty'
             t -> return $ PairTy vty t
 
 elaborate :: (Elab a, MonadError TypeError m) => Prog -> a -> m (Type a)
