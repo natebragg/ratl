@@ -63,22 +63,24 @@ instance Show TypeError where
     show (ArityError f a) = "Expected " ++ show f ++ " arguments, but got " ++ show a ++ "."
     show (NameError x) = "Name " ++ show x ++ " is not defined."
 
-alpha :: (Unifiable t, Monad m) => Tyvar -> t -> FreshTyvar m t
+class Quantified t where
+    freeVars :: t -> [Tyvar]
+    subst :: TyvarEnv -> t -> t
+
+alpha :: (Quantified t, Monad m) => Tyvar -> t -> FreshTyvar m t
 alpha x t = (\t' -> subst [(x, t')] t) <$> freshTyvar
+
+refresh :: (Quantified t, Monad m) => t -> FreshTyvar m t
+refresh t = foldrM alpha t $ freeVars t
 
 compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
 compose theta2 theta1 = unionBy ((==) `on` fst) (fmap (fmap (subst theta2)) theta1) theta2
 
-class Unifiable t where
+class Quantified t => Unifiable t where
     uid :: t
-    freeVars :: t -> [Tyvar]
-    subst :: TyvarEnv -> t -> t
     (~~) :: MonadError TypeError m => t -> t -> FreshTyvar m TyvarEnv
 
 infix 4 ~~
-
-refresh :: (Unifiable t, Monad m) => t -> FreshTyvar m t
-refresh t = foldrM alpha t $ freeVars t
 
 solve :: (MonadError TypeError m, Unifiable t) => t -> t -> m TyvarEnv
 solve t t' =
@@ -88,9 +90,7 @@ solve t t' =
 unify :: Unifiable t => t -> t -> t
 unify t t' = either (error . show) (flip subst t') $ solve t t'
 
-instance Unifiable Ty where
-    uid = Tyvar "a"
-
+instance Quantified Ty where
     freeVars    (ListTy ty) = freeVars ty
     freeVars (PairTy t1 t2) = freeVars t1 ++ freeVars t2
     freeVars      (Tyvar y) = [y]
@@ -101,6 +101,9 @@ instance Unifiable Ty where
               go (PairTy t1 t2) = PairTy (go t1) (go t2)
               go      (Tyvar x) = maybe (Tyvar x) id $ lookup x theta
               go              t = t
+
+instance Unifiable Ty where
+    uid = Tyvar "a"
 
     t'           ~~ t | t == t'             = return []
     Tyvar x      ~~ t | x `elem` freeVars t = (\t' -> [(x, t')]) <$> alpha x t
@@ -113,12 +116,13 @@ instance Unifiable Ty where
         return $ theta2 `compose` theta1
     t' ~~ t = throwError $ TypeError $ [(t', t)]
 
-instance Unifiable [Ty] where
-    uid = []
-
+instance Quantified [Ty] where
     freeVars = concatMap freeVars
 
     subst = map . subst
+
+instance Unifiable [Ty] where
+    uid = []
 
     []     ~~ []       = return []
     []     ~~ ts       = freshTyvar >>= \t' -> [t'] ~~ ts
@@ -128,12 +132,13 @@ instance Unifiable [Ty] where
         theta2 <- subst theta1 ts ~~ subst theta1 t's
         return $ theta2 `compose` theta1
 
-instance Unifiable FunTy where
-    uid = Arrow uid uid
-
+instance Quantified FunTy where
     freeVars (Arrow t t') = freeVars t ++ freeVars t'
 
     subst theta (Arrow t t') = Arrow (subst theta t) (subst theta t')
+
+instance Unifiable FunTy where
+    uid = Arrow uid uid
 
     Arrow t1 t2 ~~ Arrow t3 t4 = do
         theta1 <- t1 ~~ t3
