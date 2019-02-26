@@ -61,6 +61,7 @@ instance Indexable Index Ty where
     index (UnitTy)     = [[AIndex]]
     index (SymTy)      = [[AIndex]]
     index (Tyvar _)    = [[AIndex]]
+    index (ForAll _ t) = index t
     index (PairTy t1 t2)  = do
         ds <- groupBy ((==) `on` deg . PIndex . heads) $
               (diagonals `on` index) t1 t2

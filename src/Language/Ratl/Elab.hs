@@ -13,7 +13,8 @@ module Language.Ratl.Elab (
 
 import Data.Foldable (foldrM)
 import Data.Function (on)
-import Data.List (intersect, intercalate, union, unionBy, nub, foldl')
+import Data.List (intersect, intercalate, union, unionBy, nub, (\\), foldl')
+import Data.Mapping (deleteAll)
 import Control.Arrow (second)
 import Control.Monad (when, void, (<=<))
 import Control.Monad.Except (MonadError(..))
@@ -74,6 +75,11 @@ alpha x t = (\t' -> subst [(x, t')] t) <$> freshTyvar
 compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
 compose theta2 theta1 = unionBy ((==) `on` fst) (subst theta2 theta1) theta2
 
+generalize :: [Tyvar] -> Ty -> Ty
+generalize bs t = case freeVars t \\ bs of
+    [] -> t
+    as -> ForAll as t
+
 class Quantified t => Unifiable t where
     uid :: t
     (~~) :: MonadError TypeError m => t -> t -> FreshTyvar m TyvarEnv
@@ -93,21 +99,25 @@ instance Quantified Ty where
     freeVars    (ListTy ty) = freeVars ty
     freeVars (PairTy t1 t2) = nub $ freeVars t1 ++ freeVars t2
     freeVars      (Tyvar y) = [y]
+    freeVars (ForAll as ty) = freeVars ty \\ as
     freeVars              _ = []
 
     subst theta = go
         where go    (ListTy ty) = ListTy $ go ty
               go (PairTy t1 t2) = PairTy (go t1) (go t2)
               go      (Tyvar x) = maybe (Tyvar x) id $ lookup x theta
+              go (ForAll as ty) = ForAll as $ subst (deleteAll as theta) ty
               go              t = t
 
 instance Unifiable Ty where
     uid = Tyvar "a"
 
     t'           ~~ t | t == t'             = return []
-    Tyvar x      ~~ t | x `elem` freeVars t = (\t' -> [(x, t')]) <$> alpha x t
+    t'@(Tyvar x) ~~ t | x `elem` freeVars t = throwError $ TypeError [(t', t)]
     Tyvar x      ~~ t                       = return [(x, t)]
-    t            ~~ Tyvar x                 = Tyvar x ~~ t
+    t            ~~ t'@(Tyvar _)            = t' ~~ t
+    ForAll as ty ~~ t                       = error "This should not be possible."
+    t            ~~ t'@(ForAll _ _)         = t' ~~ t
     ListTy t     ~~ ListTy t'               = t ~~ t'
     PairTy t1 t2 ~~ PairTy t3 t4            = do
         theta1 <- t1 ~~ t3
@@ -117,6 +127,7 @@ instance Unifiable Ty where
 
     freshTy (ListTy ty   ) = ListTy <$> freshTy ty
     freshTy (PairTy t1 t2) = PairTy <$> freshTy t1 <*> freshTy t2
+    freshTy (ForAll as ty) = freshTy =<< foldrM alpha ty as
     freshTy ty             = return ty
 
 instance (Functor f, Foldable f, Quantified a) => Quantified (f a) where
@@ -235,7 +246,8 @@ instance Elab Ex where
         return $ TypedApp ty'' f etys'
     elab (Let bs e) = do
         etyds <- traverse (traverse elab) bs
-        let tyds = map (fmap tyGet) etyds
+        free <- asks $ freeVars . gamma
+        let tyds = map (fmap (generalize free . tyGet)) etyds
         ety <- local (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
         let ty = tyGet ety
         return $ TypedLet ty etyds ety

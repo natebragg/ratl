@@ -22,6 +22,7 @@ data Ty   = NatTy
           | UnitTy
           | SymTy
           | Tyvar Tyvar
+          | ForAll [Tyvar] Ty
     deriving (Eq, Ord)
 
 instance Show Ty where
@@ -32,6 +33,7 @@ instance Show Ty where
     show UnitTy = "unit"
     show SymTy = "sym"
     show (Tyvar x) = "'" ++ x
+    show (ForAll as t) = "(forall (" ++ unwords as ++ ") " ++ show t ++ ")"
 
 varname :: Int -> Tyvar
 varname n = if m > 0 then 'a':show m else [chr (ord 'a' + n)]
