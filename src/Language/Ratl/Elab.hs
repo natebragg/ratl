@@ -65,11 +65,11 @@ instance Show TypeError where
     show (ArityError f a) = "Expected " ++ show f ++ " arguments, but got " ++ show a ++ "."
     show (NameError x) = "Name " ++ show x ++ " is not defined."
 
-class Quantified t where
+class Quantifiable t where
     freeVars :: t -> [Tyvar]
     subst :: TyvarEnv -> t -> t
 
-alpha :: (Quantified t, Monad m) => Tyvar -> t -> FreshTyvar m t
+alpha :: (Quantifiable t, Monad m) => Tyvar -> t -> FreshTyvar m t
 alpha x t = (\t' -> subst [(x, t')] t) <$> freshTyvar
 
 compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
@@ -80,7 +80,7 @@ generalize bs t = case freeVars t \\ bs of
     [] -> t
     as -> ForAll as t
 
-class Quantified t => Unifiable t where
+class Quantifiable t => Unifiable t where
     uid :: t
     (~~) :: MonadError TypeError m => t -> t -> FreshTyvar m TyvarEnv
     freshTy :: Monad m => t -> FreshTyvar m t
@@ -95,7 +95,7 @@ solve t t' =
 unify :: Unifiable t => t -> t -> t
 unify t t' = either (error . show) (flip subst t') $ solve t t'
 
-instance Quantified Ty where
+instance Quantifiable Ty where
     freeVars    (ListTy ty) = freeVars ty
     freeVars (PairTy t1 t2) = nub $ freeVars t1 ++ freeVars t2
     freeVars      (Tyvar y) = [y]
@@ -130,7 +130,7 @@ instance Unifiable Ty where
     freshTy (ForAll as ty) = freshTy =<< foldrM alpha ty as
     freshTy ty             = return ty
 
-instance (Functor f, Foldable f, Quantified a) => Quantified (f a) where
+instance (Functor f, Foldable f, Quantifiable a) => Quantifiable (f a) where
     freeVars = concatMap freeVars
 
     subst = fmap . subst
@@ -149,7 +149,7 @@ instance Unifiable [Ty] where
     -- [Ty] is implicitly a universally quantified closure
     freshTy ty = traverse freshTy =<< foldrM alpha ty (freeVars ty)
 
-instance Quantified FunTy where
+instance Quantifiable FunTy where
     freeVars (Arrow t t') = freeVars t ++ freeVars t'
 
     subst theta (Arrow t t') = Arrow (subst theta t) (subst theta t')
@@ -167,24 +167,24 @@ instance Unifiable FunTy where
         Arrow t1 t2 <- foldrM alpha ty $ freeVars ty
         Arrow <$> traverse freshTy t1 <*> freshTy t2
 
-instance Quantified Fun where
+instance Quantifiable Fun where
     freeVars = freeVars . tyOf
 
     subst theta (Fun ty xs e) = Fun (subst theta ty) xs e
     subst theta (Native ty f) = Native (subst theta ty) f
 
-instance Quantified TypedFun where
+instance Quantifiable TypedFun where
     freeVars = freeVars . tyOf
 
     subst theta (TypedFun ty xs e) = TypedFun (subst theta ty) xs (subst theta e)
     subst theta (TypedNative ty f) = TypedNative (subst theta ty) f
 
-instance Quantified Ex where
+instance Quantifiable Ex where
     freeVars _ = []
 
     subst _ e = e
 
-instance Quantified TypedEx where
+instance Quantifiable TypedEx where
     freeVars = freeVars . tyGet
 
     subst theta (TypedVar ty x) = TypedVar (subst theta ty) x
@@ -193,7 +193,7 @@ instance Quantified TypedEx where
     subst theta (TypedApp ty f es) = TypedApp (subst theta ty) f (subst theta es)
     subst theta (TypedLet ty bs e) = TypedLet (subst theta ty) (subst theta bs) (subst theta e)
 
-instance Quantified Prog where
+instance Quantifiable Prog where
     freeVars = concat . mapFun (freeVars . snd)
 
     subst = mapProg . fmap . subst
@@ -271,5 +271,5 @@ instance Elab Val where
                 return $ ListTy $ subst theta lty'
             t -> return $ PairTy vty t
 
-elaborate :: (Elab a, Quantified a, MonadError TypeError m) => Prog -> a -> m (Type a)
+elaborate :: (Elab a, Quantifiable a, MonadError TypeError m) => Prog -> a -> m (Type a)
 elaborate p a = runReaderT (evalFresh (elab a) (freeVars a)) (Env {phi = mapFun (second tyOf) p, gamma = []})
