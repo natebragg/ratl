@@ -41,7 +41,9 @@ import Language.Ratl.Ast (
     Prog,
     TypedProg,
     tyOf,
+    tyPut,
     tyGet,
+    tySet,
     mapFun,
     mapProg,
     travFun,
@@ -174,11 +176,9 @@ instance Unifiable FunTy where
 instance Quantifiable Fun where
     freeVars = freeVars . tyOf
 
-    subst theta (Fun ty xs e) = Fun (subst theta ty) xs e
-    subst theta (Native ty f) = Native (subst theta ty) f
+    subst theta f = tyPut (subst theta $ tyOf f) f
 
-    generalize fs (Fun ty xs e) = Fun (generalize fs ty) xs e
-    generalize fs (Native ty f) = Native (generalize fs ty) f
+    generalize fs f = tyPut (generalize fs $ tyOf f) f
 
 instance Quantifiable TypedFun where
     freeVars = freeVars . tyOf
@@ -186,8 +186,7 @@ instance Quantifiable TypedFun where
     subst theta (TypedFun ty xs e) = TypedFun (subst theta ty) xs (subst theta e)
     subst theta (TypedNative ty f) = TypedNative (subst theta ty) f
 
-    generalize fs (TypedFun ty xs e) = TypedFun (generalize fs ty) xs e
-    generalize fs (TypedNative ty f) = TypedNative (generalize fs ty) f
+    generalize fs f = tyPut (generalize fs $ tyOf f) f
 
 instance Quantifiable Ex where
     freeVars _ = []
@@ -205,11 +204,7 @@ instance Quantifiable TypedEx where
     subst theta (TypedApp ty f es) = TypedApp (subst theta ty) f (subst theta es)
     subst theta (TypedLet ty bs e) = TypedLet (subst theta ty) (subst theta bs) (subst theta e)
 
-    generalize fs (TypedVar ty x) = TypedVar (generalize fs ty) x
-    generalize fs (TypedVal ty v) = TypedVal (generalize fs ty) v
-    generalize fs (TypedIf ty ep et ef) = TypedIf (generalize fs ty) ep et ef
-    generalize fs (TypedApp ty f es) = TypedApp (generalize fs ty) f es
-    generalize fs (TypedLet ty bs e) = TypedLet (generalize fs ty) bs e
+    generalize fs e = tySet (generalize fs $ tyGet e) e
 
 instance Quantifiable Prog where
     freeVars = concat . mapFun (freeVars . snd)

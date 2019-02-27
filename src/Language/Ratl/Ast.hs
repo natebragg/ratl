@@ -14,7 +14,9 @@ module Language.Ratl.Ast (
     Prog,
     TypedProg,
     tyOf,
+    tyPut,
     tyGet,
+    tySet,
     makeProg,
     lookupFun,
     updateFun,
@@ -63,6 +65,7 @@ instance Show RuntimeError where
 
 class Typed t where
     tyOf :: t -> FunTy
+    tyPut :: FunTy -> t -> t
 
 data FunRep e where
     FunRep :: FunTy -> [Var] -> e -> FunRep e
@@ -85,6 +88,9 @@ instance Typed Fun where
     tyOf (Fun ty _ _) = ty
     tyOf (Native ty _) = ty
 
+    tyPut ty (Fun _ xs e) = Fun ty xs e
+    tyPut ty (Native _ f) = Native ty f
+
 newtype TypedFun = TypedF { untypedfun :: FunRep TypedEx }
 
 {-# COMPLETE TypedFun, TypedNative #-}
@@ -98,6 +104,9 @@ instance Show TypedFun where
 instance Typed TypedFun where
     tyOf (TypedFun ty _ _) = ty
     tyOf (TypedNative ty _) = ty
+
+    tyPut ty (TypedFun _ xs e) = TypedFun ty xs e
+    tyPut ty (TypedNative _ f) = TypedNative ty f
 
 data ExRep e = VarRep Var
              | ValRep Val
@@ -166,6 +175,9 @@ instance Show TypedEx where
 
 tyGet :: TypedEx -> Ty
 tyGet = fst . untyrep . unfix . untypedex
+
+tySet :: Ty -> TypedEx -> TypedEx
+tySet ty = TypedEx . Fix . TyRep . (,) ty . snd . untyrep . unfix . untypedex
 
 newtype Prog = Prog {getProg :: Gr (Var, Fun) ()}
     deriving (Monoid)
