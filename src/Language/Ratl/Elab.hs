@@ -68,17 +68,13 @@ instance Show TypeError where
 class Quantifiable t where
     freeVars :: t -> [Tyvar]
     subst :: TyvarEnv -> t -> t
+    generalize :: [Tyvar] -> t -> t
 
 alpha :: (Quantifiable t, Monad m) => Tyvar -> t -> FreshTyvar m t
 alpha x t = (\t' -> subst [(x, t')] t) <$> freshTyvar
 
 compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
 compose theta2 theta1 = unionBy ((==) `on` fst) (subst theta2 theta1) theta2
-
-generalize :: [Tyvar] -> Ty -> Ty
-generalize bs t = case freeVars t \\ bs of
-    [] -> t
-    as -> ForAll as t
 
 class Quantifiable t => Unifiable t where
     uid :: t
@@ -109,6 +105,10 @@ instance Quantifiable Ty where
               go (ForAll as ty) = ForAll as $ subst (deleteAll as theta) ty
               go              t = t
 
+    generalize fs t = case freeVars t \\ fs of
+        [] -> t
+        as -> ForAll as t
+
 instance Unifiable Ty where
     uid = Tyvar "a"
 
@@ -135,6 +135,8 @@ instance (Functor f, Foldable f, Quantifiable a) => Quantifiable (f a) where
 
     subst = fmap . subst
 
+    generalize = fmap . generalize
+
 instance Unifiable [Ty] where
     uid = []
 
@@ -153,6 +155,8 @@ instance Quantifiable FunTy where
     freeVars (Arrow t t') = freeVars t ++ freeVars t'
 
     subst theta (Arrow t t') = Arrow (subst theta t) (subst theta t')
+
+    generalize _ t = t
 
 instance Unifiable FunTy where
     uid = Arrow uid uid
@@ -173,16 +177,24 @@ instance Quantifiable Fun where
     subst theta (Fun ty xs e) = Fun (subst theta ty) xs e
     subst theta (Native ty f) = Native (subst theta ty) f
 
+    generalize fs (Fun ty xs e) = Fun (generalize fs ty) xs e
+    generalize fs (Native ty f) = Native (generalize fs ty) f
+
 instance Quantifiable TypedFun where
     freeVars = freeVars . tyOf
 
     subst theta (TypedFun ty xs e) = TypedFun (subst theta ty) xs (subst theta e)
     subst theta (TypedNative ty f) = TypedNative (subst theta ty) f
 
+    generalize fs (TypedFun ty xs e) = TypedFun (generalize fs ty) xs e
+    generalize fs (TypedNative ty f) = TypedNative (generalize fs ty) f
+
 instance Quantifiable Ex where
     freeVars _ = []
 
     subst _ e = e
+
+    generalize _ e = e
 
 instance Quantifiable TypedEx where
     freeVars = freeVars . tyGet
@@ -193,10 +205,18 @@ instance Quantifiable TypedEx where
     subst theta (TypedApp ty f es) = TypedApp (subst theta ty) f (subst theta es)
     subst theta (TypedLet ty bs e) = TypedLet (subst theta ty) (subst theta bs) (subst theta e)
 
+    generalize fs (TypedVar ty x) = TypedVar (generalize fs ty) x
+    generalize fs (TypedVal ty v) = TypedVal (generalize fs ty) v
+    generalize fs (TypedIf ty ep et ef) = TypedIf (generalize fs ty) ep et ef
+    generalize fs (TypedApp ty f es) = TypedApp (generalize fs ty) f es
+    generalize fs (TypedLet ty bs e) = TypedLet (generalize fs ty) bs e
+
 instance Quantifiable Prog where
     freeVars = concat . mapFun (freeVars . snd)
 
     subst = mapProg . fmap . subst
+
+    generalize = mapProg . fmap . generalize
 
 class Elab a where
     type Type a :: *
@@ -247,10 +267,11 @@ instance Elab Ex where
     elab (Let bs e) = do
         etyds <- traverse (traverse elab) bs
         free <- asks $ freeVars . gamma
-        let tyds = map (fmap (generalize free . tyGet)) etyds
+        let etyd's = generalize free etyds
+            tyds = map (fmap tyGet) etyd's
         ety <- local (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
         let ty = tyGet ety
-        return $ TypedLet ty etyds ety
+        return $ TypedLet ty etyd's ety
 
 -- Incomplete: exclusion = UnitTy, PairTy 'a (ListTy 'b | t in exclusion)
 -- Fixing requires '() to type as {ListTy 'a, UnitTy}, and '(_ . ()) to
