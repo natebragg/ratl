@@ -47,6 +47,7 @@ import Language.Ratl.Ast (
     mapFun,
     mapProg,
     travFun,
+    travProg,
     )
 
 type TyEnv = [(Var, Ty)]
@@ -71,6 +72,7 @@ class Quantifiable t where
     freeVars :: t -> [Tyvar]
     subst :: TyvarEnv -> t -> t
     generalize :: [Tyvar] -> t -> t
+    freshTy :: Monad m => t -> FreshTyvar m t
 
 alpha :: (Quantifiable t, Monad m) => Tyvar -> t -> FreshTyvar m t
 alpha x t = (\t' -> subst [(x, t')] t) <$> freshTyvar
@@ -81,7 +83,6 @@ compose theta2 theta1 = unionBy ((==) `on` fst) (subst theta2 theta1) theta2
 class Quantifiable t => Unifiable t where
     uid :: t
     (~~) :: MonadError TypeError m => t -> t -> FreshTyvar m TyvarEnv
-    freshTy :: Monad m => t -> FreshTyvar m t
 
 infix 4 ~~
 
@@ -111,6 +112,11 @@ instance Quantifiable Ty where
         [] -> t
         as -> ForAll as t
 
+    freshTy (ListTy ty   ) = ListTy <$> freshTy ty
+    freshTy (PairTy t1 t2) = PairTy <$> freshTy t1 <*> freshTy t2
+    freshTy (ForAll as ty) = freshTy =<< foldrM alpha ty as
+    freshTy ty             = return ty
+
 instance Unifiable Ty where
     uid = Tyvar "a"
 
@@ -127,17 +133,14 @@ instance Unifiable Ty where
         return $ theta2 `compose` theta1
     t' ~~ t = throwError $ TypeError $ [(t', t)]
 
-    freshTy (ListTy ty   ) = ListTy <$> freshTy ty
-    freshTy (PairTy t1 t2) = PairTy <$> freshTy t1 <*> freshTy t2
-    freshTy (ForAll as ty) = freshTy =<< foldrM alpha ty as
-    freshTy ty             = return ty
-
-instance (Functor f, Foldable f, Quantifiable a) => Quantifiable (f a) where
+instance (Functor f, Foldable f, Traversable f, Quantifiable a) => Quantifiable (f a) where
     freeVars = concatMap freeVars
 
     subst = fmap . subst
 
     generalize = fmap . generalize
+
+    freshTy = traverse freshTy
 
 instance Unifiable [Ty] where
     uid = []
@@ -150,15 +153,17 @@ instance Unifiable [Ty] where
         theta2 <- subst theta1 ts ~~ subst theta1 t's
         return $ theta2 `compose` theta1
 
-    -- [Ty] is implicitly a universally quantified closure
-    freshTy ty = traverse freshTy =<< foldrM alpha ty (freeVars ty)
-
 instance Quantifiable FunTy where
     freeVars (Arrow t t') = freeVars t ++ freeVars t'
 
     subst theta (Arrow t t') = Arrow (subst theta t) (subst theta t')
 
+    -- in generalize and freshTy, FunTy is implicitly a universally quantified closure
     generalize _ t = t
+
+    freshTy ty = do
+        Arrow t1 t2 <- foldrM alpha ty $ freeVars ty
+        Arrow <$> traverse freshTy t1 <*> freshTy t2
 
 instance Unifiable FunTy where
     uid = Arrow uid uid
@@ -168,17 +173,14 @@ instance Unifiable FunTy where
         theta2 <- subst theta1 t2 ~~ subst theta1 t4
         return $ theta2 `compose` theta1
 
-    -- FunTy is implicitly a universally quantified closure
-    freshTy ty = do
-        Arrow t1 t2 <- foldrM alpha ty $ freeVars ty
-        Arrow <$> traverse freshTy t1 <*> freshTy t2
-
 instance Quantifiable Fun where
     freeVars = freeVars . tyOf
 
     subst theta f = tyPut (subst theta $ tyOf f) f
 
     generalize fs f = tyPut (generalize fs $ tyOf f) f
+
+    freshTy f = tyPut <$> freshTy (tyOf f) <*> pure f
 
 instance Quantifiable TypedFun where
     freeVars = freeVars . tyOf
@@ -188,12 +190,16 @@ instance Quantifiable TypedFun where
 
     generalize fs f = tyPut (generalize fs $ tyOf f) f
 
+    freshTy f = tyPut <$> freshTy (tyOf f) <*> pure f
+
 instance Quantifiable Ex where
     freeVars _ = []
 
     subst _ e = e
 
     generalize _ e = e
+
+    freshTy e = return e
 
 instance Quantifiable TypedEx where
     freeVars = freeVars . tyGet
@@ -206,12 +212,16 @@ instance Quantifiable TypedEx where
 
     generalize fs e = tySet (generalize fs $ tyGet e) e
 
+    freshTy e = tySet <$> freshTy (tyGet e) <*> pure e
+
 instance Quantifiable Prog where
     freeVars = concat . mapFun (freeVars . snd)
 
     subst = mapProg . fmap . subst
 
     generalize = mapProg . fmap . generalize
+
+    freshTy = travProg $ traverse freshTy
 
 class Elab a where
     type Type a :: *
@@ -244,10 +254,12 @@ instance Elab Ex where
         ty <- elab v
         return $ TypedVal ty v
     elab (If ep et ef) = do
-        etys <- traverse elab [ep, et, ef]
-        ifty <- freshTy [BooleanTy, uid, uid]
-        theta <- ifty ~~ map tyGet etys
-        let [etyp', etyt', etyf'] = subst theta etys
+        etyp <- elab ep
+        etyt <- elab et
+        etyf <- elab ef
+        theta1 <- tyGet etyp ~~ BooleanTy
+        theta2 <- subst theta1 (tyGet etyt) ~~ subst theta1 (tyGet etyf)
+        let [etyp', etyt', etyf'] = subst (theta2 `compose` theta1) [etyp, etyt, etyf]
         return $ TypedIf (tyGet etyf') etyp' etyt' etyf'
     elab (App f es) = do
         etys <- traverse elab es
