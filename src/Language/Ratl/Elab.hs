@@ -13,13 +13,14 @@ module Language.Ratl.Elab (
 
 import Data.Foldable (foldrM)
 import Data.Function (on)
-import Data.List (intersect, intercalate, union, unionBy, nub, (\\), foldl')
-import Data.Mapping (deleteAll)
-import Control.Arrow (second)
-import Control.Monad (when, void, (<=<))
+import Data.List (intercalate, union, unionBy, nub, (\\))
+import Data.Mapping (deleteAll, selectAll)
+import Control.Monad (when, (<=<))
 import Control.Monad.Except (MonadError(..))
 import Control.Monad.Except.Extra (unlessJustM)
-import Control.Monad.Reader (MonadReader, runReaderT, local, asks)
+import Control.Monad.Reader (runReaderT, local, asks)
+import Control.Monad.Writer (MonadWriter, runWriterT, tell)
+import Control.Monad.RWS.Extra (MonadRW, intercept)
 
 import Language.Ratl.Ty (
     Tyvar,
@@ -53,6 +54,7 @@ import Language.Ratl.Ast (
 type TyEnv = [(Var, Ty)]
 type FunTyEnv = [(Var, FunTy)]
 type TyvarEnv = [(Tyvar, Ty)]
+type Constraint = [(Ty, Ty)]
 
 data Env = Env {
         gamma :: TyEnv,
@@ -77,19 +79,35 @@ class Quantifiable t where
 alpha :: (Quantifiable t, Monad m) => Tyvar -> t -> FreshTyvar m t
 alpha x t = (\t' -> subst [(x, t')] t) <$> freshTyvar
 
-compose :: TyvarEnv -> TyvarEnv -> TyvarEnv
-compose theta2 theta1 = unionBy ((==) `on` fst) (subst theta2 theta1) theta2
+sat :: MonadError TypeError m => Constraint -> FreshTyvar m TyvarEnv
+sat = foldrM go []
+    where go (t, t') theta = do
+            theta' <- subst theta t ~~ subst theta t'
+            return $ theta' `compose` theta
+
+          t'           ~~ t | t == t'             = return []
+          t'@(Tyvar x) ~~ t | x `elem` freeVars t = throwError $ TypeError [(t', t)]
+          Tyvar x      ~~ t                       = return [(x, t)]
+          t            ~~ t'@(Tyvar _)            = t' ~~ t
+          ForAll as ty ~~ t                       = error "This should not be possible."
+          t            ~~ t'@(ForAll _ _)         = t' ~~ t
+          ListTy t     ~~ ListTy t'               = t ~~ t'
+          PairTy t1 t2 ~~ PairTy t3 t4            = do
+              theta1 <- t1 ~~ t3
+              theta2 <- subst theta1 t2 ~~ subst theta1 t4
+              return $ theta2 `compose` theta1
+          t' ~~ t = throwError $ TypeError $ [(t', t)]
+
+          compose theta2 theta1 = unionBy ((==) `on` fst) (subst theta2 theta1) theta2
 
 class Quantifiable t => Unifiable t where
     uid :: t
-    (~~) :: MonadError TypeError m => t -> t -> FreshTyvar m TyvarEnv
-
-infix 4 ~~
+    constrain :: t -> t -> Constraint
 
 solve :: (MonadError TypeError m, Unifiable t) => t -> t -> m TyvarEnv
 solve t t' =
     let fv's  = freeVars t'
-    in  evalFresh (foldrM alpha t fv's >>= (t' ~~)) (freeVars t ++ fv's)
+    in  evalFresh (sat =<< constrain t' <$> foldrM alpha t fv's) (freeVars t ++ fv's)
 
 unify :: Unifiable t => t -> t -> t
 unify t t' = either (error . show) (flip subst t') $ solve t t'
@@ -120,18 +138,7 @@ instance Quantifiable Ty where
 instance Unifiable Ty where
     uid = Tyvar "a"
 
-    t'           ~~ t | t == t'             = return []
-    t'@(Tyvar x) ~~ t | x `elem` freeVars t = throwError $ TypeError [(t', t)]
-    Tyvar x      ~~ t                       = return [(x, t)]
-    t            ~~ t'@(Tyvar _)            = t' ~~ t
-    ForAll as ty ~~ t                       = error "This should not be possible."
-    t            ~~ t'@(ForAll _ _)         = t' ~~ t
-    ListTy t     ~~ ListTy t'               = t ~~ t'
-    PairTy t1 t2 ~~ PairTy t3 t4            = do
-        theta1 <- t1 ~~ t3
-        theta2 <- subst theta1 t2 ~~ subst theta1 t4
-        return $ theta2 `compose` theta1
-    t' ~~ t = throwError $ TypeError $ [(t', t)]
+    constrain t t' = [(t, t')]
 
 instance (Functor f, Foldable f, Traversable f, Quantifiable a) => Quantifiable (f a) where
     freeVars = concatMap freeVars
@@ -145,13 +152,10 @@ instance (Functor f, Foldable f, Traversable f, Quantifiable a) => Quantifiable 
 instance Unifiable [Ty] where
     uid = []
 
-    []     ~~ []       = return []
-    []     ~~ ts       = freshTyvar >>= \t' -> [t'] ~~ ts
-    ts     ~~ []       = [] ~~ ts
-    (t:ts) ~~ (t':t's) = do
-        theta1 <- t ~~ t'
-        theta2 <- subst theta1 ts ~~ subst theta1 t's
-        return $ theta2 `compose` theta1
+    constrain ts ts' =
+        if length ts /= length ts'
+        then error "attempt to constrain lists of unequal size"
+        else zip ts ts'
 
 instance Quantifiable FunTy where
     freeVars (Arrow t t') = freeVars t ++ freeVars t'
@@ -168,10 +172,8 @@ instance Quantifiable FunTy where
 instance Unifiable FunTy where
     uid = Arrow uid uid
 
-    Arrow t1 t2 ~~ Arrow t3 t4 = do
-        theta1 <- t1 ~~ t3
-        theta2 <- subst theta1 t2 ~~ subst theta1 t4
-        return $ theta2 `compose` theta1
+    constrain (Arrow t1 t2) (Arrow t3 t4) =
+        constrain (t2:t1) (t4:t3)
 
 instance Quantifiable Fun where
     freeVars = freeVars . tyOf
@@ -223,9 +225,12 @@ instance Quantifiable Prog where
 
     freshTy = travProg $ traverse freshTy
 
+(~~) :: (MonadWriter Constraint m, Unifiable t) => t -> t -> m ()
+(~~) = (tell .) . constrain
+
 class Elab a where
     type Type a :: *
-    elab :: (MonadReader Env m, MonadError TypeError m) => a -> FreshTyvar m (Type a)
+    elab :: (MonadRW Env Constraint m, MonadError TypeError m) => a -> FreshTyvar m (Type a)
 
 instance Elab Prog where
     type Type Prog = TypedProg
@@ -233,13 +238,15 @@ instance Elab Prog where
 
 instance Elab Fun where
     type Type Fun = TypedFun
-    elab (Fun fty xs e) = do
-        Arrow pty rty <- freshTy fty
+    elab (Fun fty@(Arrow pty rty) xs e) = do
         when (length xs /= length pty) $
             throwError $ ArityError (length xs) (length pty)
-        ety <- local (\ce -> ce {gamma = zip xs pty}) $ elab e
-        theta <- rty ~~ tyGet ety
+        (ety, cs) <- intercept $ local (\ce -> ce {gamma = zip xs pty}) $ elab e
+        theta <- sat cs
         let ety' = subst theta ety
+            fty'@(Arrow pty' rty') = subst theta fty
+        when (not $ fty == fty') $
+            throwError $ TypeError $ filter (uncurry (/=)) $ zip (rty:pty) (rty':pty')
         return $ TypedFun fty xs ety'
     elab (Native fty f) =
         return $ TypedNative fty f
@@ -257,25 +264,26 @@ instance Elab Ex where
         etyp <- elab ep
         etyt <- elab et
         etyf <- elab ef
-        theta1 <- tyGet etyp ~~ BooleanTy
-        theta2 <- subst theta1 (tyGet etyt) ~~ subst theta1 (tyGet etyf)
-        let [etyp', etyt', etyf'] = subst (theta2 `compose` theta1) [etyp, etyt, etyf]
-        return $ TypedIf (tyGet etyf') etyp' etyt' etyf'
+        tyGet etyp ~~ BooleanTy
+        tyGet etyt ~~ tyGet etyf
+        return $ TypedIf (tyGet etyf) etyp etyt etyf
     elab (App f es) = do
         etys <- traverse elab es
         Arrow ty ty' <- freshTy <=< unlessJustM (asks $ lookup f . phi) $
             throwError $ NameError f
         when (length ty /= length es) $
             throwError $ ArityError (length ty) (length es)
-        theta <- ty ++ [ty'] ~~ map tyGet etys
-        let ty''  = subst theta ty'
-            etys' = subst theta etys
-        return $ TypedApp ty'' f etys'
+        ty ~~ map tyGet etys
+        return $ TypedApp ty' f etys
     elab (Let bs e) = do
-        etyds <- traverse (traverse elab) bs
+        (etyds, cs) <- intercept $ traverse (traverse elab) bs
         free <- asks $ freeVars . gamma
-        let etyd's = generalize free etyds
+        theta <- sat cs
+        let theta' = selectAll free theta
+            free' = union free $ freeVars theta'
+            etyd's = generalize free' $ subst theta etyds
             tyds = map (fmap tyGet) etyd's
+        traverse (\(a, t) -> Tyvar a ~~ t) theta'
         ety <- local (\ce -> ce {gamma = reverse tyds ++ gamma ce}) $ elab e
         let ty = tyGet ety
         return $ TypedLet ty etyd's ety
@@ -294,10 +302,14 @@ instance Elab Val where
         vty <- elab f
         lty <- elab s
         case lty of
-            ListTy lty' -> do
-                theta <- vty ~~ lty'
-                return $ ListTy $ subst theta lty'
+            ListTy vty' -> do
+                vty ~~ vty'
+                return lty
             t -> return $ PairTy vty t
 
 elaborate :: (Elab a, Quantifiable a, MonadError TypeError m) => Prog -> a -> m (Type a)
-elaborate p a = runReaderT (evalFresh (elab a) (freeVars a)) (Env {phi = mapFun (second tyOf) p, gamma = []})
+elaborate p a = do
+    (p', cs) <- runWriterT (runReaderT (evalFresh (elab a) (freeVars a)) (Env {phi = mapFun (fmap tyOf) p, gamma = []}))
+    when (not $ null cs) $
+        throwError $ TypeError cs
+    return p'

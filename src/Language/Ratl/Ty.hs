@@ -55,6 +55,7 @@ freshTyvar = do
     return $ Tyvar x
 
 data FunTy = Arrow [Ty] Ty
+    deriving Eq
 
 instance Show FunTy where
     show (Arrow t t') = "(" ++ intercalate " " (map show t ++ ["->", show t']) ++ ")"

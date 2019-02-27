@@ -3,16 +3,20 @@
 {-# LANGUAGE ConstraintKinds #-}
 
 module Control.Monad.RWS.Extra (
+    MonadRW,
     MonadRS,
     MonadWS,
     evalRWT,
     execRWT,
+    intercept,
 ) where
 
 import Control.Monad.RWS (RWST(runRWST), execRWST)
 import Control.Monad.State (MonadState, get, put)
 import Control.Monad.Reader (MonadReader)
-import Control.Monad.Writer (MonadWriter)
+import Control.Monad.Writer (MonadWriter, listen, pass)
+
+type MonadRW r w m = (MonadReader r m, MonadWriter w m)
 
 type MonadRS r s m = (MonadReader r m, MonadState s m)
 
@@ -31,3 +35,6 @@ execRWT m r = do
     (s', w) <- execRWST m r s
     put s'
     return w
+
+intercept :: MonadWriter w m => m a -> m (a, w)
+intercept = pass . fmap (flip (,) $ const mempty) . listen
