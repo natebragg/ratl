@@ -1,4 +1,4 @@
-(define unzip ((list (pair int sym)) -> (pair (list int) (list sym))) (xsys)
+(define unzip ((list (pair 'a 'b)) -> (pair (list 'a) (list 'b))) (xsys)
   (if (null? xsys)
     (pair '[] '[])
     (let ((t (unzip (cdr xsys)))

@@ -1,10 +1,10 @@
-(define loop (int -> int) (_)
+(define loop ('a -> 'b) (_)
     (loop 0))
 
-(define loop_to_list (int -> [list int]) (n)
+(define loop_to_list ('a -> [list 'b]) (n)
     (loop_to_list n))
 
-(define loop_lit_list ([list int] -> int) (_)
+(define loop_lit_list ([list 'a] -> 'b) (_)
     (loop_lit_list (cdr '[1 2])))
 
 (define main (int -> int) (arg)

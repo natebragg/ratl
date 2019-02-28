@@ -1,17 +1,12 @@
-(define snoc ((list int) int -> (list int)) (xs x)
+(define snoc ((list 'a) 'a -> (list 'a)) (xs x)
   (if (null? xs)
     (cons x '())
     (cons (car xs) (snoc (cdr xs) x))))
 
-(define reverseQuad ((list int) -> (list int)) (xs)
+(define reverseQuad ((list 'a) -> (list 'a)) (xs)
   (if (null? xs)
     '[]
     (snoc (reverseQuad (cdr xs)) (car xs))))
 
-(define revapp ((list int) (list int) -> (list int)) (xs ys)
-  (if (null? xs)
-    ys
-    (revapp (cdr xs) (cons (car xs) ys))))
-
-(define reverseLin ((list int) -> (list int)) (xs)
+(define reverseLin ((list 'a) -> (list 'a)) (xs)
   (revapp xs '[]))

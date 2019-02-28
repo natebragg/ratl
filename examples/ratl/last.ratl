@@ -1,7 +1,7 @@
-(define last ([list int] -> int) (vals)
+(define last ([list 'a] -> 'a) (vals)
     (if (not (null? (cdr vals)))
         (last (cdr vals))
         (car vals)))
 
-(define main ([list int] -> int) (args)
+(define main ([list 'a] -> 'a) (args)
     (last args))

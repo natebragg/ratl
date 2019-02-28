@@ -1,4 +1,4 @@
-(define take (int [list int] -> [list int]) (n xs)
+(define take (int [list 'a] -> [list 'a]) (n xs)
      (if (= n 0)
          '[]
          (cons (car xs) (take (- n 1) (cdr xs)))))

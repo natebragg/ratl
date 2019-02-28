@@ -1,4 +1,4 @@
-(define zip ((list int) (list sym) -> (list (pair int sym))) (xs ys)
+(define zip ((list 'a) (list 'b) -> (list (pair 'a 'b))) (xs ys)
   (if (null? xs)
     '[]
     (if (null? ys)

@@ -1,7 +1,2 @@
-(define length ([list int] -> int) (xs)
-    (if (not (null? xs))
-        (+ 1 (length (cdr xs)))
-        0))
-
-(define main ([list int] -> int) (args)
+(define main ([list 'a] -> int) (args)
     (length args))

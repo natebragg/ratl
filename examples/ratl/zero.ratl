@@ -1,2 +1,2 @@
-(define main (int -> int) (args)
+(define main ('a -> int) (args)
     0)

@@ -23,6 +23,7 @@ import Language.Ratl.Ast (
     makeProg,
     )
 import Language.Ratl.Ty (
+    Tyvar,
     Ty(..),
     FunTy(..),
     )
@@ -32,6 +33,7 @@ import Text.Parsec (
     ParsecT,
     Stream(..),
     notFollowedBy,
+    lookAhead,
     try,
     many,
     many1,
@@ -133,6 +135,9 @@ identifier = try $ do
 reserved :: String -> SexpParser ()
 reserved s = try $ item (LitSym Unknown s) >> return ()
 
+quoted :: SexpParser Lit
+quoted = try $ list $ reserved "quote" >> anyItem
+
 var :: SexpParser Var
 var = (\(LitSym _ x) -> V x) <$> identifier
   <?> "identifier"
@@ -140,7 +145,7 @@ var = (\(LitSym _ x) -> V x) <$> identifier
 val :: SexpParser Val
 val = embed <$> int
   <|> embed <$> boolean
-  <|> try (embed <$> (list $ reserved "quote" >> anyItem))
+  <|> embed <$> quoted
   <?> "value"
 
 ex :: SexpParser Ex
@@ -150,11 +155,18 @@ ex = Var <$> var
          <|> (reserved "let" >> Let <$> (list $ many $ list $ (,) <$> var <*> ex) <*> ex)
          <|> (App <$> var <*> many ex))
 
+tyvar :: SexpParser Tyvar
+tyvar = do
+    LitSym _ s <- quoted
+    return s
+ <?> "tyvar"
+
 ty :: SexpParser Ty
 ty = (reserved "int" >> return NatTy)
  <|> (reserved "bool" >> return BooleanTy)
  <|> (reserved "unit" >> return UnitTy)
  <|> (reserved "sym" >> return SymTy)
+ <|> (Tyvar <$> tyvar)
  <|> (list $ (reserved "list" >> ListTy <$> ty)
          <|> (reserved "pair" >> PairTy <$> ty <*> ty))
  <?> "type"

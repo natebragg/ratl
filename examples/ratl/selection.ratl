@@ -5,7 +5,7 @@
              (let ((m (minimum (cdr xs))))
                   (if (< m x) m x)))))
 
-(define delnextofcar ([list int] -> [list int]) (xs)
+(define delnextofcar ([list 'a] -> [list 'a]) (xs)
     (let ((n (car xs))
           (xs (cdr xs)))
          (if (= n (car xs))

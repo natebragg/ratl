@@ -6,11 +6,6 @@
               (pair (fst lsrs) (cons (car xs) (snd lsrs)))
               (pair (cons (car xs) (fst lsrs)) (snd lsrs))))))
 
-(define append ([list int] [list int] -> [list int]) (xs ys)
-    (if (null? xs)
-        ys
-        (cons (car xs) (append (cdr xs) ys))))
-
 (define quick ([list int] -> [list int]) (xs)
     (if (null? xs)
         xs

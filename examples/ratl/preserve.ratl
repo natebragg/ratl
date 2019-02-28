@@ -4,11 +4,11 @@
 ; quadratic degree in order to preserve, even though
 ; the bound is linear.
 
-(define preserve_carcons ([list int] -> [list int]) (xs)
+(define preserve_carcons ([list 'a] -> [list 'a]) (xs)
     (preserve_carcons (cdr (car (cons xs '[])))))
 
-(define preserve_fstpair ([list int] -> [list int]) (xs)
+(define preserve_fstpair ([list 'a] -> [list 'a]) (xs)
     (preserve_fstpair (cdr (fst (pair xs xs)))))
 
-(define preserve_sndpair ([list int] -> [list int]) (xs)
+(define preserve_sndpair ([list 'a] -> [list 'a]) (xs)
     (preserve_sndpair (cdr (snd (pair xs xs)))))
