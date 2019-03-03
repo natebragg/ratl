@@ -6,9 +6,9 @@ import Control.Arrow (second)
 import Control.Monad (when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (State, get, put, runState)
-import Data.Either (lefts, rights)
+import Data.Either (partitionEithers)
 import Data.Foldable (toList)
-import Data.List (intercalate)
+import Data.List (intercalate, partition)
 import Data.Maybe (isNothing, fromJust)
 import Data.Traversable (for)
 import Data.Tuple (swap)
@@ -22,7 +22,7 @@ import System.Console.GetOpt (usageInfo, getOpt, OptDescr(..), ArgDescr(..), Arg
 
 import qualified Data.Clp.Clp as Clp (version)
 import Data.Clp.Program (LinearProgram(solve), LinearFunction, GeneralConstraint(Leq), GeneralForm(..))
-import Data.Clp.Pretty (varnames, renderEqn)
+import Data.Clp.Pretty (renderGridCompact, renderGridDefault, varnames, renderEqn, renderEqnDefault)
 import Language.Ratl.Reader (sexp, sexps)
 import Language.Ratl.Parser (iterator, prog, eol)
 import Language.Ratl.Basis (prims, basis)
@@ -83,6 +83,7 @@ data Flag = Version
           | Help
           | Mode String
           | Explicit
+          | Debug String
           | DegreeMax String
     deriving Eq
 
@@ -94,16 +95,25 @@ data Mode = Analyze
 modelist :: String
 modelist = intercalate ", " (map show [(Analyze)..])
 
+data Debug = Grid
+           | Compact
+           | Eqns
+    deriving (Show, Read, Ord, Bounded, Enum, Eq)
+
+debuglist :: String
+debuglist = intercalate ", " (map show [(Grid)..])
+
 opts :: [OptDescr Flag]
 opts = [Option ['v'] ["version"] (NoArg Version) "Version information.",
         Option ['h'] ["help"] (NoArg Help) "Print this message.",
         Option ['m'] ["mode"] (ReqArg Mode "MODE") ("One of: " ++ modelist),
         Option ['e'] ["explicit"] (NoArg Explicit) ("Always include explanation of bounds."),
+        Option ['g'] ["debug"] (ReqArg Debug "DEBUG") ("Print debugging info; one of: " ++ debuglist),
         Option ['d'] ["degreemax"] (ReqArg DegreeMax "DEGREE") "Maximum degree of analysis."]
 
 printUsage :: IO ()
 printUsage = putStr (usageInfo header opts)
-    where header = "Usage: " ++ appName ++ " [-d <n>] [-m <m>] filename <args>\n" ++ synopsis ++ "\n"
+    where header = "Usage: " ++ appName ++ " [-d <n>] [-m <m>] [-e] [-g <g>] filename <args>\n" ++ synopsis ++ "\n"
 
 printVersion :: IO ()
 printVersion = do
@@ -111,7 +121,7 @@ printVersion = do
     putStrLn $ "Version " ++ version
     putStrLn $ "Using Clp version " ++ Clp.version
 
-handleArgs :: IO (Int, Mode, Bool, String, String)
+handleArgs :: IO (Int, Mode, Maybe Debug, Bool, String, String)
 handleArgs = do
     args <- getArgs
     case getOpt RequireOrder opts args of
@@ -123,15 +133,18 @@ handleArgs = do
             | not $ null es -> putStr (concat es) >> printUsage >> exitFailure
             | otherwise -> let degrees = [readEither d | DegreeMax d <- os]
                                modes = [readEither m | Mode m <- os]
+                               debugs = [readEither m | Debug m <- os]
                                explicit = Explicit `elem` os
-                           in  case (lefts degrees, lefts modes, rights degrees, rights modes) of
-                             ([], [], ds, ms) ->
-                                return (last $ 1:ds, last $ Run:ms, explicit, fn, unwords args)
-                             (ds, ms,  _, _) -> do
+                           in  case (partitionEithers degrees, partitionEithers modes, partitionEithers debugs) of
+                             (([], ds), ([], ms), ([], gs)) ->
+                                return (last $ 1:ds, last $ Run:ms, last $ Nothing:map Just gs, explicit, fn, unwords args)
+                             ((ds, _), (ms, _),  (gs, _)) -> do
                                 when (not $ null ds) $
                                      putStrLn "Option degreemax requires integer argument"
                                 when (not $ null ms) $
                                      putStrLn $ "Option mode requires one of: " ++ modelist
+                                when (not $ null gs) $
+                                     putStrLn $ "Option debug requires one of: " ++ debuglist
                                 printUsage >> exitFailure
 
 handleE (Left e) = print e >> exitFailure
@@ -141,7 +154,7 @@ handleEx m = runExceptT m >>= handleE
 
 main :: IO ()
 main = do
-    (deg_max, mode, explicit, fn, cmdline) <- handleArgs
+    (deg_max, mode, debug, explicit, fn, cmdline) <- handleArgs
     when (deg_max < 0) $ do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
@@ -170,11 +183,16 @@ main = do
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
     for module_eqns $ \(f, (ixs, eqns)) -> do
         let (optimums, _) = unzip $ progressive_solve eqns
-        let feasible = filter (not . null) optimums
+            (infeas, feasible) = partition (null . snd) $ reverse $ zip eqns optimums
+            best_sln = take 1 $ feasible ++ infeas
+        for debug $ (for best_sln .) $ curry $ \case
+            (Grid   , (e, o)) -> putStrLn $ unlines [renderGridDefault e, "", renderGridDefault o, ""]
+            (Compact, (e, o)) -> putStrLn $ unlines [renderGridCompact e, "", renderGridCompact o, ""]
+            (Eqns   , (e, o)) -> putStrLn $ unlines [renderEqnDefault  e, "", renderEqnDefault  o, ""]
         let infeasible = null feasible
         let bound = if infeasible
                     then ": Analysis was infeasible"
-                    else ": " ++ pretty_bound explicit ixs (last feasible)
+                    else ": " ++ pretty_bound explicit ixs (snd $ head feasible)
         putStrLn $ show f ++ bound
         return $ (f, not infeasible)
     when (mode == Run) $ do
