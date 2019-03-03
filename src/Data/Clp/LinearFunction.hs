@@ -62,7 +62,7 @@ instance Group Double where
 type LinearFunction = LinFunc Int Double
 
 -- For efficiency, it's a critical invariant that LinFuncs are normalized.
--- Never construct with LinFunc, only sparse (or for debugging, dense).
+-- Never construct with LinFunc, only sparse and dense.
 data LinFunc i a where
     LinFunc :: (Ord i, Enum i, Eq a, Monoidal a) => [(i, a)] -> LinFunc i a
 

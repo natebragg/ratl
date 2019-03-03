@@ -1,6 +1,7 @@
 module Data.Clp.Program (
     LinearProgram(..),
     Objective,
+    LinearFunction,
     GeneralConstraint(..), (<=$), (==$), (>=$),
     GeneralForm(..),
     StandardConstraint(..),
@@ -8,15 +9,16 @@ module Data.Clp.Program (
 ) where
 
 import qualified Data.Clp.Clp as Clp
-import Data.Clp.LinearFunction (LinearFunction)
+import Data.Clp.LinearFunction (LinearFunction, dense)
 
 import Data.Foldable (toList)
+import Numeric.Algebra (zero)
 import System.IO.Unsafe (unsafePerformIO)
 
 inf = read "Infinity"
 
 class LinearProgram a where
-    solve :: a -> ([Double], Double)
+    solve :: a -> (LinearFunction, Double)
 
 type Objective = LinearFunction
 
@@ -62,8 +64,8 @@ instance LinearProgram GeneralForm where
         Clp.addRows model rowBounds elements
         status <- Clp.initialSolve model
         case status of
-            Clp.Optimal -> (,) <$> Clp.getColSolution model <*> Clp.objectiveValue model
-            _ -> return ([], 0.0)
+            Clp.Optimal -> (,) <$> (dense <$> Clp.getColSolution model) <*> Clp.objectiveValue model
+            _ -> return (zero, 0.0)
 
 data StandardConstraint = Lteq LinearFunction Double
     deriving Show

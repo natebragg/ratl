@@ -7,6 +7,7 @@ import Control.Monad (when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (State, get, put, runState)
 import Data.Either (lefts, rights)
+import Data.Foldable (toList)
 import Data.List (intercalate)
 import Data.Maybe (isNothing, fromJust)
 import Data.Traversable (for)
@@ -20,7 +21,7 @@ import System.Environment (getArgs)
 import System.Console.GetOpt (usageInfo, getOpt, OptDescr(..), ArgDescr(..), ArgOrder(RequireOrder))
 
 import qualified Data.Clp.Clp as Clp (version)
-import Data.Clp.Program (LinearProgram(solve), GeneralConstraint(Leq), GeneralForm(..))
+import Data.Clp.Program (LinearProgram(solve), LinearFunction, GeneralConstraint(Leq), GeneralForm(..))
 import Language.Ratl.Reader (sexp, sexps)
 import Language.Ratl.Parser (iterator, prog, eol)
 import Language.Ratl.Basis (prims, basis)
@@ -42,16 +43,16 @@ import Language.Ratl.Elab (elaborate)
 import Language.Ratl.Anno (annotate, annotateEx)
 import PackageInfo (version, appName, synopsis)
 
-progressive_solve :: [GeneralForm] -> [([Double], Double)]
+progressive_solve :: [GeneralForm] -> [(LinearFunction, Double)]
 progressive_solve = fst . foldl accum ([], [])
     where accum (ss, cs') (GeneralForm dir obj cs) = (ss ++ [sol], (obj `Leq` snd sol):cs')
             where sol = solve $ GeneralForm dir obj (cs' ++ cs)
 
-pretty_bound :: Bool ->[(ContextIndex, Int)] -> [Double] -> String
+pretty_bound :: Bool -> [(ContextIndex, Int)] -> LinearFunction -> String
 pretty_bound explicit ixs cs = if null bounds then show 0.0 else (intercalate " + " bounds ++ explanation)
     where (bounds, (_, vs)) = flip runState (varnames, []) $
                                 reverse <$> concat <$> traverse coeff cixs
-          cixs = fmap (fmap $ flip lookup $ map swap ixs) $ zip cs [0..]
+          cixs = fmap (fmap $ flip lookup $ map swap ixs) $ zip (toList cs) [0..]
           explanation = let n = length vs in
                 if explicit && n > 0 || n > 1 then ("\n  where" ++ concat descriptions) else ""
           descriptions = map (\(ix, x) -> "\n    " ++ x ++ " is for index " ++ show ix) vs
