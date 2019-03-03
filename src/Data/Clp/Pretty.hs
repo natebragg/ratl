@@ -131,7 +131,7 @@ renderGridDefault :: PrettyGrid a => a -> String
 renderGridDefault a = renderGrid (size a) a
 
 gridValid :: (Grid -> a) -> Grid -> a
-gridValid f (Grid r c w) | r <= 0 || c <= 0 || w <= 0 =
+gridValid f (Grid r c w) | r < 0 || c < 0 || w < 1 =
     error (printf "invalid grid dimensions: (%d, %d*%d)" r c w)
 gridValid f g = f g
 
@@ -142,7 +142,7 @@ maxGrid :: Grid -> Grid -> Grid
 maxGrid (Grid r c w) (Grid r' c' w') = Grid (max r r') (max c c') (max w w')
 
 maximumGrid :: (Foldable f, PrettyGrid a) => f a -> Grid
-maximumGrid f = foldr (maxGrid . size) (Grid 0 0 0) f
+maximumGrid f = foldr (maxGrid . size) (Grid 0 0 1) f
 
 instance PrettyGrid Double where
     size d = Grid 1 1 (sign + w)
