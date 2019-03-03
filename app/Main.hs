@@ -22,6 +22,7 @@ import System.Console.GetOpt (usageInfo, getOpt, OptDescr(..), ArgDescr(..), Arg
 
 import qualified Data.Clp.Clp as Clp (version)
 import Data.Clp.Program (LinearProgram(solve), LinearFunction, GeneralConstraint(Leq), GeneralForm(..))
+import Data.Clp.Pretty (varnames, renderEqn)
 import Language.Ratl.Reader (sexp, sexps)
 import Language.Ratl.Parser (iterator, prog, eol)
 import Language.Ratl.Basis (prims, basis)
@@ -49,20 +50,14 @@ progressive_solve = fst . foldl accum ([], [])
             where sol = solve $ GeneralForm dir obj (cs' ++ cs)
 
 pretty_bound :: Bool -> [(ContextIndex, Int)] -> LinearFunction -> String
-pretty_bound explicit ixs cs = if null bounds then show 0.0 else (intercalate " + " bounds ++ explanation)
-    where (bounds, (_, vs)) = flip runState (varnames, []) $
-                                reverse <$> concat <$> traverse coeff cixs
-          cixs = fmap (fmap $ flip lookup $ map swap ixs) $ zip (toList cs) [0..]
+pretty_bound explicit ixs cs = bound ++ explanation
+    where (bound, (_, vs)) = flip runState (varnames, []) $ flip renderEqn cs <$> traverse coeff cixs
+          cixs = fmap (flip lookup $ map swap ixs) [0..maximum $ map snd ixs]
           explanation = let n = length vs in
                 if explicit && n > 0 || n > 1 then ("\n  where" ++ concat descriptions) else ""
           descriptions = map (\(ix, x) -> "\n    " ++ x ++ " is for index " ++ show ix) vs
-          varnames = map pure alphabet ++ concatMap (\n -> map (:'_':show n) alphabet) [2..]
-          -- the alphabet in reverse starting from n skipping o and l
-          alphabet = ['n', 'm'] ++ ['k', 'j'..'a'] ++ ['z', 'y'..'p']
-          coeff (c, _) | c < 1.0e-9 = return []
-          coeff (_, Nothing) = return []
-          coeff (c, Just ix) = mapM poly (factor ix) >>= \es ->
-                                return [printf "%.1f" c ++ concatMap ("*" ++) es]
+          coeff  Nothing  = return " "
+          coeff (Just ix) = traverse poly (factor ix) >>= \es -> return (intercalate "*" es)
           poly :: (ContextIndex, Int) -> State ([String], [(ContextIndex, String)]) String
           poly (ix, d) = do
                 let exp = if d > 1 then '^' : show d else ""
