@@ -22,6 +22,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.Clp.Clp
                        Data.Clp.Program
+                       Data.Clp.Pretty
                        Language.Ratl.Ast
                        Language.Ratl.Anno
                        Language.Ratl.Basis
@@ -46,6 +47,7 @@ library
                      , fgl
                      , file-embed
                      , mtl
+                     , pretty
                      , transformers
                      , containers
                      , monoidal-containers
