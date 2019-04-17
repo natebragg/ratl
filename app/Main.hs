@@ -23,8 +23,8 @@ import System.Console.GetOpt (usageInfo, getOpt, OptDescr(..), ArgDescr(..), Arg
 import qualified Data.Clp.Clp as Clp (version)
 import Data.Clp.Program (LinearProgram(solve), LinearFunction, GeneralConstraint(Leq), GeneralForm(..))
 import Data.Clp.Pretty (renderGridCompact, renderGridDefault, varnames, renderEqn, renderEqnDefault)
-import Language.Ratl.Reader (sexp, sexps)
-import Language.Ratl.Parser (iterator, prog, eol)
+import Language.Ratl.Reader (sexps)
+import Language.Ratl.Parser (iterator, prog, ex, eol)
 import Language.Ratl.Basis (prims, basis)
 import Language.Ratl.Index (ContextIndex, factor)
 import Language.Ratl.Val (embed)
@@ -34,6 +34,7 @@ import Language.Ratl.Ast (
     Fun(..),
     Prog,
     tyOf,
+    tyGet,
     lookupFun,
     mapFun,
     connects,
@@ -82,6 +83,7 @@ callgraph = scSubprograms . (connects =<< flatten . mapFun (second calls))
 data Flag = Version
           | Help
           | Mode String
+          | Command String
           | Explicit
           | Debug String
           | DegreeMax String
@@ -107,6 +109,7 @@ opts :: [OptDescr Flag]
 opts = [Option ['v'] ["version"] (NoArg Version) "Version information.",
         Option ['h'] ["help"] (NoArg Help) "Print this message.",
         Option ['m'] ["mode"] (ReqArg Mode "MODE") ("One of: " ++ modelist),
+        Option ['c'] ["command"] (ReqArg Command "COMMAND") ("Specify the command to execute.  Default is \"(main <args>)\"."),
         Option ['e'] ["explicit"] (NoArg Explicit) ("Always include explanation of bounds."),
         Option ['g'] ["debug"] (ReqArg Debug "DEBUG") ("Print debugging info; one of: " ++ debuglist),
         Option ['d'] ["degreemax"] (ReqArg DegreeMax "DEGREE") "Maximum degree of analysis."]
@@ -134,10 +137,11 @@ handleArgs = do
             | otherwise -> let degrees = [readEither d | DegreeMax d <- os]
                                modes = [readEither m | Mode m <- os]
                                debugs = [readEither m | Debug m <- os]
+                               command = head $ [m | Command m <- os] ++ ["(main " ++ unwords args ++ ")"]
                                explicit = Explicit `elem` os
                            in  case (partitionEithers degrees, partitionEithers modes, partitionEithers debugs) of
                              (([], ds), ([], ms), ([], gs)) ->
-                                return (last $ 1:ds, last $ Run:ms, last $ Nothing:map Just gs, explicit, fn, unwords args)
+                                return (last $ 1:ds, last $ Run:ms, last $ Nothing:map Just gs, explicit, fn, command)
                              ((ds, _), (ms, _),  (gs, _)) -> do
                                 when (not $ null ds) $
                                      putStrLn "Option degreemax requires integer argument"
@@ -169,16 +173,17 @@ main = do
     let prims_basis_module = prims_basis `mappend` m
     let p = callgraph $ prims_basis_module
     pty <- traverse (handleE . elaborate prims_basis_module) p
-    mainapp <- App (V "main") <$> if mode /= Run then return [] else
-        handleE $ parse (many1 (Val <$> embed <$> sexp) <* eof) "command line" cmdline
+    sa <- handleE $ parse (sexps <* eof) "command line" cmdline
+    mainapp <- handleE $ parse (ex <* eol) "command line" $ iterator sa
+    mty <- handleE $ elaborate prims_basis_module mainapp
     when (mode == Check) $ do
+        putStrLn $ fn ++ ": " ++ show (tyGet mty)
         for (filter (isNothing . lookupFun prims_basis . fst) $ concat pty) $ \(x, f) ->
             putStrLn $ show x ++ ": " ++ show (tyOf f)
         exitSuccess
     eqns <- annotate deg_max pty
     cl_eqns <- if mode /= Run then return [] else do
-        e <- handleE $ elaborate prims_basis_module mainapp
-        eqns <- annotateEx deg_max pty e
+        eqns <- annotateEx deg_max pty mty
         return [(V fn, eqns)]
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
     for module_eqns $ \(f, (ixs, eqns)) -> do

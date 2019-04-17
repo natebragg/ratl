@@ -5,6 +5,7 @@
 module Language.Ratl.Parser (
     iterator,
     prog,
+    ex,
     eol,
 ) where
 
