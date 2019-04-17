@@ -74,6 +74,7 @@ import Language.Ratl.Ast (
     TypedProg,
     tyOf,
     tyGet,
+    freeVars,
     )
 import Language.Ratl.Elab (
     Unifiable(uid),
@@ -514,5 +515,11 @@ annotate k p = do
 annotateEx :: Monad m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = do
     let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
-    ((([], q), q'), cs) <- evalRWST (anno e) checkState 0
+    (((_, q), q'), cs) <- flip (flip evalRWST checkState) 0 $ do
+        let gamma = map (first FVar) $ freeVars e
+        qe <- freshVarEnv gamma
+        ((xs, q), q') <- anno e
+        pi <- projectNames gamma xs
+        constrain $ snd qe - (IndexEnv (map snd gamma) $ eqns q <<< concat pi) ==* 0
+        return (qe, q')
     return $ makeEqn 0 q cs

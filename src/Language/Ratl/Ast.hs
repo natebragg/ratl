@@ -17,6 +17,7 @@ module Language.Ratl.Ast (
     tyPut,
     tyGet,
     tySet,
+    freeVars,
     makeProg,
     lookupFun,
     updateFun,
@@ -39,6 +40,8 @@ import Data.Graph.Inductive.Extra (
     )
 import Data.Foldable (find, toList)
 import Data.Fix (Fix(..))
+import Data.List (nub)
+import Data.Mapping (deleteAll)
 import Language.Ratl.Ty (
     FunTy,
     Ty,
@@ -178,6 +181,13 @@ tyGet = fst . untyrep . unfix . untypedex
 
 tySet :: Ty -> TypedEx -> TypedEx
 tySet ty = TypedEx . Fix . TyRep . (,) ty . snd . untyrep . unfix . untypedex
+
+freeVars :: TypedEx -> [(Var, Ty)]
+freeVars (TypedVar ty x)      = [(x, ty)]
+freeVars (TypedVal _ _)       = []
+freeVars (TypedApp _ _ es)    = nub $ concatMap freeVars es
+freeVars (TypedIf _ ep et ef) = nub $ concatMap freeVars [ep, et, ef]
+freeVars (TypedLet _ bs e)    = nub $ let (xs, es) = unzip bs in concatMap freeVars es ++ (deleteAll xs $ freeVars e)
 
 newtype Prog = Prog {getProg :: Gr (Var, Fun) ()}
     deriving (Monoid)

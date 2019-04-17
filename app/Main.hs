@@ -58,7 +58,7 @@ pretty_bound explicit ixs cs = bound ++ explanation
                 if explicit && n > 0 || n > 1 then ("\n  where" ++ concat descriptions) else ""
           descriptions = map (\(ix, x) -> "\n    " ++ x ++ " is for index " ++ show ix) vs
           coeff  Nothing  = return " "
-          coeff (Just ix) = traverse poly (factor ix) >>= \es -> return (intercalate "*" es)
+          coeff (Just ix) = intercalate "*" <$> traverse poly (factor ix)
           poly :: (ContextIndex, Int) -> State ([String], [(ContextIndex, String)]) String
           poly (ix, d) = do
                 let exp = if d > 1 then '^' : show d else ""
