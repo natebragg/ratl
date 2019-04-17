@@ -72,7 +72,7 @@ instance Show TypeError where
     show (NameError x) = "Name " ++ show x ++ " is not defined."
 
 class Quantifiable t where
-    freeVars :: t -> [Tyvar]
+    freeTyVars :: t -> [Tyvar]
     subst :: TyvarEnv -> t -> t
     generalize :: [Tyvar] -> t -> t
     freshTy :: Monad m => t -> FreshTyvar m t
@@ -89,14 +89,14 @@ sat = foldrM go []
             theta' <- subst theta t ~~ subst theta t'
             return $ theta' `compose` theta
 
-          t'           ~~ t | t == t'             = return []
-          t'@(Tyvar x) ~~ t | x `elem` freeVars t = throwError $ TypeError [(t', t)]
-          Tyvar x      ~~ t                       = return [(x, t)]
-          t            ~~ t'@(Tyvar _)            = t' ~~ t
-          ForAll as ty ~~ t                       = error "This should not be possible."
-          t            ~~ t'@(ForAll _ _)         = t' ~~ t
-          ListTy t     ~~ ListTy t'               = t ~~ t'
-          PairTy t1 t2 ~~ PairTy t3 t4            = do
+          t'           ~~ t | t == t'               = return []
+          t'@(Tyvar x) ~~ t | x `elem` freeTyVars t = throwError $ TypeError [(t', t)]
+          Tyvar x      ~~ t                         = return [(x, t)]
+          t            ~~ t'@(Tyvar _)              = t' ~~ t
+          ForAll as ty ~~ t                         = error "This should not be possible."
+          t            ~~ t'@(ForAll _ _)           = t' ~~ t
+          ListTy t     ~~ ListTy t'                 = t ~~ t'
+          PairTy t1 t2 ~~ PairTy t3 t4              = do
               theta1 <- t1 ~~ t3
               theta2 <- subst theta1 t2 ~~ subst theta1 t4
               return $ theta2 `compose` theta1
@@ -108,18 +108,18 @@ class Quantifiable t => Unifiable t where
 
 solve :: (MonadError TypeError m, Unifiable t) => t -> t -> m TyvarEnv
 solve t t' =
-    let fv's  = freeVars t'
-    in  evalFresh (sat =<< constrain t' <$> foldrM alpha t fv's) (freeVars t ++ fv's)
+    let fv's  = freeTyVars t'
+    in  evalFresh (sat =<< constrain t' <$> foldrM alpha t fv's) (freeTyVars t ++ fv's)
 
 unify :: Unifiable t => t -> t -> t
 unify t t' = either (error . show) (flip subst t') $ solve t t'
 
 instance Quantifiable Ty where
-    freeVars    (ListTy ty) = freeVars ty
-    freeVars (PairTy t1 t2) = nub $ freeVars t1 ++ freeVars t2
-    freeVars      (Tyvar y) = [y]
-    freeVars (ForAll as ty) = freeVars ty \\ as
-    freeVars              _ = []
+    freeTyVars    (ListTy ty) = freeTyVars ty
+    freeTyVars (PairTy t1 t2) = nub $ freeTyVars t1 ++ freeTyVars t2
+    freeTyVars      (Tyvar y) = [y]
+    freeTyVars (ForAll as ty) = freeTyVars ty \\ as
+    freeTyVars              _ = []
 
     subst theta = go
         where go    (ListTy ty) = ListTy $ go ty
@@ -128,7 +128,7 @@ instance Quantifiable Ty where
               go (ForAll as ty) = ForAll as $ subst (deleteAll as theta) ty
               go              t = t
 
-    generalize fs t = case freeVars t \\ fs of
+    generalize fs t = case freeTyVars t \\ fs of
         [] -> t
         as -> ForAll as t
 
@@ -143,7 +143,7 @@ instance Unifiable Ty where
     constrain t t' = [(t, t')]
 
 instance (Functor f, Foldable f, Traversable f, Quantifiable a) => Quantifiable (f a) where
-    freeVars = nub . concatMap freeVars
+    freeTyVars = nub . concatMap freeTyVars
 
     subst = fmap . subst
 
@@ -160,7 +160,7 @@ instance Unifiable [Ty] where
         else zip ts ts'
 
 instance Quantifiable FunTy where
-    freeVars (Arrow t t') = nub $ freeVars t ++ freeVars t'
+    freeTyVars (Arrow t t') = nub $ freeTyVars t ++ freeTyVars t'
 
     subst theta (Arrow t t') = Arrow (subst theta t) (subst theta t')
 
@@ -168,7 +168,7 @@ instance Quantifiable FunTy where
     generalize _ t = t
 
     freshTy ty = do
-        Arrow t1 t2 <- foldrM alpha ty $ freeVars ty
+        Arrow t1 t2 <- foldrM alpha ty $ freeTyVars ty
         Arrow <$> traverse freshTy t1 <*> freshTy t2
 
 instance Unifiable FunTy where
@@ -178,7 +178,7 @@ instance Unifiable FunTy where
         constrain (t2:t1) (t4:t3)
 
 instance Quantifiable Fun where
-    freeVars = freeVars . tyOf
+    freeTyVars = freeTyVars . tyOf
 
     subst theta f = tyPut (subst theta $ tyOf f) f
 
@@ -187,7 +187,7 @@ instance Quantifiable Fun where
     freshTy f = tyPut <$> freshTy (tyOf f) <*> pure f
 
 instance Quantifiable TypedFun where
-    freeVars = freeVars . tyOf
+    freeTyVars = freeTyVars . tyOf
 
     subst theta (TypedFun ty xs e) = TypedFun (subst theta ty) xs (subst theta e)
     subst theta (TypedNative ty f) = TypedNative (subst theta ty) f
@@ -197,7 +197,7 @@ instance Quantifiable TypedFun where
     freshTy f = tyPut <$> freshTy (tyOf f) <*> pure f
 
 instance Quantifiable Ex where
-    freeVars _ = []
+    freeTyVars _ = []
 
     subst _ e = e
 
@@ -206,7 +206,7 @@ instance Quantifiable Ex where
     freshTy e = return e
 
 instance Quantifiable TypedEx where
-    freeVars = freeVars . tyGet
+    freeTyVars = freeTyVars . tyGet
 
     subst theta (TypedVar ty x) = TypedVar (subst theta ty) x
     subst theta (TypedVal ty v) = TypedVal (subst theta ty) v
@@ -219,7 +219,7 @@ instance Quantifiable TypedEx where
     freshTy e = tySet <$> freshTy (tyGet e) <*> pure e
 
 instance Quantifiable Prog where
-    freeVars = concat . mapFun (freeVars . snd)
+    freeTyVars = concat . mapFun (freeTyVars . snd)
 
     subst = mapProg . fmap . subst
 
@@ -249,7 +249,7 @@ instance Elab Fun where
             return ety
         theta <- sat cs
         -- canonicalize
-        let (thetaAsc, thetaInf) = partitionAll (freeVars fty) theta
+        let (thetaAsc, thetaInf) = partitionAll (freeTyVars fty) theta
         thetaCan <- compose <$> sat (map (fmap Tyvar . swap) thetaAsc) <*> pure thetaInf
         let ety' = subst thetaCan ety
             fty'@(Arrow pty' rty') = subst thetaCan fty
@@ -285,10 +285,10 @@ instance Elab Ex where
         return $ TypedApp ty' f etys
     elab (Let bs e) = do
         (etyds, cs) <- intercept $ traverse (traverse elab) bs
-        free <- asks $ freeVars . gamma
+        free <- asks $ freeTyVars . gamma
         theta <- sat cs
         let theta' = selectAll free theta
-            free' = union free $ freeVars theta'
+            free' = union free $ freeTyVars theta'
             etyd's = generalize free' $ subst theta etyds
             tyds = map (fmap tyGet) etyd's
         traverse (\(a, t) -> Tyvar a ~~ t) theta'
@@ -317,6 +317,6 @@ instance Elab Val where
 
 elaborate :: (Elab a, Quantifiable a, MonadError TypeError m) => Prog -> a -> m (Type a)
 elaborate p a = do
-    (a', cs) <- runWriterT (runReaderT (evalFresh (elab a) (freeVars p ++ freeVars a)) (Env {phi = mapFun (fmap tyOf) p, gamma = []}))
+    (a', cs) <- runWriterT (runReaderT (evalFresh (elab a) (freeTyVars p ++ freeTyVars a)) (Env {phi = mapFun (fmap tyOf) p, gamma = []}))
     sat cs
     return a'
