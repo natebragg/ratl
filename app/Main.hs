@@ -124,6 +124,9 @@ printVersion = do
     putStrLn $ "Version " ++ version
     putStrLn $ "Using Clp version " ++ Clp.version
 
+defCmd :: [String] -> String
+defCmd args = "(main " ++ unwords args ++ ")"
+
 handleArgs :: IO (Int, Mode, Maybe Debug, Bool, String, String)
 handleArgs = do
     args <- getArgs
@@ -137,11 +140,11 @@ handleArgs = do
             | otherwise -> let degrees = [readEither d | DegreeMax d <- os]
                                modes = [readEither m | Mode m <- os]
                                debugs = [readEither m | Debug m <- os]
-                               command = head $ [m | Command m <- os] ++ ["(main " ++ unwords args ++ ")"]
+                               commands = [m | Command m <- os]
                                explicit = Explicit `elem` os
                            in  case (partitionEithers degrees, partitionEithers modes, partitionEithers debugs) of
                              (([], ds), ([], ms), ([], gs)) ->
-                                return (last $ 1:ds, last $ Run:ms, last $ Nothing:map Just gs, explicit, fn, command)
+                                return (last $ 1:ds, last $ Run:ms, last $ Nothing:map Just gs, explicit, fn, last $ defCmd args:commands)
                              ((ds, _), (ms, _),  (gs, _)) -> do
                                 when (not $ null ds) $
                                      putStrLn "Option degreemax requires integer argument"
@@ -175,15 +178,18 @@ main = do
     pty <- traverse (handleE . elaborate prims_basis_module) p
     sa <- handleE $ parse (sexps <* eof) "command line" cmdline
     mainapp <- handleE $ parse (ex <* eol) "command line" $ iterator sa
-    mty <- handleE $ elaborate prims_basis_module mainapp
+    mty <- if cmdline /= defCmd [] || mode == Run
+           then handleE $ Just <$> elaborate prims_basis_module mainapp
+           else return Nothing
     when (mode == Check) $ do
-        putStrLn $ fn ++ ": " ++ show (tyGet mty)
+        when (not $ isNothing mty) $
+            putStrLn $ fn ++ ": " ++ show (tyGet $ fromJust mty)
         for (filter (isNothing . lookupFun prims_basis . fst) $ concat pty) $ \(x, f) ->
             putStrLn $ show x ++ ": " ++ show (tyOf f)
         exitSuccess
     eqns <- annotate deg_max pty
-    cl_eqns <- if mode /= Run then return [] else do
-        eqns <- annotateEx deg_max pty mty
+    cl_eqns <- if isNothing mty then return [] else do
+        eqns <- annotateEx deg_max pty $ fromJust mty
         return [(V fn, eqns)]
     let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
     for module_eqns $ \(f, (ixs, eqns)) -> do
