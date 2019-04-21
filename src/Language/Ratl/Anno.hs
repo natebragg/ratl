@@ -502,10 +502,10 @@ makeEqn k (IndexEnv ty q) cs =
         indexmap = map (fmap resource) $ elements q
     in (indexmap, progs)
 
-annotate :: Monad m => Int -> [TypedProg] -> m EqnEnv
-annotate k p = do
+annotate :: Monad m => Int -> [TypedProg] -> [TypedProg] -> m EqnEnv
+annotate k p fs = do
     let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
-    flip evalStateT 0 $ fmap concat $ for p $ \scp -> do
+    flip evalStateT 0 $ fmap concat $ for fs $ \scp -> do
         (scp', cs) <- flip evalRWT checkState $ do
             scp' <- freshFunEnv scp
             local (\s -> s {comp = scp'}) $ traverse anno scp'

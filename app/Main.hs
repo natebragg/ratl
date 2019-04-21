@@ -203,7 +203,7 @@ main = do
         for (filter name_requested $ concat pty) $ \(x, f) ->
             putStrLn $ show x ++ ": " ++ show (tyOf f)
         exitSuccess
-    eqns <- annotate deg_max pty
+    eqns <- annotate deg_max pty $ filter (any name_requested) pty
     cl_eqns <- if isNothing mty then return [] else do
         eqns <- annotateEx deg_max pty $ fromJust mty
         return [(V fn, eqns)]
