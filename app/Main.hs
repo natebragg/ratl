@@ -2,7 +2,7 @@
 
 module Main where
 
-import Control.Arrow (second)
+import Control.Arrow (first, second)
 import Control.Monad (when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State (State, get, put, runState)
@@ -84,6 +84,7 @@ data Flag = Version
           | Help
           | Mode String
           | Command String
+          | Name String
           | Explicit
           | Debug String
           | DegreeMax String
@@ -110,6 +111,7 @@ opts = [Option ['v'] ["version"] (NoArg Version) "Version information.",
         Option ['h'] ["help"] (NoArg Help) "Print this message.",
         Option ['m'] ["mode"] (ReqArg Mode "MODE") ("One of: " ++ modelist),
         Option ['c'] ["command"] (ReqArg Command "COMMAND") ("Specify the command to execute.  Default is \"(main <args>)\"."),
+        Option ['n'] ["name"] (ReqArg Name "NAME") ("Restrict analysis to supplied names.  Default is all top-level names in the file.  Special name \"initial basis\" analyzes same."),
         Option ['e'] ["explicit"] (NoArg Explicit) ("Always include explanation of bounds."),
         Option ['g'] ["debug"] (ReqArg Debug "DEBUG") ("Print debugging info; one of: " ++ debuglist),
         Option ['d'] ["degreemax"] (ReqArg DegreeMax "DEGREE") "Maximum degree of analysis."]
@@ -127,7 +129,7 @@ printVersion = do
 defCmd :: [String] -> String
 defCmd args = "(main " ++ unwords args ++ ")"
 
-handleArgs :: IO (Int, Mode, Maybe Debug, Bool, String, String)
+handleArgs :: IO (Int, Mode, Maybe Debug, Bool, String, String, [String])
 handleArgs = do
     args <- getArgs
     case getOpt RequireOrder opts args of
@@ -140,11 +142,12 @@ handleArgs = do
             | otherwise -> let degrees = [readEither d | DegreeMax d <- os]
                                modes = [readEither m | Mode m <- os]
                                debugs = [readEither m | Debug m <- os]
-                               commands = [m | Command m <- os]
+                               commands = [c | Command c <- os]
+                               names = [x | Name x <- os]
                                explicit = Explicit `elem` os
                            in  case (partitionEithers degrees, partitionEithers modes, partitionEithers debugs) of
                              (([], ds), ([], ms), ([], gs)) ->
-                                return (last $ 1:ds, last $ Run:ms, last $ Nothing:map Just gs, explicit, fn, last $ defCmd args:commands)
+                                return (last $ 1:ds, last $ Run:ms, last $ Nothing:map Just gs, explicit, fn, last $ defCmd args:commands, names)
                              ((ds, _), (ms, _),  (gs, _)) -> do
                                 when (not $ null ds) $
                                      putStrLn "Option degreemax requires integer argument"
@@ -161,7 +164,7 @@ handleEx m = runExceptT m >>= handleE
 
 main :: IO ()
 main = do
-    (deg_max, mode, debug, explicit, fn, cmdline) <- handleArgs
+    (deg_max, mode, debug, explicit, fn, cmdline, names) <- handleArgs
     when (deg_max < 0) $ do
         putStrLn "Maximum degree cannot be negative"
         exitFailure
@@ -181,17 +184,30 @@ main = do
     mty <- if cmdline /= defCmd [] || mode == Run
            then handleE $ Just <$> elaborate prims_basis_module mainapp
            else return Nothing
+    let mod_names = mapFun fst m
+        pb_names = mapFun fst prims_basis
+        valid = (`elem` mod_names ++ pb_names)
+        special = (== "initial basis")
+        (anno_names, bad_names) = case second (partition valid . map V) $ partition special names of
+            ([], ([], []))  -> (mod_names, [])
+            ([], names) -> names
+            (_:_, names) -> first (pb_names ++) names
+        name_requested = (`elem` anno_names) . fst
+    when (not $ null bad_names) $
+        putStrLn $ "Warning: cannot analyze unknown name" ++
+                   (if null (tail bad_names) then " " else "s ") ++
+                   intercalate ", " (map (show . show) bad_names)
     when (mode == Check) $ do
         when (not $ isNothing mty) $
             putStrLn $ fn ++ ": " ++ show (tyGet $ fromJust mty)
-        for (filter (isNothing . lookupFun prims_basis . fst) $ concat pty) $ \(x, f) ->
+        for (filter name_requested $ concat pty) $ \(x, f) ->
             putStrLn $ show x ++ ": " ++ show (tyOf f)
         exitSuccess
     eqns <- annotate deg_max pty
     cl_eqns <- if isNothing mty then return [] else do
         eqns <- annotateEx deg_max pty $ fromJust mty
         return [(V fn, eqns)]
-    let module_eqns = cl_eqns ++ filter (isNothing . lookupFun prims_basis . fst) eqns
+    let module_eqns = cl_eqns ++ filter name_requested eqns
     for module_eqns $ \(f, (ixs, eqns)) -> do
         let (optimums, _) = unzip $ progressive_solve eqns
             (infeas, feasible) = partition (null . snd) $ reverse $ zip eqns optimums
