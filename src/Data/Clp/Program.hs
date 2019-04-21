@@ -51,7 +51,7 @@ data GeneralForm = GeneralForm Clp.OptimizationDirection Objective [GeneralConst
 instance LinearProgram GeneralForm where
     solve (GeneralForm direction objective constraints) =
         let elements = map lf constraints
-            row_length = maximum $ map length elements
+            row_length = maximum $ 0:map length elements
             obj_dec = toList objective
             columnBounds = [(0.0, inf, obj) | obj <- obj_dec] ++
                            replicate (row_length - length obj_dec) (0.0, inf, 0.0)
