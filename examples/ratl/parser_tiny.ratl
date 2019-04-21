@@ -1,0 +1,55 @@
+; A balanced curly brace language
+;
+; Grammar:
+;  1. S -> I
+;  3. S -> { S }
+;  4. I -> a
+;  5. I -> b
+;  6. I -> c
+
+(define S ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . {))
+    (pair (cdr input) (pair (append '[(nt . S) (term . })] stack) (cons 3 rules)))
+    (I lookahead input stack (cons 1 rules))))
+
+(define I ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . a))
+    (pair (cdr input) (pair stack (cons 4 rules)))
+    (if (= lookahead '(term . b))
+      (pair (cdr input) (pair stack (cons 5 rules)))
+      (if (= lookahead '(term . c))
+        (pair (cdr input) (pair stack (cons 6 rules)))
+        (error 'no-matching-rule)))))
+
+(define dispatch (sym (pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (sym lookahead input stack rules)
+  (if (= sym 'S)
+    (S lookahead input stack rules)
+  (if (= sym 'I)
+    (I lookahead input stack rules)
+  (error 'unknown-nonterminal))))
+
+(define parse ((list sym) (list (pair sym sym)) (list int) -> (list int)) (input stack rules)
+  (if (null? stack)
+    (error 'empty-stack)
+    (let ((cat (fst (car stack)))
+          (sym (snd (car stack))))
+      (if (= cat 'control)
+        (if (= sym '$)
+          (if (null? input)
+            rules
+            (error 'expected-end-of-input))
+          (error 'unknown-control-code))
+        (if (= cat 'term)
+          (if (null? input)
+            (error 'unexpected-end-of-input)
+            (if (= sym (car input))
+              (parse (cdr input) (cdr stack) rules)
+              (error 'unexpected-symbol)))
+          (if (= cat 'nt)
+            (let ((la (if (null? input) '(control . $) (pair 'term (car input)))))
+              (let ((result (dispatch sym la input (cdr stack) rules)))
+                (parse (fst result) (fst (snd result)) (snd (snd result)))))
+            (error 'unknown-cat)))))))
+
+(define main ((list sym) -> (list int)) (program)
+  (parse program '[(nt . S) (control . $)] '[]))

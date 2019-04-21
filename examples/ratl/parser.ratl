@@ -1,0 +1,472 @@
+; A sizeable chunk of the C89 expression and statement grammar.
+; Omitted are mostly things that were a pain to left-factor.
+; Semicolons are replaced with at-signs, and parens with curlies.
+;
+; Grammar:
+;  1. P -> I
+;  2. P -> C
+;  3. P -> { E }
+;  4. I -> a
+;  5. I -> b
+;  6. I -> c
+;  7. C -> d0
+;  8. C -> d1
+;  9. C -> d2
+; 10. F -> P D
+; 11. D -> ++ D
+; 12. D -> -- D
+; 13. D -> epsilon
+; 14. U -> F
+; 15. U -> ++ U
+; 16. U -> -- U
+; 17. U -> & U
+; 18. U -> * U
+; 19. U -> + U
+; 20. U -> - U
+; 21. U -> ~ U
+; 22. U -> ! U
+; 23. M -> U T
+; 24. T -> * U T
+; 25. T -> / U T
+; 26. T -> % U T
+; 27. T -> epsilon
+; 28. A -> M O
+; 29. O -> + M O
+; 30. O -> - M O
+; 31. O -> epsilon
+; 32. H -> A J
+; 33. J -> << A J
+; 34. J -> >> A J
+; 35. J -> epsilon
+; 36. R -> H G
+; 37. G -> < H G
+; 38. G -> > H G
+; 39. G -> <= H G
+; 40. G -> >= H G
+; 41. G -> epsilon
+; 42. Q -> R Y
+; 43. Y -> == R Y
+; 44. Y -> != R Y
+; 45. Y -> epsilon
+; 46. BA -> Q WA
+; 47. WA -> & Q WA
+; 48. WA -> epsilon
+; 49. BX -> BA WX
+; 50. WX -> ^ BA WX
+; 51. WX -> epsilon
+; 52. BO -> BX WO
+; 53. WO -> | BX WO
+; 54. WO -> epsilon
+; 55. LA -> BO GA
+; 56. GA -> && BO GA
+; 57. GA -> epsilon
+; 58. LO -> LA GO
+; 59. GO -> || LA GO
+; 60. GO -> epsilon
+; 61. CT -> LO TC
+; 62. TC -> ? E : LO TC
+; 63. TC -> epsilon
+; 64. E -> CT L
+; 65. L -> , CT L
+; 66. L -> epsilon
+; 67. ST -> LS
+; 68. ST -> ES
+; 69. ST -> SS
+; 70. ST -> IS
+; 71. ST -> JS
+; 72. LS -> case CT : ST
+; 73. LS -> default : ST
+; 74. ES -> @
+; 75. ES -> E @
+; 76. SS -> if { E } ST SE
+; 77. SS -> switch { E } ST
+; 78. SE -> else ST
+; 79. SE -> epsilon
+; 80. IS -> while { E } ST
+; 81. IS -> do ST while { E } @
+; 82. IS -> for { ES ES IE
+; 83. IE -> } ST
+; 84. IE -> E } ST
+; 85. JS -> continue @
+; 86. JS -> break @
+; 87. JS -> return ES
+; 88. SL -> ST SC
+; 89. SC -> ST SC
+; 90. SC -> epsilon
+; 91. S -> SL
+
+(define oneof? ('a (list 'a) -> bool) (v vs)
+  (if (null? vs)
+    #f
+    (if (= v (car vs))
+      #t
+      (oneof? v (cdr vs)))))
+
+(define LSfst? ((pair sym sym) -> bool) (lookahead)
+  (oneof? lookahead '[(term . case) (term . default)]))
+
+(define SSfst? ((pair sym sym) -> bool) (lookahead)
+  (oneof? lookahead '[(term . if) (term . switch)]))
+
+(define ISfst? ((pair sym sym) -> bool) (lookahead)
+  (oneof? lookahead '[(term . while) (term . do) (term . for)]))
+
+(define JSfst? ((pair sym sym) -> bool) (lookahead)
+  (oneof? lookahead '[(term . continue) (term . break) (term . return)]))
+
+(define Efst? ((pair sym sym) -> bool) (lookahead)
+  (oneof? lookahead '[(term . d0) (term . d1) (term . d2) (term . a) (term . b) (term . c) (term . {) (term . ++) (term . --) (term . &) (term . *) (term . +) (term . -) (term . ~) (term . !)]))
+
+(define S ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (SL lookahead input stack (cons 91 rules)))
+
+(define SL ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (ST lookahead input (cons '(nt . SC) stack) (cons 88 rules)))
+
+(define SC ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (or (LSfst? lookahead) (or (SSfst? lookahead) (or (ISfst? lookahead) (or (JSfst? lookahead) (or (Efst? lookahead) (= lookahead '(term . @)))))))
+    (ST lookahead input (cons '(nt . SC) stack) (cons 89 rules))
+    (pair input (pair stack (cons 90 rules)))))
+
+(define ST ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (LSfst? lookahead)
+    (LS lookahead input stack (cons 67 rules))
+    (if (or (Efst? lookahead) (= lookahead '(term . @)))
+      (ES lookahead input stack (cons 68 rules))
+      (if (SSfst? lookahead)
+        (SS lookahead input stack (cons 69 rules))
+        (if (ISfst? lookahead)
+          (IS lookahead input stack (cons 70 rules))
+          (if (JSfst? lookahead)
+            (JS lookahead input stack (cons 71 rules))
+            (error 'no-matching-rule)))))))
+
+(define LS ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . case))
+    (pair (cdr input) (pair (append '[(nt . CT) (term . :) (nt . ST)] stack) (cons 72 rules)))
+    (if (= lookahead '(term . default))
+      (pair (cdr input) (pair (append '[(term . :) (nt . ST)] stack) (cons 73 rules)))
+      (error 'no-matching-rule))))
+
+(define ES ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . @))
+    (pair (cdr input) (pair stack (cons 74 rules)))
+    (if (Efst? lookahead)
+      (E lookahead input (cons '(term . @) stack) (cons 75 rules))
+      (error 'no-matching-rule))))
+
+(define SS ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . if))
+    (pair (cdr input) (pair (append '[(term . {) (nt . E) (term . }) (nt . ST) (nt . SE)] stack) (cons 76 rules)))
+    (if (= lookahead '(term . switch))
+      (pair (cdr input) (pair (append '[(term . {) (nt . E) (term . }) (nt . ST)] stack) (cons 77 rules)))
+      (error 'no-matching-rule))))
+
+(define SE ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . else))
+    (pair (cdr input) (pair (cons '(nt . ST) stack) (cons 78 rules)))
+    (pair input (pair stack (cons 79 rules)))))
+
+(define IS ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . while))
+    (pair (cdr input) (pair (append '[(term . {) (nt . E) (term . }) (nt . ST)] stack) (cons 80 rules)))
+    (if (= lookahead '(term . do))
+      (pair (cdr input) (pair (append '[(nt . ST) (term . while) (term . {) (nt . E) (term . })] stack) (cons 81 rules)))
+      (if (= lookahead '(term . for))
+        (pair (cdr input) (pair (append '[(term . {) (nt . ES) (nt . ES) (nt . IE)] stack) (cons 82 rules)))
+        (error 'no-matching-rule)))))
+
+(define IE ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . }))
+    (pair (cdr input) (pair (cons '(nt . ST) stack) (cons 83 rules)))
+    (if (Efst? lookahead)
+      (E lookahead input (append '[ (term . }) (nt . ST)] stack) (cons 84 rules))
+      (error 'no-matching-rule))))
+
+(define JS ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . continue))
+    (pair (cdr input) (pair (cons '(term . @) stack) (cons 85 rules)))
+    (if (= lookahead '(term . break))
+      (pair (cdr input) (pair (cons '(term . @) stack) (cons 86 rules)))
+      (if (= lookahead '(term . return))
+        (pair (cdr input) (pair (cons '(nt . ES) stack) (cons 87 rules)))
+        (error 'no-matching-rule)))))
+
+(define E ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (CT lookahead input (cons '(nt . L) stack) (cons 64 rules)))
+
+(define L ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . ,))
+    (pair (cdr input) (pair (append '[(nt . CT) (nt . L)] stack) (cons 65 rules)))
+    (pair input (pair stack (cons 66 rules)))))
+
+(define CT ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (LO lookahead input (cons '(nt . TC) stack) (cons 61 rules)))
+
+(define TC ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . ?))
+    (pair (cdr input) (pair (append '[(nt . E) (term . :) (nt . LO) (nt . TC)] stack) (cons 62 rules)))
+    (pair input (pair stack (cons 63 rules)))))
+
+(define LO ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (LA lookahead input (cons '(nt . GO) stack) (cons 58 rules)))
+
+(define GO ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . ||))
+    (pair (cdr input) (pair (append '[(nt . LA) (nt . GO)] stack) (cons 59 rules)))
+    (pair input (pair stack (cons 60 rules)))))
+
+(define LA ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (BO lookahead input (cons '(nt . GA) stack) (cons 55 rules)))
+
+(define GA ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . &&))
+    (pair (cdr input) (pair (append '[(nt . BO) (nt . GA)] stack) (cons 56 rules)))
+    (pair input (pair stack (cons 57 rules)))))
+
+(define BO ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (BX lookahead input (cons '(nt . WO) stack) (cons 52 rules)))
+
+(define WO ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . |))
+    (pair (cdr input) (pair (append '[(nt . BX) (nt . WO)] stack) (cons 53 rules)))
+    (pair input (pair stack (cons 54 rules)))))
+
+(define BX ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (BA lookahead input (cons '(nt . WX) stack) (cons 49 rules)))
+
+(define WX ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . ^))
+    (pair (cdr input) (pair (append '[(nt . BA) (nt . WX)] stack) (cons 50 rules)))
+    (pair input (pair stack (cons 51 rules)))))
+
+(define BA ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (Q lookahead input (cons '(nt . WA) stack) (cons 46 rules)))
+
+(define WA ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . &))
+    (pair (cdr input) (pair (append '[(nt . Q) (nt . WA)] stack) (cons 47 rules)))
+    (pair input (pair stack (cons 48 rules)))))
+
+(define Q ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (R lookahead input (cons '(nt . Y) stack) (cons 42 rules)))
+
+(define Y ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . ==))
+    (pair (cdr input) (pair (append '[(nt . R) (nt . Y)] stack) (cons 43 rules)))
+    (if (= lookahead '(term . !=))
+      (pair (cdr input) (pair (append '[(nt . R) (nt . Y)] stack) (cons 44 rules)))
+      (pair input (pair stack (cons 45 rules))))))
+
+(define R ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (H lookahead input (cons '(nt . G) stack) (cons 36 rules)))
+
+(define G ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . <))
+    (pair (cdr input) (pair (append '[(nt . H) (nt . G)] stack) (cons 37 rules)))
+    (if (= lookahead '(term . >))
+      (pair (cdr input) (pair (append '[(nt . H) (nt . G)] stack) (cons 38 rules)))
+      (if (= lookahead '(term . <=))
+        (pair (cdr input) (pair (append '[(nt . H) (nt . G)] stack) (cons 39 rules)))
+        (if (= lookahead '(term . >=))
+          (pair (cdr input) (pair (append '[(nt . H) (nt . G)] stack) (cons 40 rules)))
+          (pair input (pair stack (cons 41 rules))))))))
+
+(define H ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (A lookahead input (cons '(nt . J) stack) (cons 32 rules)))
+
+(define J ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . <<))
+    (pair (cdr input) (pair (append '[(nt . A) (nt . J)] stack) (cons 33 rules)))
+    (if (= lookahead '(term . >>))
+      (pair (cdr input) (pair (append '[(nt . A) (nt . J)] stack) (cons 34 rules)))
+      (pair input (pair stack (cons 35 rules))))))
+
+(define A ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (M lookahead input (cons '(nt . O) stack) (cons 28 rules)))
+
+(define O ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . +))
+    (pair (cdr input) (pair (append '[(nt . M) (nt . O)] stack) (cons 29 rules)))
+    (if (= lookahead '(term . -))
+      (pair (cdr input) (pair (append '[(nt . M) (nt . O)] stack) (cons 30 rules)))
+      (pair input (pair stack (cons 31 rules))))))
+
+(define M ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (U lookahead input (cons '(nt . T) stack) (cons 23 rules)))
+
+(define T ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . *))
+    (pair (cdr input) (pair (append '[(nt . U) (nt . T)] stack) (cons 24 rules)))
+    (if (= lookahead '(term . /))
+      (pair (cdr input) (pair (append '[(nt . U) (nt . T)] stack) (cons 25 rules)))
+      (if (= lookahead '(term . %))
+        (pair (cdr input) (pair (append '[(nt . U) (nt . T)] stack) (cons 26 rules)))
+        (pair input (pair stack (cons 27 rules)))))))
+
+(define U ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . ++))
+    (pair (cdr input) (pair (cons '(nt . U) stack) (cons 15 rules)))
+    (if (= lookahead '(term . --))
+      (pair (cdr input) (pair (cons '(nt . U) stack) (cons 16 rules)))
+      (if (= lookahead '(term . &))
+        (pair (cdr input) (pair (cons '(nt . U) stack) (cons 17 rules)))
+        (if (= lookahead '(term . *))
+          (pair (cdr input) (pair (cons '(nt . U) stack) (cons 18 rules)))
+          (if (= lookahead '(term . +))
+            (pair (cdr input) (pair (cons '(nt . U) stack) (cons 19 rules)))
+            (if (= lookahead '(term . -))
+              (pair (cdr input) (pair (cons '(nt . U) stack) (cons 20 rules)))
+              (if (= lookahead '(term . ~))
+                (pair (cdr input) (pair (cons '(nt . U) stack) (cons 21 rules)))
+                (if (= lookahead '(term . !))
+                  (pair (cdr input) (pair (cons '(nt . U) stack) (cons 22 rules)))
+                  (F lookahead input stack (cons 14 rules)))))))))))
+
+(define F ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (P lookahead input (cons '(nt . D) stack) (cons 10 rules)))
+
+(define D ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . ++))
+    (pair (cdr input) (pair (cons '(nt . D) stack) (cons 11 rules)))
+    (if (= lookahead '(term . --))
+      (pair (cdr input) (pair (cons '(nt . D) stack) (cons 12 rules)))
+      (pair input (pair stack (cons 13 rules))))))
+
+(define C ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . d0))
+    (pair (cdr input) (pair stack (cons 7 rules)))
+    (if (= lookahead '(term . d1))
+      (pair (cdr input) (pair stack (cons 8 rules)))
+      (if (= lookahead '(term . d2))
+        (pair (cdr input) (pair stack (cons 9 rules)))
+        (error 'no-matching-rule)))))
+
+(define I ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (= lookahead '(term . a))
+    (pair (cdr input) (pair stack (cons 4 rules)))
+    (if (= lookahead '(term . b))
+      (pair (cdr input) (pair stack (cons 5 rules)))
+      (if (= lookahead '(term . c))
+        (pair (cdr input) (pair stack (cons 6 rules)))
+        (error 'no-matching-rule)))))
+
+(define P ((pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (lookahead input stack rules)
+  (if (oneof? lookahead '[(term . a) (term . b) (term . c)])
+    (I lookahead input stack (cons 1 rules))
+    (if (oneof? lookahead '[(term . d0) (term . d1) (term . d2)])
+      (C lookahead input stack (cons 2 rules))
+      (if (= lookahead '(term . {))
+        (pair (cdr input) (pair (append '[(nt . E) (term . })] stack) (cons 3 rules)))
+        (error 'no-matching-rule)))))
+
+(define dispatch (sym (pair sym sym) (list sym) (list (pair sym sym)) (list int) -> (pair (list sym) (pair (list (pair sym sym)) (list int)))) (sym lookahead input stack rules)
+  (if (= sym 'S)
+    (S lookahead input stack rules)
+  (if (= sym 'SL)
+    (SL lookahead input stack rules)
+  (if (= sym 'SC)
+    (SC lookahead input stack rules)
+  (if (= sym 'ST)
+    (ST lookahead input stack rules)
+  (if (= sym 'LS)
+    (LS lookahead input stack rules)
+  (if (= sym 'ES)
+    (ES lookahead input stack rules)
+  (if (= sym 'SS)
+    (SS lookahead input stack rules)
+  (if (= sym 'SE)
+    (SE lookahead input stack rules)
+  (if (= sym 'IS)
+    (IS lookahead input stack rules)
+  (if (= sym 'IE)
+    (IE lookahead input stack rules)
+  (if (= sym 'JS)
+    (JS lookahead input stack rules)
+  (if (= sym 'E)
+    (E lookahead input stack rules)
+  (if (= sym 'L)
+    (L lookahead input stack rules)
+  (if (= sym 'CT)
+    (CT lookahead input stack rules)
+  (if (= sym 'TC)
+    (TC lookahead input stack rules)
+  (if (= sym 'LO)
+    (LO lookahead input stack rules)
+  (if (= sym 'GO)
+    (GO lookahead input stack rules)
+  (if (= sym 'LA)
+    (LA lookahead input stack rules)
+  (if (= sym 'GA)
+    (GA lookahead input stack rules)
+  (if (= sym 'BO)
+    (BO lookahead input stack rules)
+  (if (= sym 'WO)
+    (WO lookahead input stack rules)
+  (if (= sym 'BX)
+    (BX lookahead input stack rules)
+  (if (= sym 'WX)
+    (WX lookahead input stack rules)
+  (if (= sym 'BA)
+    (BA lookahead input stack rules)
+  (if (= sym 'WA)
+    (WA lookahead input stack rules)
+  (if (= sym 'Q)
+    (Q lookahead input stack rules)
+  (if (= sym 'Y)
+    (Y lookahead input stack rules)
+  (if (= sym 'R)
+    (R lookahead input stack rules)
+  (if (= sym 'G)
+    (G lookahead input stack rules)
+  (if (= sym 'H)
+    (H lookahead input stack rules)
+  (if (= sym 'J)
+    (J lookahead input stack rules)
+  (if (= sym 'A)
+    (A lookahead input stack rules)
+  (if (= sym 'O)
+    (O lookahead input stack rules)
+  (if (= sym 'M)
+    (M lookahead input stack rules)
+  (if (= sym 'T)
+    (T lookahead input stack rules)
+  (if (= sym 'U)
+    (U lookahead input stack rules)
+  (if (= sym 'F)
+    (F lookahead input stack rules)
+  (if (= sym 'D)
+    (D lookahead input stack rules)
+  (if (= sym 'C)
+    (C lookahead input stack rules)
+  (if (= sym 'I)
+    (I lookahead input stack rules)
+  (if (= sym 'P)
+    (P lookahead input stack rules)
+  (error 'unknown-nonterminal)))))))))))))))))))))))))))))))))))))))))))
+
+(define parse ((list sym) (list (pair sym sym)) (list int) -> (list int)) (input stack rules)
+  (if (null? stack)
+    (error 'empty-stack)
+    (let ((cat (fst (car stack)))
+          (sym (snd (car stack))))
+      (if (= cat 'control)
+        (if (= sym '$)
+          (if (null? input)
+            rules
+            (error 'expected-end-of-input))
+          (error 'unknown-control-code))
+        (if (= cat 'term)
+          (if (null? input)
+            (error 'unexpected-end-of-input)
+            (if (= sym (car input))
+              (parse (cdr input) (cdr stack) rules)
+              (error 'unexpected-symbol)))
+          (if (= cat 'nt)
+            (let ((la (if (null? input) '(control . $) (pair 'term (car input)))))
+              (let ((result (dispatch sym la input (cdr stack) rules)))
+                (parse (fst result) (fst (snd result)) (snd (snd result)))))
+            (error 'unknown-cat)))))))
+
+(define main ((list sym) -> (list int)) (program)
+  (parse program '[(nt . S) (control . $)] '[]))
