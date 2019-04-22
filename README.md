@@ -1,10 +1,10 @@
 # Ratl: Resource-Aware Toy Language
 
-Ratl is a toy: a baby language that can infer small upper bounds.
+Ratl is a toy language that can infer polynomial upper bounds.
 
-More precisely, it is a strongly-typed, monomorphic, functional language based
+More precisely, it is a strongly-typed, polymorphic, functional language based
 on lists and integers with a resource-aware type system capable of reporting
-upper bounds for functions and expressions that are uni-variate polynomials of
+upper bounds for functions and expressions that are multi-variate polynomials of
 their inputs, along with an accompanying interpreter.
 
 This is based off of work done by Jan Hoffmann and others.
@@ -35,13 +35,17 @@ To run ratl, supply the ratl file to analyze, the arguments to main (only
 needed when `mode` is `Run`), and optionally, a maximum degree:
 
     $ stack exec ratl -- -h
-    Usage: ratl [-d <n>] [-m <m>] filename <args>
+    Usage: ratl [-d <n>] [-m <m>] [-e] [-g <g>] filename <args>
     Resource-Aware Toy Language
 
-      -v         --version           Version information.
-      -h         --help              Print this message.
-      -m MODE    --mode=MODE         One of: Analyze, Run
-      -d DEGREE  --degreemax=DEGREE  Maximum degree of analysis.
+    -v          --version           Version information.
+    -h          --help              Print this message.
+    -m MODE     --mode=MODE         One of: Analyze, Run, Check
+    -c COMMAND  --command=COMMAND   Specify the command to execute.  Default is "(main <args>)".
+    -n NAME     --name=NAME         Restrict analysis to supplied names.  Default is all top-level names in the file.  Special name "initial basis" analyzes same.
+    -e          --explicit          Always include explanation of bounds.
+    -g DEBUG    --debug=DEBUG       Print debugging info; one of: Grid, Compact, Eqns
+    -d DEGREE   --degreemax=DEGREE  Maximum degree of analysis.
 
 ## Examples
 
@@ -49,31 +53,31 @@ Ratl executes on a `.ratl` file, and outputs the bounds of the functions and
 the result returned by `main`.  In the directory where Ratl was downloaded,
 run the following commands:
 
-    $ echo "(define main ([list int] -> [list int]) (xs) xs)" > id.ratl
+    $ echo "(define main ([list 'a] -> [list 'a]) (xs) xs)" > id.ratl
     $ stack exec ratl id.ratl [1 2 3]
-    main: 1.0
+    main: 1
     (1 2 3)
 
 The program faithfully returned its input.  Even better, Ratl analyzed `main`,
-and decided that it would execute in constant time: 1.0!  Sounds fast.
+and decided that it would execute in constant time: 1!  Sounds fast.
 
 Now, a more complex example:
 
-    $ echo "(define main ([list int] -> int) (xs) (car xs))" > car.ratl
+    $ echo "(define main ([list 'a] -> 'a) (xs) (car xs))" > car.ratl
     $ stack exec ratl car.ratl [3 2 1]
-    main: 4.0
+    main: 4
     3
 
 With the addition of the call to `car`, the program outputs the first element
-of its input, and Ratl tells us that `main` now runs in constant time of 4.0,
+of its input, and Ratl tells us that `main` now runs in constant time of 4,
 which seems appropriately less fast.
 
 Let's analyze a more interesting program, shall we?
 
-    $ echo "(define main ([list int] -> int) (xs)
+    $ echo "(define main ([list 'a] -> int) (xs)
             (if (not (null? xs)) (+ 1 (main (cdr xs))) 0))" > length.ratl
     $ stack exec ratl length.ratl [9 8 7 6 5 4 3 2 1]
-    main: 27.0*n + 21.0
+    main: 27*n + 19
     9
 
 The program outputs the length of the list, but more importantly Ratl outputs
@@ -82,40 +86,52 @@ of the input!
 
 ## Syntax
 
-The syntax of Ratl is somewhat scheme-like.  The top level is exclusively
-function definitions, denoted by the keyword `define`.  Functions are typed
-using arrow syntax, and must have a single argument, whose name is given in
+The syntax of Ratl is modeled after nano-ML from Norman Ramsey's forthcoming
+textbook ["Programming Languages: Build, Prove, and Compare,"][1] with a few
+tweaks and restrictions.  The top level is exclusively function definitions,
+denoted by the keyword `define`.  Functions are typed using arrow syntax after
+the name, and may have one or more formal parameters, whose names are given in
 parentheses.  The body is an expression.
+
+[1]: https://www.cs.tufts.edu/~nr/build-prove-compare
 
 Expressions include recalling a variable by name, literal values, function
 application, local variables with `let`, and branching with `if`.
 
 Functions are called in prefix position, wrapped in parentheses.
 
-Builtin functions include arithmetic with `+`, `-`, `*`, and `/`, comparison with
-`<`, `>` and `=`, fetching the `car` and `cdr` of a list, prepending to a list
-with `cons`, testing a list with `null?`, and negating booleans with `not`.
-Notably, the result of subtraction cannot be negative; rather than producing an
-error, it is bounded below by zero.
+Primitive functions include arithmetic with `+`, `-`, `*`, and `/`, comparison
+with `<`, `>` and `=`, fetching the `car` and `cdr` of a list, prepending to a
+list with `cons`, testing a list with `null?`, fetching the `fst` and `snd` of
+a `pair`, and raising an `error`.  Notably, the result of subtraction cannot be
+negative; rather than producing an error, it is bounded below by zero.
 
-Literal values include the positive integers starting at zero, booleans, symbols,
-and lists.  Lists can be over integers or booleans, or over lists, lists of
-lists, etc.  Integers are depicted in the usual way.  Booleans are represented
-by the symbols `#t` for true and `#f` for false.  Symbols are represented by
-any characters besides whitespace and `()[];`.  Lists are space-delimited, in
-square brackets or parentheses.  Both symbols and lists must be prefixed by
-a quote mark, or be embedded in a `(quote ...)` expression.
+The basis supplies `bind`, `isbound?`, `find`, `caar`, `cadr`, `cdar`,
+`length`, `and`, `or`, `not`, `append`, `revapp`, `reverse`, `<=`, `>=`, `!=`,
+`max`, `min`, `mod`, `gcd`, `lcm`, `list1`, `list2`, `list3`, `list4`, `list5`,
+`list6`, `list7`, `list8`, each with the usual meaning.
+
+Literal values include the integers starting at zero, booleans, symbols, pairs,
+and lists.  Pairs and lists can be over integers or booleans, or over pairs or
+lists, lists of lists, etc.  Integers are depicted in the usual way.  Booleans
+are represented by the symbols `#t` for true and `#f` for false.  Symbols are
+represented by any characters besides whitespace and `()[];`.  Lists are
+space-delimited, in square brackets or parentheses.  Symbols, pairs and lists
+must be prefixed by a quote mark, or be embedded in a `(quote ...)` expression.
+Literal pairs are input with a period in the second-to-last position, as in
+`(1 . 2)`.  *Note* that if the value after the period is nil, this will be
+interpreted as a list.
 
 Identifiers are made of the same characters as symbols.
 
 E.g., if you wanted to find the length of a list:
 
-    (define length ([list int] -> int) (xs)
+    (define length ([list 'a] -> int) (xs)
         (if (not (null? xs))
             (+ 1 (length (cdr xs)))
             0))
 
-    (define main (int -> int) (n)
+    (define main ('a -> int) (_)
         (length '[1 2 3 4 5 6 7 8 9]))
 
 For more examples, take a look under the `examples/ratl` directory.
@@ -137,9 +153,11 @@ idea to check a list with `null?` before using it.
 
 Ratl's usefulness lies not in its semantics but its type system.
 
-Expressions, functions, and list types each carry some resource variable.  Each
-expression's type is associated with some cost relationship.  These combine to
-form constraints, which are accumulated algorithmically across the type rules
+Types, and by extension type environments, are associated with a set of
+resource "indices" (theoretically infinite, but bounded in practice by the
+maximum degree of analysis), each of which corresponds to some resource
+variable.  These variables are combined to form constraints, which accumulate
+algorithmically across the type rules for different syntactic forms,
 and that along with an objective function constructed from the function types
 form a linear program that can be submitted to an off-the-shelf LP solver.  The
 solution produced maps to the function's resource upper bound.
@@ -150,26 +168,31 @@ through some user-supplied annotation metric.
 
 Consider a few example Ratl type rules.  First, accessing a variable:
 
-![vareq](http://latex.codecogs.com/gif.latex?%5Cfrac%7Bq%5Cgeq%20q%27%20&plus;%20K_%7Bvar%7D%7D%7B%5CSigma%3B%5CGamma%2Cx%3AB%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27%7D%20x%3AB%7D)
+![vareq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%20%5Cbegin%7Bmatrix%7D%20Q%20%3D%20%5Coperatorname%7BfreshCost%7D%28%5C%7B%5Ctau%5C%7D%29%20%5C%5C%20Q%27%20%3D%20%5Coperatorname%7BfreshCost%7D%28%5Ctau%29%20%5C%5C%20Q%20-%20%5Coperatorname%7Bpack%7D%28Q%27%29%20%3D%20K_%7Bvar%7D%20%5Cend%7Bmatrix%7D%20%7D%20%7B%5C%7Bx%20%3A%20%5Ctau%5C%7D%3B%20Q%20%5Cvdash%20%5Ctextsc%7BVAR%7D%28x%29%20%3A%20%5Ctau%3B%20Q%27%7D)
 
 Here there is nothing to consider but the cost of accessing the variable, since
-it is a leaf term.
+it is a leaf term.  Fresh cost environments are created to track this relation,
+and since the variable *x* is free, it is included as part of that upper bound.
 
-Next, applying a function:
-
-![appeq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_e%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27_e%7D%20e%3AA%5C%20%5C%20%5C%20%5C%20%5CSigma%28f%29%20%3D%20A%5Cxrightarrow%7Bq_f/q%27_f%7DB%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_e%20&plus;%20K_%7Barg%7D%5C%20%5C%20%5C%20%5C%20q%27_e%3Dq_f&plus;c&plus;K_%7Bapp1%7D%5C%20%5C%20%5C%20%5C%20q%27%3Dq_f%27&plus;c-K_%7Bapp2%7D%7D%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27%7D%20%28f%5C%20e%29%3AB%7D)
-
+Other syntactic form have other requirements.  For example, consider functions.
 Applying a function requires considering the cost of that function as well as
-the cost of the argument; in total the expression must be more expensive than
-evaluating the argument and executing the function.
+the cost of the arguments; in total the expression must be more expensive than
+evaluating the arguments and executing the function.
 
-Finally, the if expression:
+The simplest example of most of these requirements is the if expression:
 
-![ifeq](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_p%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27_p%7D%20e_p%3AA%5C%20%5C%20%5C%20%5C%20%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_t%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27_t%7D%20e_t%3AB%5C%20%5C%20%5C%20%5C%20%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq_f%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27_f%7D%20e_f%3AB%5C%20%5C%20%5C%20%5C%20q%5Cgeq%20q_p%20&plus;%20K_%7Bifp%7D%5C%20%5C%20%5C%20%5C%20q%27_p%5Cgeq%20q_t%20&plus;%20K_%7Bift%7D%5C%20%5C%20%5C%20%5C%20q%27_p%5Cgeq%20q_f&plus;K_%7Biff%7D%5C%20%5C%20%5C%20%5C%20q%27_t%5Cgeq%20q%27&plus;K_%7Bifc%7D%5C%20%5C%20%5C%20%5C%20q%27_f%5Cgeq%20q%27&plus;K_%7Bifc%7D%7D%7B%5CSigma%3B%5CGamma%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dq%7D_%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B.9ex%5D%7B0pt%7D%7B0pt%7Dq%27%7D%20%28%5Ctextrm%7Bif%20%7D%20e_p%5C%20e_t%5C%20e_f%29%3AB%7D)
+![ifeqtop](http://latex.codecogs.com/gif.latex?%5Cbegin%7Bmatrix%7D%20%5CGamma_t%3B%20Q_t%20%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dk%7D%20e_t%20%3A%20%5Ctau_c%3B%20Q%27_t%20%26%20%5CGamma_f%3B%20Q_f%20%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dk%7D%20e_f%20%3A%20%5Ctau_c%3B%20Q%27_f%20%26%20%5CGamma_c%20%3D%20%5CGamma_t%20%5Ccup%20%5CGamma_f%20%5Cend%7Bmatrix%7D%20%5C%5C%20%5Cbegin%7Bmatrix%7D%20Q_c%20%3D%20%5Coperatorname%7BfreshCost%7D%28%5Coperatorname%7Brange%7D%20%5CGamma_c%29%20%26%20Q%27_c%20%3D%20%5Coperatorname%7BfreshCost%7D%28%5Ctau_c%29%20%5C%5C%20%5Cpi_%7B%5Coperatorname%7Bzero%7D%28%5Coperatorname%7Brange%7D%20%5CGamma_c%20%5Csetminus%20%5CGamma_t%29%7D%5E%7B%5CGamma_t%7D%28%5CGamma_c%3B%20Q_c%29%20-%20Q_t%20%5Cgeq%20K_%7Biftrue%7D%20%26%20Q%27_t%20-%20Q%27_c%20%5Cgeq%20K%27_%7Biftrue%7D%20%5C%5C%20%5Cpi_%7B%5Coperatorname%7Bzero%7D%28%5Coperatorname%7Brange%7D%20%5CGamma_c%20%5Csetminus%20%5CGamma_f%29%7D%5E%7B%5CGamma_f%7D%28%5CGamma_c%3B%20Q_c%29%20-%20Q_f%20%5Cgeq%20K_%7Biffalse%7D%20%26%20Q%27_f%20-%20Q%27_c%20%5Cgeq%20K%27_%7Biffalse%7D%20%5Cend%7Bmatrix%7D)
+![ifeqbot](http://latex.codecogs.com/gif.latex?%5Cfrac%7B%20%5Cbegin%7Bmatrix%7D%20%5Cbegin%7Bmatrix%7D%20%5CGamma_%7Bp_0%7D%3B%20Q_%7Bp_0%7D%20%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dk%7D%20e_p%20%3A%20%5Ctau_p%3B%20Q%27_%7Bp_0%7D%20%26%20%5CGamma_p%20%3D%20%5CGamma_%7Bp_0%7D%20&plus;%20%5CGamma_c%20%26%20Q_p%20%3D%20%5Coperatorname%7BfreshCost%7D%28%5Coperatorname%7Brange%7D%20%5CGamma_p%29%20%5C%5C%20%5Cend%7Bmatrix%7D%20%5C%5C%20%5Cpi_%7B%5Coperatorname%7Bzero%7D%28%5Coperatorname%7Brange%7D%20%5CGamma_c%29%7D%5E%7B%5CGamma_%7Bp_0%7D%7D%28%5CGamma_p%3B%20Q_p%29%20-%20Q_%7Bp_0%7D%20%3D%20K_%7Bifpred%7D%20%5C%5C%20%5Coperatorname%7Bzero%7D%28Q%27_%7Bp_0%7D%29%20-%20%5Coperatorname%7Bzero%7D%28Q_c%29%20%3D%20K%27_%7Bifpred%7D%20%5C%5C%20%5Cbegin%7Bmatrix%7D%20%5Cforall%20j%2C%20%5Coperatorname%7Bdeg%7D%28j%29%20%5Cneq%200%5Cin%20%5Cmathcal%7BI%7D%28%5Coperatorname%7Brange%7D%20%5CGamma_c%29%20%5Cldotp%20%26%5CGamma_%7Bp_j%7D%3B%20Q_%7Bp_j%7D%20%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7D%5Coperatorname%7Bcf%7D%28k%20-%20%5Coperatorname%7Bdeg%7D%28j%29%29%7D%20e_p%20%3A%20%5Ctau_p%3B%20Q%27_%7Bp_j%7D%20%5C%5C%20%26%5Cpi_%7Bj%7D%5E%7B%5CGamma_%7Bp_j%7D%7D%28%5CGamma_p%3B%20Q_p%29%20-%20Q_%7Bp_j%7D%20%3D%200%20%5C%5C%20%5Cend%7Bmatrix%7D%20%5C%5C%20%5CGamma%3B%20Q%20%3D%20%5Ccurlyvee%20%5CGamma_p%3B%20Q_p%20%5Cend%7Bmatrix%7D%20%7D%7B%5CGamma%3B%20Q%20%5Cvdash%5E%7B%5Cmkern-10mu%5Cscriptscriptstyle%5Crule%5B-.9ex%5D%7B0pt%7D%7B0pt%7Dk%7D%20%5Ctextsc%7BIF%7D%28e_p%2C%20e_t%2C%20e_f%29%20%3A%20%5Ctau%3B%20Q%27%7D)
 
-Here, the variables for the predicate and both branches are considered, and
+Here, both the true and false branches are considered.  To get the upper bound,
 constraints are added such that the `if` expression is guaranteed to be more
-expensive than its pieces.
+expensive than either the consequent or alternative, in addition to the
+predicate.  Without exhaustively describing the mechanics, the costs are
+plumbed through, connecting like cost environments.  Of note is that the
+predicate must be analyzed multiple times: once for each index from the
+subsequent code.  This allows each possible potential for those indices to
+translate across the predicate.  Finally, the sharing operation is invoked to
+eliminate duplicate free variables collected from each subexpression.
 
 ## The Algorithm
 
@@ -189,20 +212,14 @@ program found in `./examples/ratl/sum.ratl`, reproduced below:
             (+ (car xs)
                (sum (cdr xs)))))
 
-Everything is given a resource annotation.  An annotation is made of one or
-more resource variables, zero or more relationships between resource variables,
-and a cost.  For this example, let's start with the definition for `sum`.
-First, during parsing the type, `[list int]`, is given a variable because it's a
-list type, and `sum` itself is given variables for cost before and after
-evaluation because it's a function declaration.  Then during type checking, the
-abstract syntax tree of the function body is traversed, and every node in the
-tree is annotated in post-order.  In the case of `sum`, that means the
-expression `xs` is annotated, followed by `(null? xs)`, `0`, `xs`, `(car xs)`,
-`xs`, `(cdr xs)`, `(sum ...)`, `(+ ...)`, and finally `(if ...)`.
+The type of each result value and free variable is given a resource annotation.
+An annotation is made of one or more resource variables, which can then be
+combined in cost relationships between resource variables induced by traversing
+the abstract syntax tree.
 
 During each annotation step, leaf expressions like `xs` receive variables *q*
 and *q'* and a cost *k*.  The linear equation that results is simply
-*q*≥*q'*+*k*.  Interior nodes in the syntax tree like `(car xs)` are aware of
+*q*=*q'*+*k*.  Interior nodes in the syntax tree like `(car xs)` are aware of
 their children's variables, and build inequalities that force them to be
 related.  The more complex the relationship between nodes, the more variables
 and equations are required.  For example, `if` expressions have multiple
@@ -214,268 +231,494 @@ expression and type are given equivalence relations to the function
 declarations.
 
 After annotating the entire program, the objective function is then created,
-with a weight for each of the list type variables and the function variables.
-To calculate a runtime upper bound, this objective should be minimized.
+with weights corresponding to each polynomial of list variables, and the
+constant function variables.  To calculate a runtime upper bound, this
+objective should be minimized.
 
-The end result of the annotation for this example is presented in the table
-below.  The variables are by column, and the header row gives the syntax node
-that corresponds to that variable.  The first row is the objective function,
-and the remaining rows are the inequalities collected during type checking.
-The right-most column gives the cost for that constraint.  Empty cells are
-variables with zero coefficients for that constraint.
+Unfortunately, even for such a simple program, the analysis produced is too
+large to be understood in its entirety; it must be broken down.  The output
+below is the annotated result of running with the `-g Eqns` flag.
 
-|`[list int]`|  `sum`  |  `sum`  |`[list int]`| `xs` | `xs` |`[list 'a]`|`null?`|`null?`|`null?`|`null?`| `#c` |  `0` |  `0` |`[list int]`| `xs` | `xs` |`[list 'a]`| `car`| `car`| `car`| `car`| `#c` |`[list int]`| `xs` | `xs` |`[list 'a]`|`[list 'a]`| `cdr`| `cdr`| `cdr`| `cdr`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |`[list 'a]`|`[list 'a]`| `if` | `if` |   |         |
-| ---------- | ------- | ------- | ---------- | ---- | ---- | --------- | ----- | ----- | ----- | ----- | ---- | ---- | ---- | ---------- | ---- | ---- | --------- | ---- | ---- | ---- | ---- | ---- | ---------- | ---- | ---- | --------- | --------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | --------- | --------- | ---- | ---- |---| ------- |
-|   **1.0**  | **1.0** |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      |   |         |
-|            |         |         |            |  1.0 | -1.0 |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |  1.0  | -1.0  |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **0.0** |
-|            |         |         |     1.0    |      |      |   -1.0    |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **0.0** |
-|            |         |         |            | -1.0 |      |           |       |       |  1.0  |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |  1.0 |           | -1.0  |       |       |       | -1.0 |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **1.0** |
-|            |         |         |            |      |      |           |       |  1.0  |       | -1.0  |  1.0 |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |  1.0 | -1.0 |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |  1.0 | -1.0 |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |  1.0 | -1.0 |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **0.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |     1.0    |      |      |    -1.0   |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **0.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            | -1.0 |      |           |      |      |  1.0 |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |  1.0 |           | -1.0 |      |      |      | -1.0 |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |  1.0 |      | -1.0 |  1.0 |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |  1.0 | -1.0 |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |     1.0   |           |  1.0 | -1.0 |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **0.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |     1.0   |    -1.0   |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **0.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |     1.0    |      |      |    -1.0   |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **0.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            | -1.0 |      |           |           |      |      |  1.0 |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |  1.0 |           |           | -1.0 |      |      |      | -1.0 |      |      |      |      |      |      |      |      |           |           |      |      | = | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |  1.0 |      | -1.0 |  1.0 |      |      |      |      |      |      |      |      |           |           |      |      | = | **1.0** |
-|    -1.0    |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |     1.0   |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | = | **0.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      | -1.0 |      |      |  1.0 |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |  -1.0   |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |  1.0 |      |      |      | -1.0 |      |      |      |      |      |           |           |      |      | = | **1.0** |
-|            |         |   1.0   |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      | -1.0 |  1.0 |      |      |      |      |      |           |           |      |      | = | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |  1.0 | -1.0 |      |      |      |           |           |      |      | ≥ | **0.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      | -1.0 |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |  1.0 |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |  1.0 |      |            |      |      |           |           |      |      |      |      |      | -1.0 |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |  1.0 |      | -1.0 |      |      |      | -1.0 |           |           |      |      | = | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |  1.0 |      | -1.0 |  1.0 |           |           |      |      | = | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |     1.0   |    -1.0   |      |      | ≥ | **0.0** |
-|            |         |         |            |      |      |           |       |       | -1.0  |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |  1.0 |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |  1.0  |      | -1.0 |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |  1.0  |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      | -1.0 |      |      |           |           |      |      | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |  1.0 |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      | -1.0 | ≥ | **1.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |  1.0 |      |           |           |      | -1.0 | ≥ | **1.0** |
-|            |   1.0   |         |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           | -1.0 |      | = | **0.0** |
-|            |         |  -1.0   |            |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |           |      |  1.0 | = | **0.0** |
-|     1.0    |         |         |    -1.0    |      |      |           |       |       |       |       |      |      |      |            |      |      |           |      |      |      |      |      |            |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |    -1.0   |           |      |      | = | **0.0** |
-|            |         |         |            |      |      |           |       |       |       |       |      |      |      |    -1.0    |      |      |           |      |      |      |      |      |    -1.0    |      |      |           |           |      |      |      |      |      |      |      |      |      |      |      |      |      |           |     1.0   |      |      | = | **0.0** |
+To start, let's establish the objective:
 
-To consider the second row, this corresponds to one instance of the term `xs`
-discussed previously.  It has a presumed cost of 1.0, and coefficients of 1.0
-(as they occurs once in the equation).  This in turn corresponds to the
-equation *q*≥*q'*+*k*, or more specifically, 1.0\**q*≥1.0\**q'*+1.0.
+    minimize m + n
 
-The optmimum determined by Ratl is given in the next table:
+Here, the variable `m` tracks the linear cost of the function `sum`, while `n`
+tracks the constant cost.  This is a good time to point out that these variable
+names are chosen arbitrarily, and don't necessarily correspond to the bounds
+reported by the analysis, where `n` is often used for the linear potential.
 
-|`[list int]`|  `sum`  |  `sum`  |`[list int]`| `xs` | `xs` |`[list 'a]`|`null?`|`null?`|`null?`|`null?`| `#c` |  `0` |  `0` |`[list int]`| `xs` | `xs` |`[list 'a]`| `car`| `car`| `car`| `car`| `#c` |`[list int]`| `xs` | `xs` |`[list 'a]`|`[list 'a]`| `cdr`| `cdr`| `cdr`| `cdr`| `#c` | `sum`| `sum`| `#c` |  `+` |  `+` |  `+` |  `+` | `#c` |`[list 'a]`|`[list 'a]`| `if` | `if` |
-| ---------- | ------- | ------- | ---------- | ---- | ---- | --------- | ----- | ----- | ----- | ----- | ---- | ---- | ---- | ---------- | ---- | ---- | --------- | ---- | ---- | ---- | ---- | ---- | ---------- | ---- | ---- | --------- | --------- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | --------- | --------- | ---- | ---- |
-|    22.0    |  16.0   |   0.0   |     0.0    | 14.0 | 13.0 |    0.0    | 12.0  | 12.0  | 15.0  | 11.0  |  0.0 | 10.0 |  9.0 |     0.0    |  8.0 |  7.0 |     0.0   |  6.0 |  6.0 |  9.0 |  5.0 |  0.0 |    22.0    |  2.0 |  1.0 |    22.0   |    22.0   |  0.0 | 22.0 |  3.0 | 21.0 |  0.0 |  4.0 |  3.0 |  4.0 |  2.0 |  2.0 | 10.0 |  1.0 |  0.0 |    22.0   |    22.0   | 16.0 |  0.0 |
+Next, a backwards analysis is performed, starting with the leaves of the AST.
+The first leaf is the literal `0` in the `if` branch:
 
+    -h + i = 1
+
+With this branch finished, the `else` branch is analyzed next.  Before
+descending the tree, fresh annotations are supplied for the applied functions,
+first the call to `+`:
+
+    -f + g = 0
+    e - g = 1
+    -d + f = 1
+
+Then the recursive call to `sum`, which is given a slack variable `z` to let
+the potential float for the recursion (without which, the cost would be
+anchored to the overall cost, and the problem would be infeasible):
+
+    -z + b - n = 1
+    z - a + k = 1
+
+Then the call to `cdr`, which is special because it includes a "potential
+shift", which allows `v` to pay for both the linear and constant costs:
+
+    -s + v + w = 0
+    -r + v = 0
+    -s + u = 0
+    -r + t = 0
+    q - w = 1
+    -p + u = 1
+
+With these fresh signatures created, equations for the cost of var `xs` are
+derived:
+
+    -i_2 + k_2 = 1
+    -h_2 + j_2 = 0
+
+With these, it can apply var `xs` as a parameter to `cdr`:
+
+    i_2 - n_2 = 1
+    h_2 - m_2 = 0
+    g_2 - k_2 = 0
+    f_2 - j_2 = 0
+    n_2 - q = 0
+    m_2 - v = 0
+    e_2 - g_2 = 0
+    d_2 - f_2 = 0
+
+And then apply the result of `cdr` as a parameter to `sum`:
+
+    p - y = 1
+    t - x = 0
+    c_2 - e_2 = 0
+    b_2 - d_2 = 0
+    y - b = 0
+    x - m = 0
+    a_2 - c_2 = 0
+    z_2 - b_2 = 0
+    a - c = 1
+    y_2 - a_2 = 0
+    x_2 - z_2 = 0
+
+Then the call to `car`, which is similarly special, thanks to `v_2`:
+
+    -t_2 + v_2 + w_2 = 0
+    -s_2 + v_2 = 0
+    -t_2 + u_2 = 0
+    r_2 - w_2 = 1
+    -q_2 + u_2 = 1
+
+Now equations for the cost of this var `xs`:
+
+    -j_3 + m_3 = 1
+    -i_3 + k_3 = 0
+
+Which can be used to apply that var `xs` as a parameter to `car`:
+
+    j_3 - p_2 = 1
+    i_3 - n_3 = 0
+    h_3 - m_3 = 0
+    g_3 - k_3 = 0
+    p_2 - r_2 = 0
+    n_3 - v_2 = 0
+    f_3 - h_3 = 0
+    e_3 - g_3 = 0
+
+At this point, it is necessary to do something that appears unintuitive.  In
+order to correctly propagate the different kinds of costs induced through the
+recursive call to `sum`, beyond the "ground truth" about the preceding code
+(the call to `car` just shown), the analysis must plumb in additional paths
+using a "cost-free" metric.  This can be considered as an alternate world of
+sorts which allows subsequent higher-degree costs to pass through and be
+captured.  Worth noting is the degree of this cost-free analysis is less than
+the base degree of the analysis by the degree of the subsequent code it plumbs.
+This is a necessary condition of termination, but even if not it would prevent
+an exponential blowup of the analysis that would otherwise occur.
+
+That said, in fresh equations cost-free call to `car`, there is no potential
+shift operation:
+
+    -b_3 + d_3 = 0
+    -b_3 + c_3 = 0
+    a_3 - d_3 = 0
+    -z_3 + c_3 = 0
+
+In the cost-free var `xs`, there are no linear variables:
+
+    -w_3 + x_3 = 0
+
+Likewise in the application of the cost-free var `xs` as a parameter to
+cost-free `car`:
+
+    w_3 - y_3 = 0
+    v_3 - x_3 = 0
+    y_3 - a_3 = 0
+    u_3 - v_3 = 0
+
+With the cost-free analysis of `car` finished, the two can be combined to
+sequence the call to `car` before the call to `sum`:
+
+    q_2 - y_2 = 1
+    z_3 - x_2 = 0
+    t_3 - f_3 = 0
+    r_3 - e_3 = 0
+    s_3 - u_3 = 0
+
+Here, another dimensional trick must be employed: the two different uses of
+var `xs` must be combined through what is called the "sharing" operation:
+
+    q_3 - t_3 = 0
+    p_3 - r_3 - s_3 = 0
+
+At last, the `car` and `sum` parameters to `+` can be applied:
+
+    c - e = 0
+    n_4 - q_3 = 0
+    m_4 - p_3 = 0
+
+With the two branches of the `if` expression finished, the analysis combines
+them by "relaxing" their bounds to the greater of the two.  While in this case
+it is obvious that the literal `0` must cost less than the addition, the
+analysis can simply encode this by creating new upper and lower bounds.
+
+First, it relaxes the `if` branch:
+
+    k_4 - i ≥ 1
+    j_4 ≥ 0
+    h - j ≥ 1
+
+Then, it relaxes the `else` branch:
+
+    k_4 - n_4 ≥ 1
+    j_4 - m_4 ≥ 0
+    d - j ≥ 1
+
+And with that the analysis turns to the condition, supplying fresh annotations
+for the call to `null?`:
+
+    -f_4 + h_4 = 0
+    e_4 - h_4 = 1
+    -d_4 + f_4 = 1
+
+As before, equations for the cost of this var `xs`:
+
+    -y_4 + a_4 = 1
+    -x_4 + z_4 = 0
+
+Which are applied as a parameter to `null?`:
+
+    y_4 - c_4 = 1
+    x_4 - b_4 = 0
+    w_4 - a_4 = 0
+    v_4 - z_4 = 0
+    c_4 - e_4 = 0
+    b_4 - g_4 = 0
+    u_4 - w_4 = 0
+    t_4 - v_4 = 0
+
+The call to `null?` must be sequenced before the `if` and `else` branches,
+which in started here:
+
+    d_4 - i_4 = 1
+    s_4 - u_4 = 0
+    r_4 - t_4 = 0
+
+Just like previously, this call to `null?` precedes the code in the branches of
+the `if` expression, and a cost-free call to `null?` is required:
+
+    -n_5 + p_4 = 0
+    m_5 - p_4 = 0
+    -k_5 + n_5 = 0
+
+With its very own cost-free var `xs`:
+
+    -h_5 + i_5 = 0
+
+And an application of that cost-free var `xs` as a parameter to that cost-free
+`null?`:
+
+    h_5 - j_5 = 0
+    g_5 - i_5 = 0
+    j_5 - m_5 = 0
+    f_5 - g_5 = 0
+
+The sequencing of `null?` before `if` and `else` branches is then completed:
+
+    k_5 - q_4 = 0
+    e_5 - f_5 = 0
+    i_4 - k_4 = 0
+    q_4 - j_4 = 0
+    d_5 - s_4 = 0
+    b_5 - r_4 = 0
+    c_5 - e_5 = 0
+
+Because it is used multiple times, the analysis must again share `xs`:
+
+    a_5 - d_5 = 0
+    z_5 - b_5 - c_5 = 0
+
+Finally, the `if` expression has been completed!  All that is left to do is
+connect it with the overall cost of the function `sum`:
+
+    -a_5 + n = 0
+    -z_5 + m = 0
+    -j + k = 0
+
+The linear program is finished.  It can now be fed to the solver, which happily
+finds the optimum:
+
+    22*m + 14*n + ... (assignments for other variables omitted)
 
 The optimum values for the list type variables are the linear upper bounds,
-while the optimum values for the function types are the constant factors.  This
-corresponds to the reported bounds for the two functions:
+while the optimum values for the function's constants are the constant factors.
+This corresponds to the reported bounds for the function (recall as mentioned
+above that the two `n`s are not the same):
 
-    sum: 22.0*n + 16.0
-
-For the actual implementation, this formulation is actually how the problem is
-fed to the solver.  It is kept in this form in order to minimize the number of
-transformations, because in Ratl's case, the problem is a minimization problem,
-there are equalities, and all inequalities are greater-than-or-equal.
+    sum: 22.0*n + 14.0
 
 ## Analysis
 
-When run on the sample programs in `examples/ratl`, here are the resulting
-bounds predicted:
+When run on the sample programs in `examples/ratl` (excluding `parser*`), here
+are the resulting bounds predicted:
 
     examples/ratl/all.ratl
-    main: 29.0*n + 27.0
-    all: 29.0*n + 24.0
+    main: 29*n + 27
+    all: 29*n + 23
 
     examples/ratl/any.ratl
-    main: 29.0*n + 27.0
-    any: 29.0*n + 24.0
+    main: 29*n + 27
+    any: 29*n + 23
 
     examples/ratl/bubble.ratl
-    main: 54.0*n^2 + 94.0*n + 36.0
-    bubble: 54.0*n^2 + 94.0*n + 33.0
-    swapback: 54.0*n + 19.0
+    main: 54*n^2 + 94*n + 34
+    bubble: 54*n^2 + 94*n + 31
+    swapback: 54*n + 18
+
+    examples/ratl/cart.ratl
+    main: 34*n*m + 34*m + 37*n + 45
+    where
+        m is for index {[], [∗]}
+        n is for index {[∗], []}
+    cart: 34*n*m + 34*m + 37*n + 40
+    where
+        m is for index {[], [∗]}
+        n is for index {[∗], []}
+    pairs: 34*n + 26
+
+    examples/ratl/drop.ratl
+    drop: 23*n + 18
 
     examples/ratl/eratos.ratl
     main: Analysis was infeasible
     range: Analysis was infeasible
-    eratos: 81.0*n^2 + 42.0*n + 25.0
-    filtercar: 81.0*n + 9.0
-    divides?: 31.0
+    eratos: 81*n^2 + 42*n + 23
+    filtercar: 81*n + 9
+    divides?: 31
 
     examples/ratl/filtzero.ratl
-    main: 50.0*n + 46.0
-    filtzero: 50.0*n + 43.0
+    main: 50*n + 44
+    filtzero: 50*n + 41
 
     examples/ratl/id.ratl
-    main: 12.0
-    id_nat: 1.0
-    id_list: 1.0
+    main: 12
+    id: 1
+    id_list: 1
 
     examples/ratl/insertion.ratl
-    main: 54.0*n^2 + 111.0*n + 20.0
-    insertion: 54.0*n^2 + 111.0*n + 17.0
-    insert: 54.0*n + 42.0
+    main: 54*n^2 + 111*n + 17
+    insertion: 54*n^2 + 111*n + 14
+    insert: 54*n + 38
 
     examples/ratl/last.ratl
-    main: 25.0*n + 26.0
-    last: 25.0*n + 22.0
+    main: 25*n + 23
+    last: 25*n + 20
 
     examples/ratl/length.ratl
-    main: 27.0*n + 24.0
-    length: 27.0*n + 21.0
+    main: 19*n + 14
 
     examples/ratl/loop.ratl
     main: Analysis was infeasible
+    loop_lit_list: Analysis was infeasible
+    loop_to_list: Analysis was infeasible
     loop: Analysis was infeasible
 
     examples/ratl/mono.ratl
-    main: 112.0*n + 43.0
-    mono_dec: 56.0*n + 18.0
-    mono_inc: 56.0*n + 18.0
+    main: 112*n + 43
+    mono_dec: 56*n + 18
+    mono_inc: 56*n + 18
+
+    examples/ratl/multivar.ratl
+    prod: 29*n*m + 29*m + 44*n + 41
+    where
+        m is for index {[], [∗]}
+        n is for index {[∗], []}
+    dist: 29*m + 29*n + 59
+    where
+        m is for index {[], [∗]}
+        n is for index {[∗], []}
+    mapmul: 29*n + 21
 
     examples/ratl/nil.ratl
-    main: 5.0
-    nil: 1.0
+    main: 5
+    nil: 1
+
+    examples/ratl/preserve.ratl
+    preserve_sndpair: 14*n + 11
+    preserve_fstpair: 14*n + 11
+    preserve_carcons: 14*n + 11
 
     examples/ratl/product.ratl
-    main: 22.0*n + 19.0
-    product: 22.0*n + 16.0
+    main: 22*n + 17
+    product: 22*n + 14
+
+    examples/ratl/quick.ratl
+    main: 75*n^2 + 77*n + 18
+    quick: 75*n^2 + 77*n + 15
+    split: 51*n + 13
+
+    examples/ratl/reverse.ratl
+    reverseLin: 24*n + 14
+    reverseQuad: 24*n^2 + 35*n + 9
+    snoc: 24*n + 14
 
     examples/ratl/selection.ratl
-    main: 81.0*n^2 + 157.0*n + 93.0
-    selection: 81.0*n^2 + 157.0*n + 90.0
-    delnextofcar: 44.0*n + 9.0
-    minimum: 37.0*n + 20.0
+    main: 81*n^2 + 156*n + 90
+    selection: 81*n^2 + 156*n + 87
+    delnextofcar: 44*n + 9
+    minimum: 37*n + 19
 
     examples/ratl/sum.ratl
-    main: 22.0*n + 19.0
-    sum: 22.0*n + 16.0
+    main: 22*n + 17
+    sum: 22*n + 14
+
+    examples/ratl/take.ratl
+    take: 31*n + 23
+
+    examples/ratl/unzip.ratl
+    main: 50*n + 17
+    unzip: 50*n + 13
 
     examples/ratl/zero.ratl
-    main: 1.0
+    main: 1
 
-Most of these seem plausible.  `all` and `any` are virtually the same program,
+    examples/ratl/zip.ratl
+    main: 37*m + 5*n + 33
+    where
+        m is for index {[], [∗]}
+        n is for index {[∗], []}
+    zip: 37*m + 5*n + 28
+    where
+        m is for index {[], [∗]}
+        n is for index {[∗], []}
+
+Informally, all are plausible.  `all` and `any` are virtually the same program,
 and their bounds are identical.  The same is true of `sum` and `product`.  As
 expected, `id` is constant time.  The program `loop` does not terminate, so
-Ratl is unsurprisingly unable to produce an upper bound.  In eratos, `range`
+Ratl is unsurprisingly unable to produce an upper bound.  In `eratos`, `range`
 depends solely on parameters which aren't potential-carrying, and so cannot be
-analyzed.
+analyzed.  Further, `all`, `any`, `sum`, `product`, `take`, `drop`, `length`,
+`last`, `zip`<sup id="zipmention">[\*](#zipfootnote)</sup>, `unzip`, and
+`reverse`  all yield linear bounds, and of particular interest, `bubble`,
+`insertion`, `selection`, and `quick` all derive quadratic bounds, as are
+`eratos` and naïve reverse, while `cart`'s inferred bound is a quadratic
+product of the size of its inputs.
 
-Performance-wise, Ratl is bound quadratically by the program size.  This makes
-sense, as Simplex runs in linear time for most problems, and the problem size
-in Ratl grows quadratically with the number of variables, which is within a
-constant factor of the number of nodes in the abstract syntax tree.  To verify
-that, I collected performance data on Ratl in use analyzing 500 functions,
-using an Ubuntu Linux system with an AMD Ryzen 5 1600 and 32GB of RAM.  These
-were broken down in groups by the number of functions in the module in
-question, and run some number of times with the minimal possible input, so as
-to not impact the analysis time by including the cost of actually executing the
-Ratl program.  The programs include the `zero` program, then `sum` program with
-empty input, and all of the functions from the examples combined into one
-program, along with a `main`, which I call "everything" below.  I then repeated
-this program 10 times for 100 functions, and 5 more for 500 functions in a
-single program.  The user and sys times are the total time reported by the
-Linux `time` utility.
+Performance-wise, Ratl is bound quadratically by the maximum degree of
+analysis, and within a degree, the program size.  This makes sense, as Simplex
+runs in linear time for most problems, and the problem size in Ratl grows
+quadratically both with the number of variables, which is within a constant
+factor of the number of nodes in the abstract syntax tree, and the maximum
+degree for the types of those variables.  To verify that, I collected
+performance data on Ratl in use analyzing 500 functions, using an Ubuntu Linux
+system with an AMD Ryzen 5 1600 and 32GB of RAM.  These were broken down in
+groups by the number of functions in the module in question.  The programs
+analyzed were `zero`, `sum`, `parser_tiny`, `parser_small`, and `parser`.  Only
+the `main` functions in each program were analyzed, and each was run with max
+degree set to 1, then 2.  The user and sys times are the total time reported by
+the Linux `time` utility.  Each program's analysis was repeated so that the
+number of executions times the module's function count equaled 500.  These are
+presented along with their averages.
 
-|   Program  | Executions | Functions |  User  |   Sys  |
-| ---------- | ---------- | --------- | ------ | ------ |
-|       zero |        500 |         1 | 1.032s | 1.428s |
-|        sum |        250 |         2 | 0.628s | 0.944s |
-| everything |         50 |        10 | 0.252s | 0.208s |
-| everything |          5 |       100 | 1.928s | 0.128s |
-| everything |          1 |       500 | 9.224s | 0.592s |
+    ratl -m Analyze -d 1 -n main $program.ratl
 
-This supports the assertion that after getting past the overhead costs of
+|     Program  | Executions | Functions | Total User | Total Sys | Mean User | Mean Sys |
+| ------------ | ---------- | --------- | ---------- | --------- | --------- | -------- |
+|         zero |        500 |         1 |     45.10s |    23.28s |     0.09s |    0.05s |
+|          sum |        250 |         2 |     27.82s |    16.07s |     0.11s |    0.06s |
+|  parser_tiny |        100 |         5 |     58.10s |    81.12s |     0.58s |    0.81s |
+| parser_small |         50 |        10 |    136.44s |   193.81s |     2.73s |    3.88s |
+|       parser |         10 |        50 |    360.44s |   498.32s |    36.04s |   49.83s |
+
+    ratl -m Analyze -d 2 -n main $program.ratl
+
+|     Program  | Executions | Functions | Total User | Total Sys | Mean User | Mean Sys |
+| ------------ | ---------- | --------- | ---------- | --------- | --------- | -------- |
+|         zero |        500 |         1 |     43.19s |    23.72s |     0.09s |    0.05s |
+|          sum |        250 |         2 |     30.56s |    24.58s |     0.12s |    0.10s |
+|  parser_tiny |        100 |         5 |    280.61s |   402.08s |     2.81s |    4.02s |
+| parser_small |         50 |        10 |    746.38s |  1084.85s |    14.93s |   21.70s |
+|       parser |         10 |        50 |   3783.10s |  2701.06s |   378.31s |  270.11s |
+
+This supports the claim above that after getting past the overhead costs of
 startup, Ratl's analysis is approximately quadratically upper bounded by the
 program size.
 
-Comparing the performance of Simplex and Megiddo's algorithm requires linking
-Ratl using MegiddoLP.  It also requires only considering very simple programs
-(see "Limits" below).  Therefore, I only consider the `zero` program, analyzed
-and executed 10000 times.
-
-|   Algorithm   | Executions |   User  |   Sys   |
-| ------------- | ---------- | ------- | ------- |
-| Clp (Simplex) |      10000 | 20.880s | 30.056s |
-| MegiddoLP     |      10000 |  8.988s | 29.260s |
-
-At least for the tiny 2D problems presented by Ratl, MegiddoLP appears to be
-less than half the overhead of Clp.  It's impossible to know how well this
-would scale for Ratl, since MegiddoLP doesn't scale.
+<b id="zipfootnote">\*</b>Worth mentioning is that `zip`'s bound is a bit odd
+at first glance.  We think of the "work" done zipping two lists as being split
+equally across both, but there is no rule stating that this must be so; one
+list or the other could pay for nearly the entirety of the operation.  In this
+case the analysis results in more than one feasible solution, of which one is
+selected. [↩](#zipmention)
 
 ## Prior Work
 
-Ratl is based on the ideas behind the Raml project from Jan Hoffmann, et. all.
-Raml is much more powerful than Ratl.  Raml's analysis can decide multi-variate polynomial
-upper bounds, not just univariate, for example, taking the outer product of two
-vectors of potentially different lengths.
+Ratl is based on the ideas behind the Raml project from Jan Hoffmann, et. al.
+Raml is much more powerful than Ratl.  It targets a production language, and
+supports higher-order functions, algebraic data types, integers, lower bounds,
+and resources other than time.
 
-Hoffmann covers these topics systematically and rigorously from the ground up
-in his Ph.D. thesis<sup id="thesismention">[1](#thesisfootnote)</sup>, where he
-lays down the complete conceptual background, then produces the semantics and
-type rules for linear potential, followed by polynomial, followed by
-multivariate.  These analyses are progressively more powerful, but that power
-comes at the cost that the problem size increases exponentially.
+Hoffmann covers resource analysis systematically and rigorously from the ground
+up in his Ph.D. thesis<sup id="thesismention">[1](#thesisfootnote)</sup>, where
+he lays down the complete conceptual background, then produces the semantics
+and type rules for linear potential, followed by polynomial, followed by
+multivariate, each analysis more powerful than the previous.
 
 For polynomial bounds, each type and expression is annotated with variables for
 each degree.  The analysis accounts for each of these variables by representing
 them as binomial coefficients.  Each binomial's lower index corresponds to its
 polynomial degree, produced by the binomial's expansion.  Unlike the polynomial
 however, a binomial has a natural mapping to recursive data structures: the
-successive position in that data structure.  If this expandeds to coefficients
+successive position in that data structure.  If expanded to coefficients
 for each combination of multiple variables, this will produce multivariate
 bounds.
 
 Hoffmann has continued this work with Raml, which is growing to include an
 increasing share of OCaml<sup id="papermention">[2](#paperfootnote)</sup>.
 
-## Limits
-
-Ratl requires the LP solver to be able to handle problems of an arbitrary
-number of dimensions.  When I first started working on this problem, I had
-misread a key observation from Hoffmann's thesis that stated that when deciding
-polynomial bounds each constraint involves at most three variables.  I took
-this to mean that certain programs would be tractable with two variables.
-This was my inspiration for writing MegiddoLP - I thought I could have an
-end-to-end system for some limited number of problems, and compare and contrast
-Megiddo's algorithm with Simplex.  Not so.  The implementation of MegiddoLP
-is two-dimensional, and is limited to programs with one function of type
-`int -> int` that either return their input or an integer literal, i.e.,
-
-    (define main (int -> int) (args)
-        args)
-
-Computing literally anything immediately makes the program larger dimensional.
-Because Megiddo's algorithm is fixed in dimension, this means that even
-expanding the implementation to higher dimensions would eventually hit a wall.
-Thus, to do anything useful, Ratl requires the use of other LP algorithms such
-as Simplex, which is what Coin-Or Clp uses.
-
 ## Caveats
 
-Ratl is not appropriate, suitable, or fit for (practically) any purpose.
+Ratl is not appropriate, suitable, or fit for (practically) any purpose.  It is
+missing many features that would be expected in a normal language, even many
+present in nano-ML.
 
-Ratl is also not defect-free. There are a few bugs in it.  For example, if a
-function unconditionally recurses on the cdr of its input, it loops instead of
-halting.  It also derives incorrect resource usage for literals.  If you name
-two functions the same, the analysis of their callers will probably be wrong.
+Ratl is also not defect-free. There are a few bugs in it.  For example, it
+derives incorrect resource usage for literals.  If you name two functions the
+same, the analysis of their callers will probably be wrong.
 
 Ratl analysis gets quadratically larger with the size of the abstract syntax
-tree of the program it's told to analyze.  Much more than 500 modestly-sized
-functions is likely to run out of memory.
+tree of the program it's told to analyze.  For maximum degree 2, peak memory
+usage noted while analyzing `parser.ratl`, a module containing 50 functions,
+exceeded 3 GB; as such, for degree 2 a call graph with more than around 200
+modestly-sized functions is likely to run out of memory on most systems.
 
 ## Beyond Ratl: Next Steps
 
@@ -489,11 +732,10 @@ This work will continue where it started: by returning to Haskell, in the form
 of a library and compiler plugin.
 
 That doesn't mean that Ratl is finished, though.  It will continue to be a
-sandbox for me to mature these concepts.  At a minimum, there are a couple bugs
-that need to be fixed before I can be confident in targeting Haskell.  At a
-maximum, I may choose to go the distance and allow for analyses of returnable
-resources like memory, as well as fully implement multivariate analyses in
-Ratl, in which case the baby will be all grown up.
+sandbox to mature these concepts.  Whenever the analysis must be extended, it
+will be done in Ratl first.  Possible future extensions include higher-order
+functions, algebraic data types, integers, laziness, and analyses of returnable
+resources like memory.
 
 ## References
 
