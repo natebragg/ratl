@@ -1,0 +1,539 @@
+\documentclass{article}
+\usepackage{mathpartir}
+\usepackage{mathtools}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{turnstile}
+\usepackage{syntax}
+\usepackage{stmaryrd}
+
+\newcommand{\share}{\curlyveedownarrow}
+\newcommand{\shift}{\triangleleft}
+\newcommand{\close}{\operatorname{close}}
+\newcommand{\dom}{\operatorname{dom}}
+\newcommand{\range}{\operatorname{range}}
+\newcommand{\freshVar}{\operatorname{\ is\ fresh}}
+\newcommand{\freshCost}{\operatorname{freshCost}}
+\newcommand{\augment}{\operatorname{augment}}
+\newcommand{\pack}{\operatorname{pack}}
+\newcommand{\splitpair}{\operatorname{splitpair}}
+\newcommand{\cf}{\operatorname{cf}}
+\newcommand{\indices}[1]{\mathcal{I}(#1)}
+\newcommand{\ixAtom}{\star}
+\newcommand{\ixNil}{[]}
+\newcommand{\ixCons}[2]{#1::#2}   % also see \indexgrammar
+\newcommand{\ixPair}[2]{(#1, #2)} % also see \indexgrammar
+\newcommand{\ixEnv}[1]{\{#1\}}    % also see \indexgrammar
+\newcommand{\indexzof}[1]{\operatorname{zero}(#1)}
+\newcommand{\indexdegree}{\operatorname{deg}}
+\newcommand{\paranno}{\operatorname{parallel}}
+\newcommand{\seqanno}{\operatorname{sequential}}
+\newcommand{\callanno}{\operatorname{call}}
+\newcommand{\maxdegree}{k}
+\newcommand{\project}[2]{\pi_{#1}^{#2}}
+\newcommand{\deBruijn}[1]{\##1}
+\newcommand{\deBz}{\deBruijn{0}}
+\newcommand{\deBo}{\deBruijn{1}}
+\newcommand{\deBn}{\deBruijn{n}}
+\newcommand{\intTy}{\texttt{int}}
+\newcommand{\boolTy}{\texttt{bool}}
+\newcommand{\symTy}{\texttt{sym}}
+\newcommand{\tyvarTy}[1]{\texttt{'#1}}
+\newcommand{\pairTy}[2]{\texttt{pair }#1\ #2}
+\newcommand{\listTy}[1]{\texttt{list }#1}
+
+\renewcommand{\syntleft}{\normalfont\itshape}
+\renewcommand{\syntright}{}
+
+\newcommand{\indexgrammar}{%
+  \begin{grammar} \scantokens{%
+    %                   also see ixCons   , ixPair, and ixEnv
+    <I> ::= $\ixAtom$ | \ixNil | <I>::<I> | (<I>,<I>) | \{<I>\ldots<I>\}
+  }\end{grammar}%
+}
+
+\newcommand{\envgrammar}{%
+  \begin{grammar} \scantokens{%
+    <$\Gamma$> ::= \{\} | <x> : $\tau$, $\Gamma$
+  }\end{grammar}%
+}
+
+\newcommand{\costgrammar}{%
+  \begin{grammar} \scantokens{%
+    <n> ::= $\mathbb{Q}$
+
+    <q> ::= "a" | "b" | \ldots | <q> + <q> | <n> * <q>
+
+    <Q> ::= <I> $\mapsto$ <q>; <Q> | <I> $\mapsto$ <q>
+  }\end{grammar}%
+}
+
+\newcommand{\ratlgrammar}{%
+  \begin{grammar} \scantokens{%
+    <x>      ::= The set of legal variable identifiers
+
+    <f>      ::= The set of legal function identifiers
+
+    <s>      ::= The set of legal symbol tokens
+
+    <$\tau$> ::= \intTy | \boolTy | \symTy | \pairTy{$\tau$}{$\tau$} | \listTy{$\tau$}
+
+    <v>      ::= $\mathbb{N}$ | "\#t" | "\#f" | <s> | () | (<v> <v>)
+
+    <e>      ::= \textsc{VAR}(<x>) : $\tau$
+               | \textsc{VAL}(<v>) : $\tau$
+            \alt \textsc{IF}(<e>, <e>, <e>) : $\tau$
+               | \textsc{APP}(<f>, <e>, \ldots, <e>) : $\tau$
+            \alt \textsc{LET}($\langle$ <x>, <e>, \ldots, <x>, <e> $\rangle$, <e>) : $\tau$
+
+    <d>      ::= \textsc{DEFINE}(<f>, $\langle$ <x> \ldots <x> $\rangle$, <e>) : $\tau \times \ldots \times \tau \rightarrow \tau$
+            \alt \textsc{NATIVE}(<f>) : $\tau \times  \ldots  \times \tau \rightarrow \tau$
+  }\end{grammar}%
+}
+
+\newcommand{\ixatom}{
+  \inferrule*
+  {\tau \in \{\intTy, \boolTy, \symTy\}}
+  {\ixAtom \in \indices{\tau}}
+}
+
+\newcommand{\ixnil}{
+  \inferrule*
+  { }
+  {\ixNil \in \indices{\listTy{\tau}}}
+}
+
+\newcommand{\ixcons}{
+  \inferrule*
+  {I \in \indices{\tau} \\ I' \in \indices{\listTy{\tau}}}
+  {\ixCons{I}{I'} \in \indices{\listTy{\tau}}}
+}
+
+\newcommand{\ixpair}{
+  \inferrule*
+  {I \in \indices{\tau} \\ I' \in \indices{\tau'}}
+  {\ixPair{I}{I'} \in \indices{\pairTy{\tau}{\tau'}}}
+}
+
+\newcommand{\ixenvempty}{
+  \inferrule*
+  { }
+  {\ixEnv{} \in \indices{\{\}}}
+}
+
+\newcommand{\ixenv}{
+  \inferrule*
+  {I_0 \in \indices{\tau_0} \\\\
+   \vdots \\\\
+   I_n \in \indices{\tau_n}}
+  {\ixEnv{I_0, \ldots, I_n} \in \indices{\{\tau_0, \ldots, \tau_n\}}}
+}
+
+\newcommand{\ixzero}{
+  \inferrule*
+  {I \in \indices{\tau} \\ \indexdegree(I) = 0}
+  {I = \indexzof{\tau}}
+}
+
+\newcommand{\ixdegree}{
+  \begin{align*}
+    \indexdegree(\ixAtom)  &= 0 \\
+    \indexdegree(\ixNil)   &= 0 \\
+    \indexdegree(\ixEnv{}) &= 0 \\
+    \indexdegree(\ixPair{I}{I'}) &= \indexdegree(I) + \indexdegree(I') \\
+    \indexdegree(\ixCons{I}{I'}) &= \indexdegree(I) + \indexdegree(I') + 1 \\
+    \indexdegree(\ixEnv{I_0, \ldots, I_n}) &= \indexdegree(I_0) + \ldots + \indexdegree(I_n)
+  \end{align*}
+}
+
+\newcommand{\closeenvrule}{
+  \begin{align*}
+    \close(\{\}, \{p_n, \ldots, p_0\}) &= \{\} \\
+    \close(p_i : \tau_i,\Gamma, \{p_n, \ldots, p_i, \ldots, p_0\}) &= \deBruijn{i} : \tau_i, \close(\Gamma, \{p_n, \ldots, p_0\}) \\
+    \close(x : \tau,\Gamma, \{p_n, \ldots, p_0\}) &= x : \tau, \close(\Gamma, \{p_n, \ldots, p_0\}) \\
+  \end{align*}
+}
+
+\newcommand{\closeexprule}{
+  \begin{align*}
+    \close(\textsc{VAR}(p_i) : \tau, \{p_n, \ldots, p_i, \ldots, p_0\}) &=
+           \textsc{VAR}(\deBruijn{i}) : \tau \\
+    \close(\textsc{VAR}(x) : \tau, ps) &=
+           \textsc{VAR}(x) : \tau \\
+    \close(\textsc{VAL}(v) : \tau, ps) &=
+           \textsc{VAL}(v) : \tau \\
+    \close(\textsc{IF}(e_p, e_t, e_f) : \tau, ps) &=
+           \textsc{IF}(\close(e_p, ps), \close(e_t, ps), \close(e_f, ps)) : \tau\\
+    \close(\textsc{APP}(f, e_n, \ldots, e_0) : \tau, ps) &=
+           \textsc{APP}(f, \close(e_n, ps), \ldots, \close(e_0, ps)) : \tau\\
+    \close(\textsc{LET}(\langle x_n, e_n, \ldots, x_0, e_0 \rangle, e_b) : \tau, ps) &=
+           \textsc{LET}(\langle x_n, \close(e_n, ps), \ldots, x_0, \close(e_0, ps) \rangle, \close(e_b, ps \setminus \{x_n, \ldots x_0\})) : \tau
+  \end{align*}
+}
+
+\newcommand{\costfresh}{
+  \inferrule*
+  {I \in \indices{\tau} \\ \indexdegree(I) \leq \maxdegree \\ q \freshVar}
+  {I \mapsto q \in \freshCost(\tau)}
+}
+
+% Other side through symmetry.
+\newcommand{\costplusone}{
+  \inferrule*
+  {I \mapsto q \in Q \\ I \not \in \dom Q'}
+  {I \mapsto q \in Q + Q'}
+}
+
+\newcommand{\costplusboth}{
+  \inferrule*
+  {I \mapsto q \in Q \\ I \mapsto q' \in Q'}
+  {I \mapsto q + q' \in Q + Q'}
+}
+
+\newcommand{\costtimes}{
+  \inferrule*
+  {I \mapsto q \in Q \\ n \in \mathbb{Q}}
+  {I \mapsto n * q \in n * Q}
+}
+
+\newcommand{\costequalzero}[1]{
+  \inferrule*
+  {I \mapsto q \in Q \\ \indexdegree(I) = 0}
+  {q #1 n \in Q #1 n}
+}
+
+\newcommand{\costequalnonzero}[1]{
+  \inferrule*
+  {I \mapsto q \in Q \\ \indexdegree(I) \neq 0}
+  {q #1 0 \in Q #1 n}
+}
+
+\newcommand{\costpack}{
+  \inferrule*
+  {I \mapsto q \in Q}
+  {\ixEnv{I} \mapsto q \in \pack(Q)}
+}
+
+\newcommand{\costsplitpair}{
+  \inferrule*
+  {\ixEnv{(I_f, I_s)} \mapsto q \in Q}
+  {\ixEnv{I_f, I_s} \mapsto q \in \splitpair(Q)}
+}
+
+\newcommand{\costsound}{
+  \inferrule*
+  {\exists \tau \ldotp \forall I \in \dom Q \ldotp I \in \indices{\tau} \\\\
+   \exists I \in \dom Q \ldotp \indexdegree(I) = 0}
+  {\vdash Q}
+}
+
+\newcommand{\envsound}{
+  \inferrule*
+  {\dom Q \subseteq \indices{\range \Gamma}}
+  {\vdash \Gamma; Q}
+}
+
+\newcommand{\projection}{
+  \inferrule*
+  {\Gamma_r \subseteq \Gamma \\
+   \Gamma_s = \Gamma \setminus \Gamma_r \\\\
+   \dom \Gamma   = \{x_0 \ldots x_n\} \\\\
+   \dom \Gamma_r = \{y_0 \ldots y_m\} \\\\
+   \dom \Gamma_s = \{z_0 \ldots z_{n-m}\} \\\\
+   \{I_0 \ldots I_n\} \mapsto q \in Q \\
+   I_s      = \{I_{s_0} \ldots I_{s_{n-m}}\} \\\\
+   \forall i, 0 \leq i \leq n - m \ldotp \exists j, 0 \leq j \leq n \ldotp
+      z_i = x_j \land I_{s_i} = I_j \\\\
+   I_r      = \{I_j \mid 0 \leq k \leq m, 0 \leq j \leq n, y_k = x_j \}}
+  {I_r \mapsto q \in \project{I_s}{\Gamma_r}(\Gamma; Q)}
+}
+
+\newcommand{\augmentrule}{
+  \begin{align*}
+    \augment(x : \tau, \Gamma; Q) &= \Gamma; Q &x\in\dom\Gamma \\
+    \augment(x : \tau, \Gamma; Q) &= x : \tau, \Gamma;  \{\{\indexzof{\tau}, I_0, \ldots, I_n\} \mapsto q \mid \{I_0, \ldots, I_n\} \mapsto q \in Q\} &x\not\in\dom\Gamma \\
+  \end{align*}
+}
+
+\newcommand{\parrule}{
+  \inferrule*
+  {\begin{matrix}
+    \inferrule*
+    {}{
+      \Gamma_n; Q_n \vdash e_n : \tau; Q'_n \\\\
+      \vdots \\\\
+      \Gamma_0; Q_0 \vdash e_0 : \tau; Q'_0
+    } &
+    \inferrule*
+    {}{
+      \Gamma = \Gamma_n \cup \ldots \cup \Gamma_0 \\\\
+      Q = \freshCost(\range \Gamma) \\\\
+      Q' = \freshCost(\tau)
+    } \cr
+    \inferrule*
+    {}{
+     \project{\indexzof{\range \Gamma \setminus \Gamma_n}}{\Gamma_n}(\Gamma; Q) - Q_n \geq K_n \\\\
+     \vdots \\\\
+     \project{\indexzof{\range \Gamma \setminus \Gamma_0}}{\Gamma_0}(\Gamma; Q) - Q_0 \geq K_0
+    } &
+    \inferrule*
+    {}{
+      Q'_n - Q' \geq K'_n \\\\
+      \vdots \\\\
+      Q'_0 - Q' \geq K'_0
+    }
+  \end{matrix}}
+  {\Gamma; Q \vdash \paranno(\langle K_n, e_n, K'_n \rangle, \ldots, \langle K_0, e_0, K'_0 \rangle) : \tau; Q'}
+}
+
+\newcommand{\seqrule}{
+  \inferrule*
+  {\Gamma_0; P_0 \sststile{}{\maxdegree} e_0 : \tau_0; P'_0 \\\\
+   \begin{matrix}
+     Q_0 = \freshCost(\range \Gamma_0) &
+     Q_0 - P_0 = K_0 \cr
+     Q'_0 = \freshCost(\tau_0) &
+     P'_0 - Q'_0 = K'_0
+   \end{matrix} \\\\
+   \forall i, 0 < i \leq n. \\\\
+   \inferrule*
+   {}{
+    \Gamma_{i_0}; Q_{i_0} \sststile{}{\maxdegree} e_i : \tau_i; Q'_{i_0} \\\\
+    \Gamma_{d_{i-1}} = \Gamma_{i-1} \setminus \{\deBruijn{i} : \tau_i\} \\\\
+    \Gamma_i = \Gamma_{i_0} + \Gamma_{d_{i-1}} \\\\
+    Q_i = \freshCost(\range \Gamma_i) \\\\
+    \project{\indexzof{\range \Gamma_{d_{i-1}}}}{\Gamma_{i_0}}(\Gamma_i; Q_i) - Q_{i_0} = K_i \\\\
+    \mathclap{Q'_{i_0} - \project{\indexzof{\range \Gamma_{d_{i-1}}}}{\{\deBruijn{i} : \tau_i\}}(\Gamma_{a_{i-1}}; Q_{a_{i-1}}) = K'_i}
+   } \\
+   \inferrule*
+   {}{
+    \mathclap{\Gamma_{a_{i-1}}; Q_{a_{i-1}} = \augment(\deBruijn{i} : \tau_i, \Gamma_{i-1}; Q_{i-1})} \\\\
+    \forall j, \indexdegree(j) \neq 0\in \indices{\range \Gamma_{d_{i-1}}} \ldotp \\\\
+    \Gamma_{i_j}; Q_{i_j} \sststile{}{\cf(\maxdegree - \indexdegree(j))} e_i : \tau_i; Q'_{i_j} \\\\
+    \project{j}{\Gamma_{i_j}}(\Gamma_i; Q_i) - Q_{i_j} = 0 \\\\
+    Q'_{i_j} - \project{j}{\{\deBruijn{i} : \tau_i\}}(\Gamma_{a_{i-1}}; Q_{a_{i-1}}) = 0
+   } \\\\
+   \Gamma; Q = \share \Gamma_n; Q_n
+  }
+  {\Gamma; Q \sststile{}{\maxdegree} \seqanno(\langle K_n, e_n, K'_n \rangle, \ldots, \langle K_0, e_0, K'_0 \rangle); \tau_0; Q'_0}
+}
+
+\newcommand{\callrule}{
+  \inferrule*
+  {f\in\dom\Sigma \\
+   c\freshVar \\
+   \Sigma(f) = \Gamma; P \rightarrow \tau; P' \\\\
+   Q = P + \indexzof{\Gamma}\mapsto c \\
+   Q' = P' + \indexzof{\tau}\mapsto c}
+  {\Gamma; Q; \Sigma \sststile{}{\maxdegree\leq 1 \lor \cf} \callanno(f) : \tau; Q'}
+  \\\\
+  \inferrule*
+  {f\in\dom\Sigma \\\\
+   \Sigma' = \{g\mapsto\Gamma_g; \freshCost(\Gamma_g)\rightarrow \tau_g; \freshCost(\tau_g) \mid g\mapsto\Gamma_g; Q_g \rightarrow \tau_g; Q'_g \in \Sigma\} \\\\
+   \forall g \mapsto \Gamma_g; Q_g \rightarrow \tau_g; Q'_g \in \Sigma' \ldotp \Gamma_g; Q_g \sststile{}{\cf(\maxdegree - 1)} \phi(g) : \tau_g; Q'_g \\\\
+   \Sigma(f)  = \Gamma; Q_\Sigma    \rightarrow \tau; Q'_\Sigma \\
+   Q  = Q_\Sigma  + Q_{\Sigma'} \\\\
+   \Sigma'(f) = \Gamma; Q_{\Sigma'} \rightarrow \tau; Q'_{\Sigma'} \\
+   Q' = Q'_\Sigma + Q'_{\Sigma'}}
+  {\Gamma; Q; \Sigma \sststile{}{\maxdegree > 1} \callanno(f) : \tau; Q'}
+  \\\\
+  \inferrule*
+  {f\not\in\dom\Sigma \\
+   \Sigma' = \{g\mapsto\Gamma_g; \freshCost(\Gamma_g)\rightarrow \tau_g; \freshCost(\tau_g) \mid g\mapsto\Gamma_g \rightarrow \tau_g \in SCP(f)\} \\
+   \forall g \mapsto \Gamma_g; Q_g \rightarrow \tau_g; Q'_g \in \Sigma' \ldotp \Gamma_g; Q_g \vdash \phi(g) : \tau_g; Q'_g \\\\
+   \Sigma'(f) = \Gamma; Q \rightarrow \tau; Q'}
+  {\Gamma; Q; \Sigma \vdash \callanno(f) : \tau; Q'}
+}
+
+\newcommand{\definerule}{
+  \inferrule*
+  {Q  = \freshCost(\{\tau_n, \ldots, \tau_0\}) \\
+   Q' = \freshCost(\tau') \\\\
+   \Gamma_P; P \vdash e : \tau'; P' \\
+   \Gamma'_P = \close(\Gamma_P, \{p_n, \ldots, p_0\}) \\
+   \Gamma = \{\deBn : \tau_n, \ldots, \deBz : \tau_0\} \\
+   \project{\indexzof{\range \Gamma \setminus \Gamma'_P}}{\Gamma'_P}(\Gamma; Q) = P \\
+   Q' = P'}
+  {\Gamma; Q \vdash \textsc{DEFINE}(f, \langle p_n \ldots p_0 \rangle, e) : \tau_n \times \ldots \times \tau_0 \rightarrow \tau'; Q'}
+}
+
+\newcommand{\carrule}{
+  \inferrule*
+  {Q  = \freshCost(\{\listTy{\tau}\}) \\
+   P  = \freshCost(\{\tau, \listTy{\tau}\}) \\
+   \shift Q = P \\
+   Q' = \freshCost(\tau) \\
+   \Gamma_P = \{\deBo : \listTy{\tau}, \deBz : \tau\} \\
+   \project{\indexzof{\{\listTy{\tau}\}}}{\{\deBz : \tau\}}(\Gamma_p; P) - \pack(Q') = K_{car}}
+  {\{\deBz : \listTy{\tau}\}; Q \vdash \textsc{NATIVE}(\texttt{car}) : \listTy{\tau} \rightarrow \tau; Q'}
+}
+
+\newcommand{\cdrrule}{
+  \inferrule*
+  {Q  = \freshCost(\{\listTy{\tau}\}) \\
+   P  = \freshCost(\{\tau, \listTy{\tau}\}) \\
+   \shift Q = P \\
+   Q' = \freshCost(\listTy{\tau}) \\
+   \Gamma_P = \{\deBo : \listTy{\tau}, \deBz : \tau\} \\
+   \project{\indexzof{\{\tau\}}}{\{\deBo : \listTy{\tau}\}}(\Gamma_p; P) - \pack(Q') = K_{cdr}}
+  {\{\deBz : \listTy{\tau}\}; Q \vdash \textsc{NATIVE}(\texttt{cdr}) : \listTy{\tau} \rightarrow \tau; Q'}
+}
+
+\newcommand{\consrule}{
+  \inferrule*
+  {Q  = \freshCost(\{\tau, \listTy{\tau}\}) \\
+   Q' = \freshCost(\listTy{\tau}) \\
+   Q - \shift Q' = K_{cons}}
+  {\{\deBo : \tau, \deBz : \listTy{\tau}\}; Q \vdash \textsc{NATIVE}(\texttt{cons}) : \tau \times \listTy{\tau} \rightarrow \listTy{\tau}; Q'}
+}
+
+\newcommand{\pairrule}{
+  \inferrule*
+  {Q  = \freshCost(\{\tau_1, \tau_0\}) \\
+   Q' = \freshCost(\pairTy{\tau_1}{\tau_0}) \\
+   Q - \splitpair(\pack(Q')) = K_{pair}}
+  {\{\deBo : \tau_1, \deBz : \tau_0\}; Q \vdash \textsc{NATIVE}(\texttt{pair}) : \tau_1 \times \tau_0 \rightarrow \pairTy{\tau_1}{\tau_0}; Q'}
+}
+
+\newcommand{\fstrule}{
+  \inferrule*
+  {Q  = \freshCost(\{\pairTy{\tau_f}{\tau_s}\}) \\
+   Q' = \freshCost(\tau_f) \\
+   \project{\indexzof{\{\tau_s\}}}{\{\deBo : \tau_f\}}(\{\deBo : \tau_f, \deBz : \tau_s\}; \splitpair(Q)) - \pack(Q') = K_{fst}}
+  {\{\deBz : \pairTy{\tau_f}{\tau_s}\}; Q \vdash \textsc{NATIVE}(\texttt{fst}) : \pairTy{\tau_f}{\tau_s} \rightarrow \tau_f; Q'}
+}
+
+\newcommand{\sndrule}{
+  \inferrule*
+  {Q  = \freshCost(\{\pairTy{\tau_f}{\tau_s}\}) \\
+   Q' = \freshCost(\tau_s) \\
+   \project{\indexzof{\{\tau_f\}}}{\{\deBz : \tau_s\}}(\{\deBo : \tau_f, \deBz : \tau_s\}; \splitpair(Q)) - \pack(Q') = K_{snd}}
+  {\{\deBz : \pairTy{\tau_f}{\tau_s}\}; Q \vdash \textsc{NATIVE}(\texttt{snd}) : \pairTy{\tau_f}{\tau_s} \rightarrow \tau_s; Q'}
+}
+
+\newcommand{\errorrule}{
+  \inferrule*
+  {Q  = \freshCost(\{\tau\}) \\
+   Q' = \freshCost(\tau')}
+  {\{\deBz : \tau\}; Q \vdash \textsc{NATIVE}(\texttt{error}) : \tau \rightarrow \tau'; Q'}
+}
+
+\newcommand{\nativerule}{
+  \inferrule*
+  {Q  = \freshCost(\{\tau_n, \ldots, \tau_0\}) \\
+   Q' = \freshCost(\tau') \\\\
+   \indexzof{\{\tau_n, \ldots, \tau_0\}} \mapsto q \in Q \\
+   \indexzof{\tau'} \mapsto q' \in Q' \\\\
+   q - q' = K_{native}}
+  {\{\deBn : \tau_n, \ldots, \deBz : \tau_0\}; Q \vdash \textsc{NATIVE}(f) : \tau_n \times \ldots \times \tau_0 \rightarrow \tau'; Q'}
+}
+
+\newcommand{\varrule}[1]{
+  \inferrule*
+  {Q  = \freshCost(\{\tau\}) \\
+   Q' = \freshCost(\tau) \\
+   Q - \pack(Q') = K_{var}}
+  {\{#1 : \tau\}; Q \vdash \textsc{VAR}(#1) : \tau; Q'}
+}
+
+\newcommand{\valrule}[2]{
+  \inferrule*
+  {Q  = \freshCost(\{\}) \\
+   Q' = \freshCost(#2) \\\\
+   \indexzof{\{\}} \mapsto q \in Q \\
+   \indexzof{#2} \mapsto q' \in Q' \\\\
+   q - q' = K_{val}}
+  {\{\}; Q \vdash \textsc{VAL}(#1) : #2; Q'}
+}
+
+\newcommand{\ifrule}{
+  \inferrule*
+  {e_{par} = \paranno(\langle K_{iftrue}, e_t, K'_{iftrue} \rangle, \langle K_{iffalse}, e_f, K'_{iffalse} \rangle) \\
+   \Gamma; Q \vdash \seqanno(\langle K_{ifpred}, e_p, K'_{ifpred} \rangle, \langle 0, e_{par}, 0 \rangle) : \tau; Q'}
+  {\Gamma; Q \vdash \textsc{IF}(e_p, e_t, e_f) : \tau; Q'}
+}
+
+\newcommand{\apprule}{
+  \inferrule*
+  {\Gamma; Q \vdash \seqanno(\langle K_{ap1}, e_n, K'_{ap1} \rangle, \ldots,
+                             \langle K_{ap1}, e_0, K'_{ap1} \rangle,
+                             \langle K_{ap2}, \callanno(f), K'_{ap2} \rangle) : \tau; Q'}
+  {\Gamma; Q \vdash \textsc{APP}(f, e_n, \ldots, e_0) : \tau; Q'}
+}
+
+\newcommand{\letrule}{
+  \inferrule*
+  {e_{b_c} = \close(e_b, \{x_n, \ldots, x_0\}) \\
+   \Gamma; Q \vdash \seqanno(\langle K_{let}, e_n, K'_{let} \rangle, \ldots,
+                             \langle K_{let}, e_0, K'_{let} \rangle,
+                             \langle K_{letbody}, e_{b_c}, K'_{letbody} \rangle) : \tau; Q'}
+  {\Gamma; Q \vdash \textsc{LET}(\langle x_n, e_n, \ldots, x_0, e_0 \rangle, e_b) : \tau; Q'}
+}
+
+\begin{document}
+\section*{Grammars}
+\indexgrammar
+\envgrammar
+\costgrammar
+\ratlgrammar
+
+\section*{Index Rules}
+\begin{gather*}
+  \ixatom         \quad \ixpair \\\\
+  \ixnil          \quad \ixcons \\\\
+  \ixenvempty     \quad \ixenv  \\\\
+  \ixdegree \\\\
+  \ixzero
+\end{gather*}
+
+\section*{Locally Nameless Rules}
+\begin{gather*}
+  \closeenvrule \\\\
+  \closeexprule
+\end{gather*}
+
+\section*{Cost Rules}
+\begin{gather*}
+  \costfresh           \quad \costtimes \\\\
+  \costplusone         \quad \costplusboth \\\\
+  \costequalzero{=}    \quad \costequalnonzero{=}    \\\\
+  \costequalzero{\geq} \quad \costequalnonzero{\geq} \\\\
+  \costpack            \quad \costsplitpair \\\\
+  \costsound           \quad \envsound
+\end{gather*}
+
+\section*{Projection and Augment Rules}
+\begin{gather*}
+  \projection \\\\
+  \augmentrule
+\end{gather*}
+
+\section*{Composition Rules}
+\begin{gather*}
+  \parrule \\\\
+  \seqrule \\\\
+  \callrule
+\end{gather*}
+
+\section*{Definition Rules}
+\begin{gather*}
+  \definerule \\\\
+  \carrule \\\\
+  \cdrrule \\\\
+  \consrule \\\\
+  \pairrule \\\\
+  \fstrule \\\\
+  \sndrule \\\\
+  \errorrule \\\\
+  \nativerule
+\end{gather*}
+
+\section*{Expression Rules}
+\begin{gather*}
+  \varrule{x} \\\\
+  \valrule{\#t}{\boolTy} \\\\
+  \ifrule \\\\
+  \apprule \\\\
+  \letrule \\\\
+\end{gather*}
+\end{document}
