@@ -118,7 +118,7 @@ opts = [Option ['v'] ["version"] (NoArg Version) "Version information.",
 
 printUsage :: IO ()
 printUsage = putStr (usageInfo header opts)
-    where header = "Usage: " ++ appName ++ " [-d <n>] [-m <m>] [-e] [-g <g>] filename <args>\n" ++ synopsis ++ "\n"
+    where header = "Usage: " ++ appName ++ " [-d <n>] [-m <m>] [-c <c>] [-n <x>] [-e] [-g <g>] filename <args>\n" ++ synopsis ++ "\n"
 
 printVersion :: IO ()
 printVersion = do
