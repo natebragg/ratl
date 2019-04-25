@@ -183,8 +183,8 @@ coerceZero = fromJust . lookupBy isZero . eqns
 updateZero :: Indexable i t => LinearFunction -> IndexEnv t i -> IndexEnv t i
 updateZero f q = q {eqns = updateBy isZero (Just $ zeroIndex $ ixTy q) f $ eqns q}
 
-addZero :: Indexable i t => LinearFunction -> IndexEnv t i -> IndexEnv t i
-addZero c p = updateZero (coerceZero p + c) p
+zeroEnv :: Indexable i t => t -> LinearFunction -> IndexEnv t i
+zeroEnv t c = IndexEnv t $ fromList [(zeroIndex t, c)]
 
 -- Annotation Helpers
 
@@ -452,7 +452,7 @@ instance Annotate TypedEx where
                     q <- traverse rezero p
                     q' <- rezero p'
                     c  <- freshAnno
-                    return (addZero c (snd p), addZero c p', q, q')
+                    return (zeroEnv (ixTy $ snd p) c + (snd p), zeroEnv (ixTy p') c + p', q, q')
                 else do
                     scp <- asks comp
                     let Right theta = Elab.solve (Arrow tys ty) $ tyOf asc
