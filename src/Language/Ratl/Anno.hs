@@ -371,21 +371,23 @@ annoSequential k_e es = go annoSeq (second snd <$> annoSeq) (anyRecurses es) (co
                        (q_j, pi_j) <- zip (q_0:qs_j) pi]
             share q
 
-annoParallel :: MonadRWS AnnoState [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> IxEnv -> m VarEnv
-annoParallel kes q' = do
+annoParallel :: MonadRWS AnnoState [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> m (VarEnv, IxEnv)
+annoParallel kes = do
     kqs <- traverse (traverse anno) kes
     let gs = map ((uncurry zip . second ixTy) . fst . snd) kqs
         g = foldl union [] gs
         ty = values g
+        ty' = ixTy $ snd $ snd $ head kqs
     pis <- traverse (fmap head . projectNames g) $ map keys gs
     q <- freshVarEnv g
+    q' <- freshIxEnv ty'
     for (zip pis kqs) $ \(pi, ((ke, ke'), ((_, qe), qe'))) -> do
         k  <- costof ke
         k' <- costof ke'
         let qp = IndexEnv ty $ eqns qe <<< pi
         constrain $ snd q - qp >=* k
         constrain $ qe'   - q' >=* k'
-    return q
+    return (q, q')
 
 class Annotate a where
     anno :: MonadRWS AnnoState [GeneralConstraint] Anno m => a -> m (VarEnv, IxEnv)
@@ -438,8 +440,7 @@ instance Annotate TypedEx where
         constrain [snd q %-% q' ==$ k]
         return (q, q')
     anno (TypedIf ty ep et ef) = do
-        q' <- freshIxEnv ty
-        qc <- annoParallel [((k_ift, k_ifc), et), ((k_iff, k_ifc), ef)] q'
+        (qc, q') <- annoParallel [((k_ift, k_ifc), et), ((k_iff, k_ifc), ef)]
         q <- annoSequential k_ifp [ep] qc
         return (q, q')
     anno (TypedApp ty f es) = do
