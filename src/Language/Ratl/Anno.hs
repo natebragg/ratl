@@ -330,46 +330,50 @@ lookupThisSCP x = asks (lookup x . comp)
 
 -- The Engine
 
-annoSequential :: MonadRWS AnnoState [GeneralConstraint] Anno m => (Cost -> Double) -> [TypedEx] -> VarEnv -> m VarEnv
-annoSequential k_e es = go annoSeq (second snd <$> annoSeq) (anyRecurses es) (const 0)
-    where annoSeq = do
-            let bes = bindvars es
-            q' <- traverse (freshIxEnv . map tyGet) $ unzip bes
-            q <- foldrM (\(bq', e) -> go (second ((,) [bq']) <$> second to_ctx <$> anno e) (second to_ctx <$> anno e) (recurses e) k_e) q' bes
-            return (q, q')
-          recurses (TypedVar _ _) = return False
-          recurses (TypedVal _ _) = return False
-          recurses (TypedApp _ f es) = maybe (anyRecurses es) (const $ return True) =<< lookupThisSCP f
-          recurses (TypedIf _ ep et ef) = anyRecurses [ep, et, ef]
-          recurses (TypedLet _ bs e) = anyRecurses (e:map snd bs)
-          anyRecurses = fmap or . traverse recurses
-          go zeroAnno jAnno doesRecurse k_e p_ = do
-            ((bqs, q_0@(IndexEnv tysq _)), (bq's, IndexEnv tysq' q'_0)) <- zeroAnno
-            let (bps, p) = augmentMany (bq's, tysq') p_
-            pi@(_:pis_j) <- projectNames (zip bps $ ixTy p) bq's
-            (qs_j, q's_j) <- fmap (unzip . map (snd *** eqns)) $ for pis_j $ \((z, _):_) -> do
-                degree <- degreeof
-                local (\s -> s {degree = degree - (deg z), cost = zero}) $ do
-                    recs <- doesRecurse
-                    if not recs || degree < 1 then
-                        jAnno
-                    else do
-                        -- if es contains recursion, reannotate everything in the SCC
-                        -- required because it handles each possible world separately
-                        scp <- asks comp
-                        cfscp <- refreshFunEnv scp
-                        local (\s -> s {comp = cfscp}) $ do
-                            traverse anno cfscp
-                            jAnno
-            k <- costof k_e
-            let q' = p {eqns = sum $ zipWith (<<<) (q'_0:q's_j) pi}
-            constrain $ q' - p ==* k
-            let (bs, tys) = unzip $ deleteAll bq's $ zip bps $ ixTy p
-            pi <- projectOver tys tysq
-            q <- freshVarEnv $ zip (bs ++ bqs) (tys ++ tysq)
-            constrain $ concat [IndexEnv tysq (eqns (snd q) <<< (map swap pi_j)) - q_j ==* 0 |
-                       (q_j, pi_j) <- zip (q_0:qs_j) pi]
-            share q
+annoSequential :: MonadRWS AnnoState [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> VarEnv -> m VarEnv
+annoSequential kes q_0 =
+    let recurses :: MonadReader AnnoState m => TypedEx -> m Bool
+        recurses (TypedVar _ _) = return False
+        recurses (TypedVal _ _) = return False
+        recurses (TypedApp _ f es) = maybe (anyRecurses es) (const $ return True) =<< lookupThisSCP f
+        recurses (TypedIf _ ep et ef) = anyRecurses [ep, et, ef]
+        recurses (TypedLet _ bs e) = anyRecurses (e:map snd bs)
+        anyRecurses :: MonadReader AnnoState m => [TypedEx] -> m Bool
+        anyRecurses = fmap or . traverse recurses
+        split_gq = (uncurry zip . second ixTy &&& snd)
+        anno_gq = fmap (split_gq *** to_ctx) . anno
+    in do
+    q <- flip (flip foldrM q_0) (bindvars kes) $ \(i, ((ke_i, ke'_i), e_i)) q_im1 -> do
+        ((g_i_0, q_i_0), q'_i_0) <- anno_gq e_i
+        let (g_im1, _) = split_gq q_im1
+            g_d_im1 = deleteAll [i] g_im1
+            g_i = g_d_im1 ++ g_i_0
+            (g_a_im1, q_a_im1) = split_gq $ augment (i, head $ ixTy q'_i_0) q_im1
+        q_i <- freshVarEnv g_i
+        pi_g_i_0_0:pi_g_i_j_js <- map (map swap) <$> projectOver (values g_d_im1) (values g_i_0)
+        pi_i_t_i_0:pi_i_t_i_js <- map (map swap) <$> projectNames g_a_im1 [i]
+        k_i  <- costof ke_i
+        k'_i <- costof ke'_i
+        constrain $ (q_i_0 {eqns = eqns (snd q_i) <<< pi_g_i_0_0}) - q_i_0 ==* k_i
+        constrain $ q'_i_0 - (q'_i_0 {eqns = eqns q_a_im1 <<< pi_i_t_i_0}) ==* k'_i
+        recs <- recurses e_i
+        degree <- degreeof
+        for (zip pi_g_i_j_js pi_i_t_i_js) $ \(pi_g_i_j_j@((j, _):_), pi_i_t_i_j) -> do
+            ((_, q_i_j), q'_i_j) <- local (\s -> s {degree = degree - deg j, cost = zero}) $ do
+                if not recs || degree < 1 then
+                    anno_gq e_i
+                else do
+                    -- if es contains recursion, reannotate everything in the SCC
+                    -- required because it handles each possible world separately
+                    scp <- asks comp
+                    cfscp <- refreshFunEnv scp
+                    local (\s -> s {comp = cfscp}) $ do
+                        traverse anno cfscp
+                        anno_gq e_i
+            constrain $ (q_i_j {eqns = eqns (snd q_i) <<< pi_g_i_j_j}) - q_i_j ==* 0
+            constrain $ q'_i_j - (q'_i_j {eqns = eqns q_a_im1 <<< pi_i_t_i_j}) ==* 0
+        share q_i
+    return q
 
 annoParallel :: MonadRWS AnnoState [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> m (VarEnv, IxEnv)
 annoParallel kes = do
@@ -441,7 +445,7 @@ instance Annotate TypedEx where
         return (q, q')
     anno (TypedIf ty ep et ef) = do
         (qc, q') <- annoParallel [((k_ift, k_ifc), et), ((k_iff, k_ifc), ef)]
-        q <- annoSequential k_ifp [ep] qc
+        q <- annoSequential [((const 0, k_ifp), ep)] qc
         return (q, q')
     anno (TypedApp ty f es) = do
         let tys = map tyGet es
@@ -480,12 +484,12 @@ instance Annotate TypedEx where
         k2 <- costof k_ap2
         constrain $ snd q - p ==* k1
         constrain $    p' - q' ==* k2
-        q  <- annoSequential k_ap1 es q
+        q  <- annoSequential (zip (repeat (const 0, k_ap1)) es) q
         return (q, q')
     anno (TypedLet _ bs e) = do
         let (xs, es) = unzip bs
         (qe, qe') <- anno e
-        qb <- annoSequential k_lt1 es (varclose xs $ augmentMany (map FVar xs, map tyGet es) qe)
+        qb <- annoSequential (zip (repeat (const 0, k_lt1)) es) (varclose xs $ augmentMany (map FVar xs, map tyGet es) qe)
         q  <- traverse rezero qb
         q' <- rezero qe'
         k1 <- costof k_lt1

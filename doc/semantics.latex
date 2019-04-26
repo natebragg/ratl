@@ -308,7 +308,7 @@
    \inferrule*
    {}{
     \mathclap{\Gamma_{a_{i-1}}; Q_{a_{i-1}} = \augment(\deBruijn{i} : \tau_i, \Gamma_{i-1}; Q_{i-1})} \\\\
-    \forall j, \indexdegree(j) \neq 0\in \indices{\range \Gamma_{d_{i-1}}} \ldotp \\\\
+    \forall j, 0 \neq \indexdegree(j) \leq k\in \indices{\range \Gamma_{d_{i-1}}} \ldotp \\\\
     \Gamma_{i_j}; Q_{i_j} \sststile{}{\cf(\maxdegree - \indexdegree(j))} e_i : \tau_i; Q'_{i_j} \\\\
     \project{j}{\Gamma_{i_j}}(\Gamma_i; Q_i) - Q_{i_j} = 0 \\\\
     Q'_{i_j} - \project{j}{\{\deBruijn{i} : \tau_i\}}(\Gamma_{a_{i-1}}; Q_{a_{i-1}}) = 0
