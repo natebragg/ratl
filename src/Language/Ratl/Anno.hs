@@ -303,8 +303,8 @@ share (xs, q) = foldrM shareOne (xs, q) repeats
             constrain $ q' - sum (map (IndexEnv (ixTy q')) qks) ==* 0
             return (ys', q')
 
-to_ctx :: IxEnv -> CIxEnv
-to_ctx q = IndexEnv [ixTy q] $ fromList $ map (first $ context . pure) $ elements $ eqns q
+pack :: IxEnv -> CIxEnv
+pack q = IndexEnv [ixTy q] $ fromList $ map (first $ context . pure) $ elements $ eqns q
 
 expand_ctx :: CIxEnv -> CIxEnv
 expand_ctx q = IndexEnv (concatMap unPairTy $ ixTy q) $ fromList $ map (first splitPairs) $ elements $ eqns q
@@ -341,7 +341,7 @@ annoSequential kes q_0 =
         anyRecurses :: MonadReader AnnoState m => [TypedEx] -> m Bool
         anyRecurses = fmap or . traverse recurses
         split_gq = (uncurry zip . second ixTy &&& snd)
-        anno_gq = fmap (split_gq *** to_ctx) . anno
+        anno_gq = fmap (split_gq *** pack) . anno
     in do
     q <- flip (flip foldrM q_0) (bindvars kes) $ \(i, ((ke_i, ke'_i), e_i)) q_im1 -> do
         ((g_i_0, q_i_0), q'_i_0) <- anno_gq e_i
@@ -406,12 +406,12 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
               pi <- projectNames (zip ys pty) zs
               constrain $ snd pqs - snd (varclose xs (ys, IndexEnv pty $ eqns qa <<< concat pi)) ==* 0
               constrain $ rqs - q' ==* 0
-          annoFun (V "car",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qp pqs >> constrainCar qp (to_ctx rqs)
-          annoFun (V "cdr",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qp pqs >> constrainCdr qp (to_ctx rqs)
-          annoFun (V "cons",  (TypedNative _                              _, ((_, pqs), rqs))) =                                    consShift pqs (to_ctx rqs)
-          annoFun (V "pair",  (TypedNative _                              _, ((_, pqs), rqs))) = constrain $ pqs - expand_ctx (to_ctx rqs) ==* 0
-          annoFun (V "fst",   (TypedNative _                              _, ((_, pqs), rqs))) = constrainCar (expand_ctx pqs) (to_ctx rqs)
-          annoFun (V "snd",   (TypedNative _                              _, ((_, pqs), rqs))) = constrainCdr (expand_ctx pqs) (to_ctx rqs)
+          annoFun (V "car",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qp pqs >> constrainCar qp (pack rqs)
+          annoFun (V "cdr",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qp pqs >> constrainCdr qp (pack rqs)
+          annoFun (V "cons",  (TypedNative _                              _, ((_, pqs), rqs))) =                                    consShift pqs (pack rqs)
+          annoFun (V "pair",  (TypedNative _                              _, ((_, pqs), rqs))) = constrain $ pqs - expand_ctx (pack rqs) ==* 0
+          annoFun (V "fst",   (TypedNative _                              _, ((_, pqs), rqs))) = constrainCar (expand_ctx pqs) (pack rqs)
+          annoFun (V "snd",   (TypedNative _                              _, ((_, pqs), rqs))) = constrainCdr (expand_ctx pqs) (pack rqs)
           annoFun (V "error", (TypedNative _                              _, _              )) = return ()
           annoFun (_,         (TypedNative _                              _, ((_, pqs), rqs))) = constrain $ [pqs %-% rqs ==$ 0]
           consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> m ()
@@ -435,7 +435,7 @@ instance Annotate TypedEx where
         q  <- freshVarEnv [(FVar x, ty)]
         q' <- freshIxEnv ty
         k <- costof k_var
-        constrain $ snd q - to_ctx q' ==* k
+        constrain $ snd q - pack q' ==* k
         return (q, q')
     anno (TypedVal ty v) = do
         q  <- freshVarEnv []
