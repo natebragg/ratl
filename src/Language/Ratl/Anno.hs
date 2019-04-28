@@ -21,7 +21,7 @@ import Control.Monad.Writer (MonadWriter, tell)
 import Data.Foldable (foldrM, for_)
 import Data.Function (on)
 import Data.List (sortBy, nub, union, (\\))
-import Data.Mapping (Mapping(..), partition, substitute, mapInvert, selectAll, deleteAll, partitionAll)
+import Data.Mapping (Mapping(..), partition, substitute, mapInvert, selectAll, deleteAll, partitionAll, member)
 import Data.Maybe (isJust, fromJust)
 import Data.Semigroup ((<>))
 import Data.Traversable (for)
@@ -117,7 +117,7 @@ instance (Eq i, Indexable i t, Unifiable t) => Group (IndexEnv t i) where
 
 type IxEnv = IndexEnv Ty Index
 type CIxEnv = IndexEnv [Ty] ContextIndex
-type VarEnv = ([LNVar], CIxEnv)
+type VarEnv = ([(LNVar, Ty)], CIxEnv)
 type FunEnv = [(Var, (TypedFun, (VarEnv, IxEnv)))]
 type Eqn = ([(ContextIndex, Anno)], [GeneralForm])
 type EqnEnv = [(Var, Eqn)]
@@ -170,7 +170,7 @@ bindvars =
     in \xs -> reverse $ zip boundvars $ reverse xs
 
 varclose :: [Var] -> VarEnv -> VarEnv
-varclose = first . substitute . map swap . bindvars . map FVar
+varclose = first . (uncurry zip .) . (. unzip) . first . substitute . map swap . bindvars . map FVar
 
 -- IxEnv Helpers
 
@@ -199,15 +199,12 @@ freshIxEnv t = do
     k <- degreeof
     IndexEnv t <$> fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
 
-freshVarEnv :: MonadRS AnnoState Anno m => [(LNVar, Ty)] -> m VarEnv
-freshVarEnv fvs = let (xs, tys) = unzip fvs in (,) xs <$> freshIxEnv tys
-
 freshFunBounds :: MonadRS AnnoState Anno m => TypedFun -> m (VarEnv, IxEnv)
 freshFunBounds fun = do
     let Arrow t t' = tyOf fun
-    q  <- freshVarEnv (bindvars t)
+    q  <- freshIxEnv t
     q' <- freshIxEnv t'
-    return (q, q')
+    return ((bindvars t, q), q')
 
 freshFunEnv :: MonadRS AnnoState Anno m => TypedProg -> m FunEnv
 freshFunEnv = traverse (traverse $ \f -> (,) f <$> freshFunBounds f)
@@ -260,8 +257,8 @@ discardRight (IndexEnv tys q) = IndexEnv tys' <$> q'
           (ty, tys') = (last tys, init tys)
 
 augment :: (LNVar, Ty) -> VarEnv -> VarEnv
-augment (x, _) q@(xs, _) | x `elem` xs = q
-augment (x, ty) (xs, IndexEnv tys q) = (x:xs, IndexEnv (ty:tys) q')
+augment (x, _) q@(gamma, _) | x `member` gamma = q
+augment (x, ty) (gamma, IndexEnv tys q) = ((x, ty):gamma, IndexEnv (ty:tys) q')
     where q' = fromList $ map (first (zeroIndex [ty] <>)) $ elements q
 
 augmentMany :: ([LNVar], [Ty]) -> VarEnv -> VarEnv
@@ -280,17 +277,17 @@ projectNames g_y xs = do
     map (map $ first $ transform $ values . sortBy (compare `on` fst) . zip (yis ++ xis)) <$> projectOver ytys xtys
 
 share :: MonadRWS AnnoState [GeneralConstraint] Anno m => VarEnv -> m VarEnv
-share (xs, q) = foldrM shareOne (xs, q) repeats
+share (gamma, q) = foldrM shareOne (gamma, q) repeats
     where repeats = nub $ xs \\ nub xs
-          shareOne x (ys, q) = do
+          xs = keys gamma
+          shareOne x (gamma, q) = do
             k <- degreeof
-            let gamma = zip ys $ ixTy q
-                gamma' = delete x gamma ++ [(x, fromJust $ lookup x gamma)]
+            let ((xty:_), ytys) = both values $ partition x gamma
+                gamma' = delete x gamma ++ [(x, xty)]
                 restrict :: [(LNVar, Ty)] -> [(ContextIndex, ContextIndex)]
                 restrict g = map (id &&& transform (values . delete x . zip (keys g))) $ indexDeg k $ values g
                 shrink = (mapInvert (restrict gamma') :: [(ContextIndex, [ContextIndex])]) <<< restrict gamma
-            pi_ijs <- concat <$> projectNames (zip ys $ ixTy q) [x]
-            let (xtys@(xty:_), ytys) = both values $ partition x gamma
+            pi_ijs <- concat <$> projectNames gamma [x]
             pi_k <- concat <$> projectOver ytys [xty]
             let qks = do
                     (cix_ijs, cix_ks) <- shrink
@@ -299,9 +296,9 @@ share (xs, q) = foldrM shareOne (xs, q) repeats
                         cs_k :: [(ContextIndex, Double)]
                         cs_k = shareCoef ix_ijs <<< selectBy (`elem` cix_ks) pi_k
                     return $ fromList $ map (second (lf_ij *.)) cs_k
-            (ys', q') <- freshVarEnv $ delete x gamma ++ [(x, xty)]
+            q' <- freshIxEnv $ values gamma'
             constrain $ q' - sum (map (IndexEnv (ixTy q')) qks) ==* 0
-            return (ys', q')
+            return (gamma', q')
 
 pack :: IxEnv -> CIxEnv
 pack q = IndexEnv [ixTy q] $ fromList $ map (first $ context . pure) $ elements $ eqns q
@@ -340,28 +337,25 @@ annoSequential kes q_0 =
         recurses (TypedLet _ bs e) = anyRecurses (e:map snd bs)
         anyRecurses :: MonadReader AnnoState m => [TypedEx] -> m Bool
         anyRecurses = fmap or . traverse recurses
-        split_gq = (uncurry zip . second ixTy &&& snd)
-        anno_gq = fmap (split_gq *** pack) . anno
     in do
-    q <- flip (flip foldrM q_0) (bindvars kes) $ \(i, ((ke_i, ke'_i), e_i)) q_im1 -> do
-        ((g_i_0, q_i_0), q'_i_0) <- anno_gq e_i
-        let (g_im1, _) = split_gq q_im1
-            g_d_im1 = deleteAll [i] g_im1
+    q <- flip (flip foldrM q_0) (bindvars kes) $ \(i, ((ke_i, ke'_i), e_i)) (g_im1, q_im1) -> do
+        ((g_i_0, q_i_0), q'_i_0) <- second pack <$> anno e_i
+        let g_d_im1 = deleteAll [i] g_im1
             g_i = g_d_im1 ++ g_i_0
-            (g_a_im1, q_a_im1) = split_gq $ augment (i, head $ ixTy q'_i_0) q_im1
-        q_i <- freshVarEnv g_i
+            (g_a_im1, q_a_im1) = augment (i, head $ ixTy q'_i_0) (g_im1, q_im1)
+        q_i <- freshIxEnv $ values g_i
         pi_g_i_0_0:pi_g_i_j_js <- map (map swap) <$> projectOver (values g_d_im1) (values g_i_0)
         pi_i_t_i_0:pi_i_t_i_js <- map (map swap) <$> projectNames g_a_im1 [i]
         k_i  <- costof ke_i
         k'_i <- costof ke'_i
-        constrain $ (q_i_0 {eqns = eqns (snd q_i) <<< pi_g_i_0_0}) - q_i_0 ==* k_i
+        constrain $ (q_i_0 {eqns = eqns q_i <<< pi_g_i_0_0}) - q_i_0 ==* k_i
         constrain $ q'_i_0 - (q'_i_0 {eqns = eqns q_a_im1 <<< pi_i_t_i_0}) ==* k'_i
         recs <- recurses e_i
         degree <- degreeof
         for (zip pi_g_i_j_js pi_i_t_i_js) $ \(pi_g_i_j_j@((j_i_0, j_i):_), pi_i_t_i_j) -> do
             ((_, q_i_j), q'_i_j) <- local (\s -> s {degree = degree - (deg j_i - deg j_i_0), cost = zero}) $ do
                 if not recs || degree < 1 then
-                    anno_gq e_i
+                    second pack <$> anno e_i
                 else do
                     -- if es contains recursion, reannotate everything in the SCC
                     -- required because it handles each possible world separately
@@ -369,29 +363,29 @@ annoSequential kes q_0 =
                     cfscp <- refreshFunEnv scp
                     local (\s -> s {comp = cfscp}) $ do
                         traverse anno cfscp
-                        anno_gq e_i
-            constrain $ (q_i_j {eqns = eqns (snd q_i) <<< pi_g_i_j_j}) - q_i_j ==* 0
+                        second pack <$> anno e_i
+            constrain $ (q_i_j {eqns = eqns q_i <<< pi_g_i_j_j}) - q_i_j ==* 0
             constrain $ q'_i_j - (q'_i_j {eqns = eqns q_a_im1 <<< pi_i_t_i_j}) ==* 0
-        share q_i
+        share (g_i, q_i)
     return q
 
 annoParallel :: MonadRWS AnnoState [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> m (VarEnv, IxEnv)
 annoParallel kes = do
     kqs <- traverse (traverse anno) kes
-    let gs = map ((uncurry zip . second ixTy) . fst . snd) kqs
+    let gs = map (fst . fst . snd) kqs
         g = foldl union [] gs
         ty = values g
         ty' = ixTy $ snd $ snd $ head kqs
     pis <- traverse (fmap head . projectNames g) $ map keys gs
-    q <- freshVarEnv g
+    q  <- freshIxEnv $ values g
     q' <- freshIxEnv ty'
     for (zip pis kqs) $ \(pi, ((ke, ke'), ((_, qe), qe'))) -> do
         k  <- costof ke
         k' <- costof ke'
         let qp = IndexEnv ty $ eqns qe <<< pi
-        constrain $ snd q - qp >=* k
-        constrain $ qe'   - q' >=* k'
-    return (q, q')
+        constrain $ q   - qp >=* k
+        constrain $ qe' - q' >=* k'
+    return ((g, q), q')
 
 class Annotate a where
     anno :: MonadRWS AnnoState [GeneralConstraint] Anno m => a -> m (VarEnv, IxEnv)
@@ -402,9 +396,10 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
           annoFun (_, (TypedFun (Arrow pty rty) xs e, (pqs, rqs))) = do
               (q, q') <- anno e
               let ys = map FVar xs
-                  (zs, qa) = augmentMany (ys, pty) q
-              pi <- projectNames (zip ys pty) zs
-              constrain $ snd pqs - snd (varclose xs (ys, IndexEnv pty $ eqns qa <<< concat pi)) ==* 0
+                  gamma = zip ys pty
+                  (gamma_e, qa) = augmentMany (ys, pty) q
+              pi <- projectNames gamma $ keys gamma_e
+              constrain $ snd pqs - snd (varclose xs (gamma, IndexEnv pty $ eqns qa <<< concat pi)) ==* 0
               constrain $ rqs - q' ==* 0
           annoFun (V "car",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qp pqs >> constrainCar qp (pack rqs)
           annoFun (V "cdr",   (TypedNative (Arrow [ty_l@(ListTy ty_h)] _) _, ((_, pqs), rqs))) = freshIxEnv [ty_h, ty_l] >>= \qp -> consShift qp pqs >> constrainCdr qp (pack rqs)
@@ -432,17 +427,18 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
 
 instance Annotate TypedEx where
     anno (TypedVar ty x) = do
-        q  <- freshVarEnv [(FVar x, ty)]
         q' <- freshIxEnv ty
+        let p = pack q'
+        q  <- rezero p
         k <- costof k_var
-        constrain $ snd q - pack q' ==* k
-        return (q, q')
+        constrain $ q - p ==* k
+        return (([(FVar x, ty)], q), q')
     anno (TypedVal ty v) = do
-        q  <- freshVarEnv []
+        q  <- freshIxEnv []
         q' <- freshIxEnv ty
         k <- costof k_val
-        constrain [snd q %-% q' ==$ k]
-        return (q, q')
+        constrain [q %-% q' ==$ k]
+        return (([], q), q')
     anno (TypedIf ty ep et ef) = do
         (qc, q') <- annoParallel [((k_ift, k_ifc), et), ((k_iff, k_ifc), ef)]
         q <- annoSequential [((const 0, k_ifp), ep)] qc
@@ -522,9 +518,9 @@ annotateEx k p e = do
     let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
     (((_, q), q'), cs) <- flip (flip evalRWST checkState) 0 $ do
         let gamma = map (first FVar) $ freeVars e
-        qe <- freshVarEnv gamma
-        ((xs, q), q') <- anno e
-        pi <- projectNames gamma xs
-        constrain $ snd qe - (IndexEnv (map snd gamma) $ eqns q <<< concat pi) ==* 0
-        return (qe, q')
+        qe <- freshIxEnv $ values gamma
+        ((gamma_e, q), q') <- anno e
+        pi <- projectNames gamma $ keys gamma_e
+        constrain $ qe - (IndexEnv (ixTy qe) $ eqns q <<< concat pi) ==* 0
+        return ((gamma, qe), q')
     return $ makeEqn 0 q cs

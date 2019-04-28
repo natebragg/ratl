@@ -15,11 +15,12 @@ module Data.Mapping (
     selectAll,
     deleteAll,
     partitionAll,
+    member,
 ) where
 
 import Control.Arrow ((&&&))
 import Control.Monad (join)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (listToMaybe, isJust)
 import Data.Semigroup (Semigroup(..))
 import Prelude hiding (lookup)
 
@@ -81,6 +82,9 @@ deleteAll = flip $ foldl $ flip delete
 
 partitionAll :: (Eq k, Mapping m k v) => [k] -> m -> (m, m)
 partitionAll = uncurry (&&&) . (selectAll &&& deleteAll)
+
+member :: (Eq k, Mapping m k v) => k -> m -> Bool
+member = (isJust .) . lookup
 
 instance Mapping [(k, v)] k v where
     lookupBy f = go
