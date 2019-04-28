@@ -358,8 +358,8 @@ annoSequential kes q_0 =
         constrain $ q'_i_0 - (q'_i_0 {eqns = eqns q_a_im1 <<< pi_i_t_i_0}) ==* k'_i
         recs <- recurses e_i
         degree <- degreeof
-        for (zip pi_g_i_j_js pi_i_t_i_js) $ \(pi_g_i_j_j@((j, _):_), pi_i_t_i_j) -> do
-            ((_, q_i_j), q'_i_j) <- local (\s -> s {degree = degree - deg j, cost = zero}) $ do
+        for (zip pi_g_i_j_js pi_i_t_i_js) $ \(pi_g_i_j_j@((j_i_0, j_i):_), pi_i_t_i_j) -> do
+            ((_, q_i_j), q'_i_j) <- local (\s -> s {degree = degree - (deg j_i - deg j_i_0), cost = zero}) $ do
                 if not recs || degree < 1 then
                     anno_gq e_i
                 else do
