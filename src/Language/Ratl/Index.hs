@@ -63,8 +63,7 @@ instance Indexable Index Ty where
     index (Tyvar _)    = [[AIndex]]
     index (ForAll _ t) = index t
     index (PairTy t1 t2)  = do
-        ds <- groupBy ((==) `on` deg . PIndex . heads) $
-              (diagonals `on` index) t1 t2
+        ds <- indexDiagonalsByDegree t1 t2
         return $ ds >>= \(d1, d2) -> curry PIndex <$> d1 <*> d2
     index (ListTy t) = do
         cs <- combos (index t)
@@ -107,9 +106,10 @@ instance Indexable ContextIndex [Ty] where
 
     poly (CIndex is) = product $ map poly is
 
-    index = fmap (fmap $ CIndex . unpair) . index . foldr PairTy UnitTy
-        where unpair (PIndex (i1, i2)) = i1:unpair i2
-              unpair _ = []
+    index [] = [[CIndex []]]
+    index (t:ts) = do
+        ds <- indexDiagonalsByDegree t ts
+        return $ ds >>= \(d, ds) -> [CIndex (i:is) | i <- d, CIndex is <- ds]
 
     zero (CIndex is) = CIndex (map zero is)
 
@@ -117,8 +117,10 @@ instance Indexable ContextIndex [Ty] where
         where go [] [] = []
               go (f:fs) (z:zs) = map (first (:zs)) f ++ map (first (z:)) (go fs zs)
 
-heads :: ([a], [b]) -> (a, b)
-heads = head *** head
+indexDiagonalsByDegree :: (Indexable i1 t1, Indexable i2 t2) => t1 -> t2 -> [[([i1], [i2])]]
+indexDiagonalsByDegree = (byDegree .) . indexDiagonals
+    where byDegree = groupBy ((==) `on` uncurry (+) . (deg . head *** deg . head))
+          indexDiagonals = (. index) . diagonals . index
 
 -- The cartesian product of two lists in diagonal order.  Using dynamic
 -- programming, each diagonal is generated from the previous, intermediately
@@ -129,6 +131,7 @@ diagonals as bs = concatMap (map heads) $ go $ filter nonempty [(as, bs)]
           go [] = []
           go ds = ds:go (filter nonempty $ first tail (head ds):map (second tail) ds)
           nonempty = not . uncurry (||) . (null *** null)
+          heads = head *** head
 
 -- All combinations of elements of the inputs ordered by total weight, as
 -- determined by in index of the input element.  Starting with the empty
