@@ -1,82 +1,107 @@
-name:                ratl
-version:             2.0.0.0
-synopsis:            Resource-Aware Toy Language
-description:         Resource-Aware Toy Language
-homepage:            https://github.com/natebragg/ratl#readme
-license:             BSD3
-license-file:        LICENSE
-author:              Nate Bragg
-maintainer:          Nate Bragg <nate@cs.tufts.edu>
-copyright:           (c) 2017 Nate Bragg
-category:            Language
-build-type:          Custom
-extra-source-files:  README.md
-cabal-version:       >=1.10
+cabal-version: 2.0
 
-custom-setup
-  setup-depends:       base >= 4.7 && < 5
-                     , Cabal >= 1.24 && < 2.1
-                     , filepath
+-- This file has been generated from package.yaml by hpack version 0.33.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 40b929494d8206a73e50573cf8ebcafe58af851b30355abeb778b8698fadc06e
 
-library
-  hs-source-dirs:      src
-  exposed-modules:     Data.Clp.Clp
-                       Data.Clp.Program
-                       Data.Clp.Pretty
-                       Language.Ratl.Ast
-                       Language.Ratl.Anno
-                       Language.Ratl.Basis
-                       Language.Ratl.Elab
-                       Language.Ratl.Eval
-                       Language.Ratl.Index
-                       Language.Ratl.Parser
-                       Language.Ratl.Reader
-                       Language.Ratl.Ty
-                       Language.Ratl.Val
-  other-modules:       Bindings.Clp.Clp
-                       Control.Monad.Except.Extra
-                       Control.Monad.RWS.Extra
-                       Data.Clp.Managed
-                       Data.Clp.LinearFunction
-                       Data.Fix
-                       Data.Graph.Inductive.Extra
-                       Data.Mapping
-  build-depends:       algebra
-                     , base >= 4.7 && < 5
-                     , bytestring
-                     , fgl
-                     , file-embed
-                     , mtl
-                     , pretty
-                     , transformers
-                     , containers
-                     , monoidal-containers
-                     , parsec
-  default-language:    Haskell2010
-  extra-libraries:     Clp
-
-executable ratl
-  hs-source-dirs:      app
-  main-is:             Main.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
-  other-modules:       PackageInfo
-  build-depends:       base
-                     , ratl
-                     , mtl
-                     , transformers
-                     , parsec
-  default-language:    Haskell2010
-
-test-suite ratl-test
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      test
-  main-is:             Spec.hs
-  build-depends:       base
-                     , ratl
-                     , QuickCheck
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
-  default-language:    Haskell2010
+name:           ratl
+version:        2.0.0.0
+synopsis:       Resource-Aware Toy Language
+description:    Please see the README on GitHub at <https://github.com/natebragg/ratl#readme>
+category:       Language
+homepage:       https://github.com/natebragg/ratl#readme
+bug-reports:    https://github.com/natebragg/ratl/issues
+author:         Nate Bragg
+maintainer:     nate@cs.tufts.edu
+copyright:      (c) 2017 Nate Bragg
+license:        BSD3
+license-file:   LICENSE
+build-type:     Custom
+extra-source-files:
+    README.md
 
 source-repository head
-  type:     git
+  type: git
   location: https://github.com/natebragg/ratl
+
+custom-setup
+  setup-depends:
+      Cabal
+    , base >=4.7 && <5
+    , filepath
+
+library
+  exposed-modules:
+      Data.Clp.Clp
+      Data.Clp.Program
+      Data.Clp.Pretty
+      Language.Ratl.Ast
+      Language.Ratl.Anno
+      Language.Ratl.Basis
+      Language.Ratl.Elab
+      Language.Ratl.Eval
+      Language.Ratl.Index
+      Language.Ratl.Parser
+      Language.Ratl.Reader
+      Language.Ratl.Ty
+      Language.Ratl.Val
+  other-modules:
+      Bindings.Clp.Clp
+      Control.Monad.Except.Extra
+      Control.Monad.RWS.Extra
+      Data.Clp.Managed
+      Data.Clp.LinearFunction
+      Data.Fix
+      Data.Graph.Inductive.Extra
+      Data.Mapping
+  hs-source-dirs:
+      src
+  extra-libraries:
+      Clp
+  build-depends:
+      algebra
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , fgl
+    , file-embed
+    , monoidal-containers
+    , mtl
+    , parsec
+    , pretty
+    , transformers
+  default-language: Haskell2010
+
+executable ratl
+  main-is: Main.hs
+  other-modules:
+      Paths_ratl
+      PackageInfo
+  autogen-modules:
+      PackageInfo
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , mtl
+    , parsec
+    , ratl
+    , transformers
+  default-language: Haskell2010
+
+test-suite ratl-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_ratl
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , base >=4.7 && <5
+    , ratl
+  default-language: Haskell2010
