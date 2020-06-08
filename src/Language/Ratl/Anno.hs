@@ -40,7 +40,6 @@ import Prelude hiding (lookup, sum, negate, (+), (-))
 import Data.Clp.Clp (OptimizationDirection(Minimize))
 import Data.Clp.LinearFunction (
     LinearFunction,
-    LinearFunFamily,
     sparse,
     coefficients,
     )
@@ -48,6 +47,7 @@ import Data.Clp.Program (
     GeneralConstraint, (==$), (>=$),
     GeneralForm(..),
     )
+import Language.Ratl.LinearFunFamily (LinearFunFamily)
 import Language.Ratl.Index (
     Indexable,
     Index,

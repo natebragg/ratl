@@ -30,9 +30,6 @@ dependencies:
 library:
   source-dirs: src
   exposed-modules:
-  - Data.Clp.Clp
-  - Data.Clp.Program
-  - Data.Clp.Pretty
   - Language.Ratl.Ast
   - Language.Ratl.Anno
   - Language.Ratl.Basis
@@ -44,16 +41,15 @@ library:
   - Language.Ratl.Ty
   - Language.Ratl.Val
   other-modules:
-  - Bindings.Clp.Clp
+  - Language.Ratl.LinearFunFamily
   - Control.Monad.Except.Extra
   - Control.Monad.RWS.Extra
-  - Data.Clp.Managed
-  - Data.Clp.LinearFunction
   - Data.Fix
   - Data.Graph.Inductive.Extra
   - Data.Mapping
   dependencies:
   - algebra
+  - bankroll
   - bytestring
   - fgl
   - file-embed
@@ -63,8 +59,6 @@ library:
   - containers
   - monoidal-containers
   - parsec
-  extra-libraries:
-  - Clp
 
 executables:
   ratl:
@@ -78,6 +72,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - ratl
+    - bankroll
     - mtl
     - transformers
     - parsec
@@ -92,4 +87,3 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - ratl
-    - QuickCheck

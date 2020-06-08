@@ -17,7 +17,8 @@ On Ubuntu, these can be installed with:
 
     apt-get install haskell-stack
 
-Ratl also depends on an LP library, Coin-Or Clp:
+Ratl also depends on Bankroll, a wrapper for the LP library Coin-Or Clp, which
+can be installed with:
 
     apt-get install coinor-clp coinor-libclp-dev
 
