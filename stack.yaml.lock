@@ -3,10 +3,28 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    size: 45152
+    url: https://github.com/ekmett/algebra/archive/443e82dc3070ae67c01bfb506a04d9fa37e98ba0.tar.gz
+    name: algebra
+    version: 4.3.1
+    sha256: 82efe53ec235f57f0518dbf3c5d574547f20a7ac62dd411a72159af9c5b0e669
+    pantry-tree:
+      size: 5862
+      sha256: 9867ea02594218ad43314ea9ea8b4e73c7bf6bd01048f147d21ea8571d8eb087
+  original:
+    url: https://github.com/ekmett/algebra/archive/443e82dc3070ae67c01bfb506a04d9fa37e98ba0.tar.gz
+- completed:
+    hackage: monoidal-containers-0.6.0.1@sha256:7d776942659eb4d70d8b8da5d734396374a6eda8b4622df9e61e26b24e9c8e40,2501
+    pantry-tree:
+      size: 569
+      sha256: c354e916cb3aa9a0728a60f08440dc589a9e6d8275f047dbe9ab73f168247561
+  original:
+    hackage: monoidal-containers-0.6.0.1
 snapshots:
 - completed:
-    size: 509471
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/12/26.yaml
-    sha256: 95f014df58d0679b1c4a2b7bf2b652b61da8d30de5f571abb0d59015ef678646
-  original: lts-12.26
+    size: 496111
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/15/14.yaml
+    sha256: c442d702d66b8c129b3473a32c609050aabf1dc2f8e8502402c143271a8fb141
+  original: lts-15.14

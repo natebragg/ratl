@@ -344,8 +344,8 @@ annoSequential kes q_0 =
             g_i = g_d_im1 ++ g_i_0
             (g_a_im1, q_a_im1) = augment (i, head $ ixTy q'_i_0) (g_im1, q_im1)
         q_i <- freshIxEnv $ values g_i
-        pi_g_i_0_0:pi_g_i_j_js <- map (map swap) <$> projectOver (values g_d_im1) (values g_i_0)
-        pi_i_t_i_0:pi_i_t_i_js <- map (map swap) <$> projectNames g_a_im1 [i]
+        ~(pi_g_i_0_0:pi_g_i_j_js) <- map (map swap) <$> projectOver (values g_d_im1) (values g_i_0)
+        ~(pi_i_t_i_0:pi_i_t_i_js) <- map (map swap) <$> projectNames g_a_im1 [i]
         k_i  <- costof ke_i
         k'_i <- costof ke'_i
         constrain $ (q_i_0 {eqns = eqns q_i <<< pi_g_i_0_0}) - q_i_0 ==* k_i
