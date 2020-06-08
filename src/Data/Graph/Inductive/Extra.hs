@@ -37,13 +37,15 @@ makeEdgesWhere g b (f1, f2) = (,,) <$> nodesWhere f1 g <*> nodesWhere f2 g <*> p
 scSubgraphs :: DynGraph gr => gr a b -> [gr a b]
 scSubgraphs = map . (flip subgraph) <*> scc
 
-instance Monoid (Gr a b) where
-    mempty = empty
-    mappend g1 g2 = ufold ((&) . inc) g1 g2
+instance Semigroup (Gr a b) where
+    g1 <> g2 = ufold ((&) . inc) g1 g2
         where inc (p, v, l, s) = (renumberAdj p, renumber v, l, renumberAdj s)
               renums = zip (nodes g2) $ newNodes (noNodes g2) g1
               renumber = fromJust . flip lookup renums
               renumberAdj = map (second renumber)
+
+instance Monoid (Gr a b) where
+    mempty = empty
 
 newtype ByNode b a =
     ByNode { getByNode :: Context a b }

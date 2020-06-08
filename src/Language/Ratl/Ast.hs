@@ -190,7 +190,7 @@ freeVars (TypedIf _ ep et ef) = nub $ concatMap freeVars [ep, et, ef]
 freeVars (TypedLet _ bs e)    = nub $ let (xs, es) = unzip bs in concatMap freeVars es ++ (deleteAll xs $ freeVars e)
 
 newtype Prog = Prog {getProg :: Gr (Var, Fun) ()}
-    deriving (Monoid)
+    deriving (Semigroup, Monoid)
 
 makeProg :: [(Var, Fun)] -> Prog
 makeProg = Prog . flip mkGraph [] . zip [1..]

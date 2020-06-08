@@ -38,7 +38,6 @@ import Text.PrettyPrint (
     hcat,
     hsep,
     punctuate,
-    (<>),
     (<+>),
     ($+$),
     isEmpty,
