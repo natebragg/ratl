@@ -7,7 +7,7 @@ module Language.Ratl.LinearFunFamily (
     LinearFunFamily,
 ) where
 
-import Data.Clp.LinearFunction (LinearFunction)
+import Numeric.Optimization.Bankroll.LinearFunction (LinearFunction)
 import Data.List (partition)
 import Data.Mapping (Mapping(..))
 import Numeric.Algebra (

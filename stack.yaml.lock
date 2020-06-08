@@ -5,6 +5,17 @@
 
 packages:
 - completed:
+    size: 19943
+    url: https://github.com/natebragg/bankroll/archive/v1.2.tar.gz
+    name: bankroll
+    version: 1.2.0.0
+    sha256: fc7169c1c7abd0de29624358175f96938c160df42bd383cba5eb50f4480bcae9
+    pantry-tree:
+      size: 1789
+      sha256: b1dbe10475beadc5e44429a7a3920a3e3e1d6ed6636e05c2c72e42c05215fe2e
+  original:
+    url: https://github.com/natebragg/bankroll/archive/v1.2.tar.gz
+- completed:
     size: 45152
     url: https://github.com/ekmett/algebra/archive/443e82dc3070ae67c01bfb506a04d9fa37e98ba0.tar.gz
     name: algebra

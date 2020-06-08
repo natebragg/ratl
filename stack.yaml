@@ -10,7 +10,7 @@ packages:
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
 - github: natebragg/bankroll
-  commit: v0.2
+  commit: v1.2
 #- algebra-4.3.1
 - github: ekmett/algebra
   commit: 443e82dc3070ae67c01bfb506a04d9fa37e98ba0

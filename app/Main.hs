@@ -15,14 +15,15 @@ import Data.Tuple (swap)
 import Text.Parsec (parse, many1, eof)
 import Text.Printf (printf)
 import Text.Read (readEither)
+import qualified Numeric.Optimization.Bankroll.Clp as Clp (version)
+import Numeric.Optimization.Bankroll.Clp (doClpSolver)
+import Numeric.Optimization.Bankroll.Program (LinearProgram(solve), LinearFunction, GeneralConstraint(Leq), GeneralForm(..))
+import Numeric.Optimization.Bankroll.Pretty (renderGridCompact, renderGridDefault, varnames, renderEqn, renderEqnDefault)
 import System.Exit (exitSuccess, exitFailure)
 import System.IO (readFile)
 import System.Environment (getArgs)
 import System.Console.GetOpt (usageInfo, getOpt, OptDescr(..), ArgDescr(..), ArgOrder(RequireOrder))
 
-import qualified Data.Clp.Clp as Clp (version)
-import Data.Clp.Program (LinearProgram(solve), LinearFunction, GeneralConstraint(Leq), GeneralForm(..))
-import Data.Clp.Pretty (renderGridCompact, renderGridDefault, varnames, renderEqn, renderEqnDefault)
 import Language.Ratl.Reader (sexps)
 import Language.Ratl.Parser (iterator, prog, ex, eol)
 import Language.Ratl.Basis (prims, basis)
@@ -48,7 +49,7 @@ import PackageInfo (version, appName, synopsis)
 progressive_solve :: [GeneralForm] -> [(LinearFunction, Double)]
 progressive_solve = fst . foldl accum ([], [])
     where accum (ss, cs') (GeneralForm dir obj cs) = (ss ++ [sol], (obj `Leq` snd sol):cs')
-            where sol = solve $ GeneralForm dir obj (cs' ++ cs)
+            where sol = doClpSolver $ solve $ GeneralForm dir obj (cs' ++ cs)
 
 pretty_bound :: Bool -> [(ContextIndex, Int)] -> LinearFunction -> String
 pretty_bound explicit ixs cs = bound ++ explanation

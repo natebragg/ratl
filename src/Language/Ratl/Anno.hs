@@ -35,18 +35,18 @@ import Numeric.Algebra (
     RightModule(..),
     sum)
 import qualified Numeric.Algebra as Alg (zero)
-import Prelude hiding (lookup, sum, negate, (+), (-))
-
-import Data.Clp.Clp (OptimizationDirection(Minimize))
-import Data.Clp.LinearFunction (
+import Numeric.Optimization.Bankroll.LinearFunction (
     LinearFunction,
     sparse,
     coefficients,
     )
-import Data.Clp.Program (
+import Numeric.Optimization.Bankroll.Program (
+    OptimizationDirection(Minimize),
     GeneralConstraint, (==$), (>=$),
     GeneralForm(..),
     )
+import Prelude hiding (lookup, sum, negate, (+), (-))
+
 import Language.Ratl.LinearFunFamily (LinearFunFamily)
 import Language.Ratl.Index (
     Indexable,
