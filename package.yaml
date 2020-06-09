@@ -28,7 +28,7 @@ dependencies:
 - base >= 4.7 && < 5
 
 library:
-  source-dirs: src
+  source-dirs: src/ratl
   exposed-modules:
   - Language.Ratl.Ast
   - Language.Ratl.Anno
@@ -44,10 +44,9 @@ library:
   - Language.Ratl.LinearFunFamily
   - Control.Monad.Except.Extra
   - Control.Monad.RWS.Extra
-  - Data.Fix
   - Data.Graph.Inductive.Extra
-  - Data.Mapping
   dependencies:
+  - ratl-common
   - algebra
   - bankroll
   - bytestring
@@ -59,6 +58,13 @@ library:
   - containers
   - monoidal-containers
   - parsec
+
+internal-libraries:
+  ratl-common:
+    source-dirs: src/common
+    exposed-modules:
+    - Data.Fix
+    - Data.Mapping
 
 executables:
   ratl:

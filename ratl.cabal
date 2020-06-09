@@ -4,7 +4,7 @@ cabal-version: 2.0
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9ebc49f7762f5ca92c8eda9214fe0a634a645dfd8fafb1fd51c6593b3cf164c4
+-- hash: 554c50712df5c48a3cd2b2e7b1b7d87c8805c2bd7b5f88a6c79590482bf671f6
 
 name:           ratl
 version:        2.0.0.0
@@ -48,11 +48,9 @@ library
       Language.Ratl.LinearFunFamily
       Control.Monad.Except.Extra
       Control.Monad.RWS.Extra
-      Data.Fix
       Data.Graph.Inductive.Extra
-      Data.Mapping
   hs-source-dirs:
-      src
+      src/ratl
   build-depends:
       algebra
     , bankroll
@@ -65,7 +63,20 @@ library
     , mtl
     , parsec
     , pretty
+    , ratl-common
     , transformers
+  default-language: Haskell2010
+
+library ratl-common
+  exposed-modules:
+      Data.Fix
+      Data.Mapping
+  other-modules:
+      Paths_ratl
+  hs-source-dirs:
+      src/common
+  build-depends:
+      base >=4.7 && <5
   default-language: Haskell2010
 
 executable ratl
