@@ -53,10 +53,6 @@ library:
   - fgl
   - file-embed
   - mtl
-  - pretty
-  - transformers
-  - containers
-  - monoidal-containers
   - parsec
 
 internal-libraries:

@@ -14,7 +14,6 @@ extra-deps:
 #- algebra-4.3.1
 - github: ekmett/algebra
   commit: 443e82dc3070ae67c01bfb506a04d9fa37e98ba0
-- monoidal-containers-0.6.0.1
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
