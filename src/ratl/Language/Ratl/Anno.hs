@@ -155,7 +155,7 @@ zero = Cost {
         k_lt2 = 0.0
     }
 
-data AnnoState = AnnoState {
+data AnnoConfig = AnnoConfig {
         degree :: Int,
         scps :: [TypedProg],
         comp :: FunEnv,
@@ -194,22 +194,22 @@ freshAnno = do
     put (q + 1)
     return $ sparse [(q, 1)]
 
-freshIxEnv :: (MonadRS AnnoState Anno m, Indexable i t) => t -> m (IndexEnv t i)
+freshIxEnv :: (MonadRS AnnoConfig Anno m, Indexable i t) => t -> m (IndexEnv t i)
 freshIxEnv t = do
     k <- degreeof
     IndexEnv t <$> fromList <$> traverse (\i -> (,) i <$> freshAnno) (indexDeg k t)
 
-freshFunBounds :: MonadRS AnnoState Anno m => TypedFun -> m (VarEnv, IxEnv)
+freshFunBounds :: MonadRS AnnoConfig Anno m => TypedFun -> m (VarEnv, IxEnv)
 freshFunBounds fun = do
     let Arrow t t' = tyOf fun
     q  <- freshIxEnv t
     q' <- freshIxEnv t'
     return ((bindvars t, q), q')
 
-freshFunEnv :: MonadRS AnnoState Anno m => TypedProg -> m FunEnv
+freshFunEnv :: MonadRS AnnoConfig Anno m => TypedProg -> m FunEnv
 freshFunEnv = traverse (traverse $ \f -> (,) f <$> freshFunBounds f)
 
-refreshFunEnv :: MonadRS AnnoState Anno m => FunEnv -> m FunEnv
+refreshFunEnv :: MonadRS AnnoConfig Anno m => FunEnv -> m FunEnv
 refreshFunEnv = freshFunEnv . map (second fst)
 
 rezero :: (MonadState Anno m, Indexable i t) => IndexEnv t i -> m (IndexEnv t i)
@@ -245,12 +245,12 @@ infix 5 %-%
 both :: (a -> b) -> (a, a) -> (b, b)
 both f = f *** f
 
-discardLeft :: MonadReader AnnoState m => CIxEnv -> m CIxEnv
+discardLeft :: MonadReader AnnoConfig m => CIxEnv -> m CIxEnv
 discardLeft q@(IndexEnv [] _) = return q
 discardLeft (IndexEnv (ty:tys) q) = IndexEnv tys <$> q'
     where q' = fromList . map (first (transform tail)) . elements . flip selectAll q . map (zeroIndex [ty] <>) <$> (indexDeg <$> degreeof <*> pure tys)
 
-discardRight :: MonadReader AnnoState m => CIxEnv -> m CIxEnv
+discardRight :: MonadReader AnnoConfig m => CIxEnv -> m CIxEnv
 discardRight q@(IndexEnv [] _) = return q
 discardRight (IndexEnv tys q) = IndexEnv tys' <$> q'
     where q' = fromList . map (first (transform init)) . elements . flip selectAll q . map (<> zeroIndex [ty]) <$> (indexDeg <$> degreeof <*> pure tys')
@@ -265,18 +265,18 @@ augmentMany :: ([LNVar], [Ty]) -> VarEnv -> VarEnv
 augmentMany (ys, tys) q = foldr augment q $ zip ys tys
 
 -- Returns a list grouped by _j of mappings from the projection pi_j^gamma to the injection gamma
-projectOver :: MonadReader AnnoState m => [Ty] -> [Ty] -> m [[(ContextIndex, ContextIndex)]]
+projectOver :: MonadReader AnnoConfig m => [Ty] -> [Ty] -> m [[(ContextIndex, ContextIndex)]]
 projectOver jtys gtys = map (\(ix, ixs) -> map ((ix <>) &&& id) ixs)
                         <$> (projectDeg <$> degreeof <*> pure jtys <*> pure gtys)
 
 -- Returns a list grouped by _j of mappings from the projection to the injection, where the projection
 -- is ordered according to the first argument and the injection is ordered according to the second.
-projectNames :: MonadReader AnnoState m => [(LNVar, Ty)] -> [LNVar] -> m [[(ContextIndex, ContextIndex)]]
+projectNames :: MonadReader AnnoConfig m => [(LNVar, Ty)] -> [LNVar] -> m [[(ContextIndex, ContextIndex)]]
 projectNames g_y xs = do
     let ((xis, xtys), (yis, ytys)) = both (unzip . values) $ first (flip concatMap xs . flip select) $ partitionAll xs $ zipWith (\n (y, t) -> (y, (n, t))) [1..] g_y
     map (map $ first $ transform $ values . sortBy (compare `on` fst) . zip (yis ++ xis)) <$> projectOver ytys xtys
 
-share :: MonadRWS AnnoState [GeneralConstraint] Anno m => VarEnv -> m VarEnv
+share :: MonadRWS AnnoConfig [GeneralConstraint] Anno m => VarEnv -> m VarEnv
 share (gamma, q) = foldrM shareOne (gamma, q) repeats
     where repeats = nub $ xs \\ nub xs
           xs = keys gamma
@@ -310,32 +310,32 @@ expand_ctx q = IndexEnv (concatMap unPairTy $ ixTy q) $ fromList $ map (first sp
 
 -- Reader/Writer/State Helpers
 
-lookupSCP :: MonadReader AnnoState m => Var -> m TypedProg
+lookupSCP :: MonadReader AnnoConfig m => Var -> m TypedProg
 lookupSCP x = asks (head . filter (isJust . lookup x) . scps)
 
 constrain :: MonadWriter [GeneralConstraint] m => [GeneralConstraint] -> m ()
 constrain = tell
 
-costof :: MonadReader AnnoState m => (Cost -> a) -> m a
+costof :: MonadReader AnnoConfig m => (Cost -> a) -> m a
 costof k = asks (k . cost)
 
-degreeof :: MonadReader AnnoState m => m Int
+degreeof :: MonadReader AnnoConfig m => m Int
 degreeof = asks degree
 
-lookupThisSCP :: MonadReader AnnoState m => Var -> m (Maybe (TypedFun, (VarEnv, IxEnv)))
+lookupThisSCP :: MonadReader AnnoConfig m => Var -> m (Maybe (TypedFun, (VarEnv, IxEnv)))
 lookupThisSCP x = asks (lookup x . comp)
 
 -- The Engine
 
-annoSequential :: MonadRWS AnnoState [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> VarEnv -> m VarEnv
+annoSequential :: MonadRWS AnnoConfig [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> VarEnv -> m VarEnv
 annoSequential kes q_0 =
-    let recurses :: MonadReader AnnoState m => TypedEx -> m Bool
+    let recurses :: MonadReader AnnoConfig m => TypedEx -> m Bool
         recurses (TypedVar _ _) = return False
         recurses (TypedVal _ _) = return False
         recurses (TypedApp _ f es) = maybe (anyRecurses es) (const $ return True) =<< lookupThisSCP f
         recurses (TypedIf _ ep et ef) = anyRecurses [ep, et, ef]
         recurses (TypedLet _ bs e) = anyRecurses (e:map snd bs)
-        anyRecurses :: MonadReader AnnoState m => [TypedEx] -> m Bool
+        anyRecurses :: MonadReader AnnoConfig m => [TypedEx] -> m Bool
         anyRecurses = fmap or . traverse recurses
     in do
     q <- flip (flip foldrM q_0) (bindvars kes) $ \(i, ((ke_i, ke'_i), e_i)) (g_im1, q_im1) -> do
@@ -369,7 +369,7 @@ annoSequential kes q_0 =
         share (g_i, q_i)
     return q
 
-annoParallel :: MonadRWS AnnoState [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> m (VarEnv, IxEnv)
+annoParallel :: MonadRWS AnnoConfig [GeneralConstraint] Anno m => [((Cost -> Double, Cost -> Double), TypedEx)] -> m (VarEnv, IxEnv)
 annoParallel kes = do
     kqs <- traverse (traverse anno) kes
     let gs = map (fst . fst . snd) kqs
@@ -388,11 +388,11 @@ annoParallel kes = do
     return ((g, q), q')
 
 class Annotate a where
-    anno :: MonadRWS AnnoState [GeneralConstraint] Anno m => a -> m (VarEnv, IxEnv)
+    anno :: MonadRWS AnnoConfig [GeneralConstraint] Anno m => a -> m (VarEnv, IxEnv)
 
 instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
    anno f@(_, (_, qs)) = annoFun f >> return qs
-    where annoFun :: MonadRWS AnnoState [GeneralConstraint] Anno m => (Var, (TypedFun, (VarEnv, IxEnv))) -> m ()
+    where annoFun :: MonadRWS AnnoConfig [GeneralConstraint] Anno m => (Var, (TypedFun, (VarEnv, IxEnv))) -> m ()
           annoFun (_, (TypedFun (Arrow pty rty) xs e, (pqs, rqs))) = do
               (q, q') <- anno e
               let ys = map FVar xs
@@ -409,18 +409,18 @@ instance Annotate (Var, (TypedFun, (VarEnv, IxEnv))) where
           annoFun (V "snd",   (TypedNative _                              _, ((_, pqs), rqs))) = constrainCdr (expand_ctx pqs) (pack rqs)
           annoFun (V "error", (TypedNative _                              _, _              )) = return ()
           annoFun (_,         (TypedNative _                              _, ((_, pqs), rqs))) = constrain $ [pqs %-% rqs ==$ 0]
-          consShift :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> m ()
+          consShift :: MonadRWS AnnoConfig [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> m ()
           consShift qp ql = do
               let limit (i, is) = const (i, is) <$> lookup i (eqns qp)
                   Just shs = sequence $ takeWhile isJust $ map limit $ shift $ head $ ixTy ql
                   ss = map (\(i, is) -> (,) <$> lookup i (eqns qp) <*> sequence (filter isJust $ map (flip lookup $ eqns ql) is)) shs
               constrain [sum ps - q ==$ 0 |
                          Just (q, ps) <- ss]
-          constrainCar :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> m ()
+          constrainCar :: MonadRWS AnnoConfig [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> m ()
           constrainCar qp qh = do
               qph <- discardRight qp
               constrain $ qh - qph ==* 0
-          constrainCdr :: MonadRWS AnnoState [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> m ()
+          constrainCdr :: MonadRWS AnnoConfig [GeneralConstraint] Anno m => CIxEnv -> CIxEnv -> m ()
           constrainCdr qp qt = do
               qpt <- discardLeft qp
               constrain $ qt - qpt ==* 0
@@ -505,7 +505,7 @@ makeEqn k (IndexEnv ty q) cs =
 
 annotate :: Monad m => Int -> [TypedProg] -> [TypedProg] -> m EqnEnv
 annotate k p fs = do
-    let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
+    let checkState = AnnoConfig {degree = k, scps = p, comp = mempty, cost = constant}
     flip evalStateT 0 $ fmap concat $ for fs $ \scp -> do
         (scp', cs) <- flip evalRWT checkState $ do
             scp' <- freshFunEnv scp
@@ -515,7 +515,7 @@ annotate k p fs = do
 
 annotateEx :: Monad m => Int -> [TypedProg] -> TypedEx -> m Eqn
 annotateEx k p e = do
-    let checkState = AnnoState {degree = k, scps = p, comp = mempty, cost = constant}
+    let checkState = AnnoConfig {degree = k, scps = p, comp = mempty, cost = constant}
     (((_, q), q'), cs) <- flip (flip evalRWST checkState) 0 $ do
         let gamma = map (first FVar) $ freeVars e
         qe <- freshIxEnv $ values gamma
