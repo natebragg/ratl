@@ -1,7 +1,7 @@
 name:                ratl
 version:             2.0.0.0
 github:              "natebragg/ratl"
-license:             BSD3
+license:             BSD-3-Clause
 author:              "Nate Bragg"
 maintainer:          "nate@cs.tufts.edu"
 copyright:           "(c) 2017 Nate Bragg"

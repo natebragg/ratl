@@ -1,10 +1,10 @@
-cabal-version: 2.0
+cabal-version: 2.2
 
 -- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0f9939217166f08d351f117aefd8d93350ade6932549ac5916452c3026744abd
+-- hash: 4a305e1ea92a2afa740071583834a59cdf23b2d184adb2f01182d9b4f314833c
 
 name:           ratl
 version:        2.0.0.0
@@ -16,7 +16,7 @@ bug-reports:    https://github.com/natebragg/ratl/issues
 author:         Nate Bragg
 maintainer:     nate@cs.tufts.edu
 copyright:      (c) 2017 Nate Bragg
-license:        BSD3
+license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Custom
 extra-source-files:
